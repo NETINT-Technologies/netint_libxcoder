@@ -1,0 +1,1092 @@
+================================================================================
+Release version: 5.1.0_RC4
+Date: 2024-11-26            SW version: 5.1.0_RC4           FW version: 5.1.0_RC4
+Compat FW API ver: 6rt      Libxcoder API ver: 2.68
+--------------------------------------------------------------------------------
+[LIBXCODER] Buffer backpressure support for FFmpeg filters
+            Changing FW API version to 6rt
+            Changing libxcoder API version to 2.68
+[LIBXCODER] Fix software logic error when receiving two consecutive header messages
+[LIBXCODER] Fix an issue where the H264 HW decoder was delayed by 16 fps
+            Changing FW API version to 6rs
+[LIBXCODER] Added the support of 10 bits hvsplus filter
+            Changing FW API version to 6rr
+[LIBXCODER] Smooth the curves of the output file for different crf decimals
+            Changing FW API version to 6rq
+[LIBXCODER] Expand namespace number to 128
+[LIBXCODER] Add the 'Invalid Picture Width/Height' error message for scaler for better error description
+[LIBXCODER] Added the change to support the hvsplus filter in FFmpeg
+            Changing FW API version to 6rp
+[LIBXCODER] Fix p2p read from discontiguous address and improve performance on 1080p resolution
+            Changing FW API version to 6ro
+[LIBXCODER] Update FW to prevent upgrade/downgrade of T1M to non-T1M FW binaries
+            Changing FW API version to 6rn
+[LIBXCODER] Add the ability to check firmware load via resource monitor api
+[LIBXCODER] Change Error log to Warning for SEI message drop log since it is intended and to treat this as warning in testing
+[LIBXCODER] Support pre-analysis before coding including scene switch detection and still frame detection
+            Changing FW API version to 6rm
+[LIBXCODER] For the psnr y value of HEVC, use the output of psnr obtained from FW rather than calculating it in the SW
+[LIBXCODER] Add surviveStreamErr decoder parameter to tolerate fatal corruptions in input stream
+            Changing FW API version to 6rl
+[LIBXCODER] Handle getPsnrMode causing segmentation fault when cropWidth and cropHeight are set
+[LIBXCODER] Export psnr and ssim via libxcoder and FFmpeg packets and Fix h.265 10-bit psnr_y value showing an incorrect value
+            Changing libxcoder API version to 2.66
+[LIBXCODER] Fix Libxcoder app encoding test cases timing out
+[LIBXCODER] Support h.265 Motion Constrained mode and tile based encode multiview API example
+            Changing FW API version to 6rk
+            Changing libxcoder API version to 2.65
+[LIBXCODER] Support variable level for encode block when using customize qp map
+[LIBXCODER] Fix libxcoder build fail with -s -e
+[LIBXCODER] Change keep alive timeout message log level from ERROR to INFO
+[LIBXCODER] Fix an issue where an interlaced input is not detected properly causing quadra to decode and fail
+            Changing FW API version to 6rj
+[LIBXCODER] Support new ec policy limited_error and custom error_ratio_threshold
+            Changing FW API version to 6ri
+[LIBXCODER] Fix some build issues when building under Android 14
+[LIBXCODER] Support customize ROI QP map
+            Changing FW API version to 6rh
+[LIBXCODER] Added fail condition for Encoder/Decoder name
+[LIBXCODER] Update resource monitor when FW does not have AI core loaded
+[LIBXCODER] Drop dts from dts queue for decoder dropped frames and adjust dts for first I frame
+[LIBXCODER] Fix decoder issue that causes a splash screen when bitstream is HEVC tile feature case
+            Changing FW API version to 6rg
+[LIBXCODER] Change some error log to info
+[LIBXCODER] Fix the getpsnr issue when there is a resolution change without reopening the codec
+[LIBXCODER] Add check for when shared memory is filled
+[LIBXCODER] Skip printing NVME, TP and PCIE load in ni_rsrc_mon if FW does not support querying
+[LIBXCODER] Add psnr info to AVPacket side data api
+================================================================================
+Release version: 5.0.1_RC2
+Date: 2024-09-19            SW version: 5.0.1_RC2           FW version: 5.0.1_RC1
+Compat FW API ver: 6rf      Libxcoder API ver: 2.64
+--------------------------------------------------------------------------------
+[LIBXCODER] Fix some build issues when build under Android 14
+================================================================================
+Release version: 5.0.0_RC2
+Date: 2024-08-28            SW version: 5.0.0_RC2           FW version: 5.0.0_RC1
+Compat FW API ver: 6rf      Libxcoder API ver: 2.64
+--------------------------------------------------------------------------------
+[LIBXCODER] In libxcoder app, remove an unnecessary memset which used a lot of CPU
+[LIBXCODER] Fix error in encoder latency calculation for first frame if it is split into header frame and visual frame
+[LIBXCODER] Fix libxcoder pkg-config manifest not listing c math library as a linked dependency
+[LIBXCODER] Fix inability to decode HDR10+ streams when metadata item application_version/application_mode is set to 1
+[LIBXCODER] In ni_quadra_hwupload filter allow auto-selection of card with lowest amount of raw frame data being uploaded to it
+            - ni_quadra_hwupload=-1 to select card based on model_load
+            - ni_quadra_hwupload=-2 to select card based on hwupload bandwidth
+            Changing FW API version to 6rf
+[LIBXCODER] Fix ni_rsrc_api.c:ni_init_rsrc() user set timeout rounding to nearest 3s by decreasing a polling period from 3s to 1s
+[LIBXCODER] Fix ni_rsrc_mon failure to list card info when multiple instances of ni_rsrc_mon are running concurrently
+[LIBXCODER] Limit xcoder-param "sliceArg" (number of CTU/MB rows per slice) to maximum of 127
+[LIBXCODER] Support scatter-gather list in P2P read
+            Changing FW API version to 6re
+[LIBXCODER] Fix concurrency issue in libxcoder/ni_rsrc_priv.cpp:ni_rsrc_get_one_device_info()
+[LIBXCODER] Fix bug during end of stream when using HW frames on FFmpeg-n7.0 which has per element multi-threading
+            Changing FW API version to 6rd
+[LIBXCODER] Fix quadra FW log dump through ni_rsrc_mon on Windows
+[LIBXCODER] Fix a file descriptor leak in libxcoder when running on Android
+[LIBXCODER] In Android service, launch ni_rsrc_mon automatically to initialize resource during the Android system start
+[LIBXCODER] Add xcoder-param "enableHVSPlus" to enhance subjective encoding quality through quadra AI engine
+            - cannot be used concurrently with xcoder-param "enableAIEnhance"
+            Add xcoder-param "HVSPlusLevel" set prioritization for PSNR vs subjective quality
+            - 1: moderate subjective enhancement without interference to PSNR
+            - 2: greater subjective enhancement with minor interference to PSNR
+[LIBXCODER] Fix incorrect PCIe address reported by ni_rsrc_mon on system with NVMe multi-pathing
+[LIBXCODER] Fix libxcoder secure compile warnings
+[LIBXCODER] Fix some file descriptor leaks in libxcoder
+[LIBXCODER] Add xcoder-param "getPsnrMode" to report PSNR of encoded frames
+            - 0: get PSNR for Y, U, and V
+            - 1: get PSNR for Y and U
+            - 2: get PSNR for Y
+            - 3: do not retrieve psnr (default)
+            Add xcoder-param "intervalOfPsnr" to report PSNR of every Nth frame
+            Changing FW API version to 6rc
+[LIBXCODER] Fix FFmpeg & libxcoder compile errors on Windows with MinGW64-10.0
+[LIBXCODER] Allow encoder to set buffer acquisition limit for upstream
+            - add xcoder-param "enableAcqLimit=1" to limit HW frame buffers from filters/decoder upstream of encoder
+            - add "buffer_limit=1" param for netint quadra filters in libavfilter
+            - enable "enableAcqLimit=1" and "buffer_limit=1" in FFmpeg-n7.0 by default
+            Changing FW API version to 6rb
+[LIBXCODER] Add -xcoder-param "tuneBframeVisual" select different B-frame visual quality tuning level
+            - higher values reduce visual quality fluctuation at cost of compression efficiency and bitrate
+            - 0 (Off)    - default behavior
+            - 1 (MEDIUM) - tune B-frame visual quality with minor loss in compression efficiency
+                - only available when using lookahead or crf mode
+            - 2 (HIGH)   - stronger B-frame quality tuning with more compression efficiency loss
+            Changing FW API version to 6ra
+[LIBXCODER] Fix possible deadlock handling certain errors in ni_device_session_open() and ni_rsrc_init_priv() functions
+[LIBXCODER] Fix compilation of libxcoder/ni_device_test.c when using c++ compilers
+================================================================================
+Release version: 4.9.0_RC3
+Date: 2024-06-06            SW version: 4.9.0_RC3           FW version: 4.9.0_RC3
+Compat FW API ver: 6rZ      Libxcoder API ver: 2.63
+--------------------------------------------------------------------------------
+[LIBXCODER] Fix libxcoder compile error on Windows with MinGW64-10.0
+[LIBXCODER] Remove errorneous 'pice shared mem' field from `ni_rsrc_mon -o json`
+[LIBXCODER] Fix risk of memory leak when calling ni_device_session_open() 
+[LIBXCODER] Reduce host CPU load on multiple VMs and multicard servers by enabling zerocopy mode by default 
+[LIBXCODER] Fix parameters comparison check in ni_device_api
+[LIBXCODER] Add DTS increase by frame interval support and set minimum resolution height to 144 
+            Changing libxcoder API version to 2.63
+[LIBXCODER] Add PCIe load to resource monitor
+            Changing libxcoder API version to 2.62
+            FW API version changed to 6rZ
+[LIBXCODER] Add OpenMAX Quadra decoder/encoder plugin
+[LIBXCODER] To avoid block using tryGetService(non-block API) instead of getService(block API) when get nidec service under Android
+[LIBXCODER] In libxcoder, avoid writing release version with SONAME for Android as Android.bp will not easily support generating symlink with version name
+[LIBXCODER] Change loglevel from error to debug for non-error printout
+[LIBXCODER] Avoid keepalive thread deadlock for ni_quadra_ai_pre filter
+[LIBXCODER] Support configure the number of slices
+            Changing libxcoder API version to 2.61
+            Changing FW API version to 6rY
+[LIBXCODER] Fix some error in p2p demo due to missing packages in android
+[LIBXCODER] Remove unsupported pixel format from ni_device_test.c
+[LIBXCODER] Fix DP2P broken by SR_4G configuration
+[LIBXCODER] Fix force key frame causing encode stuck when minFramesDelay is enabled
+            Changing FW API version to 6rX
+            Changing libxcoder API version to 2.60
+[LIBXCODER] Re-add ni_rsrc_allocate_auto() in ni_rsrc_api.c
+[LIBXCODER] Do not limit the min resolution when lookahead enabled
+            Change the NI_MIN_RESOLUTION_HEIGHT from 144 to 128 to align with the IPG description
+            Changing libxcoder API version to 2.59
+[LIBXCODER] Add SONAME field in libxcoder package metadata
+[LIBXCODER] Improve B-frame visual quality to resolve temporal quality issue
+            Changing FW API version to 6rW
+[LIBXCODER] Fix variable causing false positive on VPU recovery issue
+[LIBXCODER] Add SW support for new form factor T1M
+            Changing libxcoder API version to 2.58
+            Changing FW API version to 6rV
+[LIBXCODER] Add P2P demo based on OpenGL/openGLES api
+[LIBXCODER] Fix issue with enablePpuScaleAdapt param where the outputed resolution was incorrect
+[LIBXCODER] Fix coredump issue when printing NI_XCODER_REVISION message
+[LIBXCODER] Fix an issue with the resoruce monitor displaying the TP load
+[LIBXCODER] Further reduce encoder frames delay when minFramesDelay is enabled
+            Changing FW API version to 6rU 
+[LIBXCODER] Support check AI core in check hw info function
+[LIBXCODER] Fix linker error on android10
+[LIBXCODER] Support reconfig general side data via FFmpeg api
+[LIBXCODER] Fix libxcoder compile errors when building with secure compile
+[LIBXCODER] Reduce encoder frames delay when minFramesDelay is enabled
+[LIBXCODER] Improve decoder load balancing for resource monitor
+            Changing FW API version to 6rT
+[LIBXCODER] Fix incorrect decoder sequence change condition check causing the DP core to get stuck
+[LIBXCODER] Provide spec file for building libxcoder RPM package
+[LIBXCODER] Fix an issue where roi area was inaccurate when RoiDemoMode is enable
+[LIBXCODER] Add decoder/encoder disableAdaptiveBuffers option.
+            Changing FW API version to 6rS
+[LIBXCODER] Update resource monitor to show power consumption and temperature of card 
+            Changing FW API version to 6rR
+            Changing libxcoder API version to 2.57
+[LIBXCODER] Improve Capped CRF I-frame quality & Support vbvMinRate in Capped CRF mode
+            Changing FW API version to 6rQ
+[LIBXCODER] Block P2P from trigger unwanted DMA transfers
+            Changing FW API version to 6rP
+[LIBXCODER] Add support for decoder sequence changes where only the format of the video changes
+[LIBXCODER] Add enableAdvancedEc == 2 option which always enables error concealment for decoding errors
+            Changing FW API version to 6rO
+[LIBXCODER] Add Windows support for disabled HW blocks in resource monitor
+[LIBXCODER] Added enableFollowIFrame decoder parameter
+            Changing libxcoder API version to 2.56
+[LIBXCODER] Add TP load to resource monitor
+            Changing libxcoder API version to 2.55
+            Changing FW API version to 6rN
+[LIBXCODER] Fix libxcoder app encoding resolutions less than 144x144 for u2a and u2h
+[LIBXCODER] Add fps info per instance to resource monitor
+[LIBXCODER] Support set skipFrameInterVal Param to skip frames
+            Changing FW API version to 6rM
+[LIBXCODER] Add new card idenification functions to resource API
+[LIBXCODER] P2P co-existence
+            Fix compilation error with Quadra/Logan co-existence and
+            the P2P demo application
+[LIBXCODER] Fix unexpected closing of file descriptors caused failure of nvme identify command
+[LIBXCODER] Support mode=1 for ni_quadra_ai_pre filter for Y-only AI processing
+            Changing FW API version to 6rL
+[LIBXCODER] Add new p2p filter
+            Netint kernel driver to support dma-buf importing. 
+            Add the ni_p2p_xfer filter to do a P2P transfer via p2p write.
+            Changing FW API version to 6rK 
+            Changing libxcoder API version to 2.54
+[LIBXCODER] Add auto selection mode for scaler filter
+            Resolution smaller then 540p, use filterblit=1.
+            Larger resolutions will use fliterblit=2
+[LIBXCODER] Improve the version sync-up for quadra
+            Fix some compilation error when compiling with c++98
+[LIBXCODER] Add ni_quadra_flip filter
+[LIBXCODER] Fix output statistical information when closing decoder on 32-bit system
+            Changing libxcoder API version to 2.53
+[LIBXCODER] Change YUV minimum upload resolution to 16x16
+[LIBXCODER] Change loglevel to info for ni_rsrc_check_hw_available to prevent redundant logs
+================================================================================
+Release version: 4.8.2_RC3
+Date: 2024-03-25            SW version: 4.8.2_RC3           FW version: 4.8.2_RC2
+Compat FW API ver: 6rK      Libxcoder API ver: 2.54
+--------------------------------------------------------------------------------
+[LIBXCODER] Fix compile for p2p demo on Logan
+[LIBXCODER] Add new p2p filter
+            Netint kernel driver to support dma-buf importing. 
+            Add the ni_p2p_xfer filter to do a P2P transfer via p2p write.
+            Changing FW API version to 6rK 
+            Changing libxcoder API version to 2.54
+================================================================================
+Release version: 4.8.0_RC2
+Date: 2024-02-27            SW version: 4.8.0_RC2           FW version: 4.8.0_RC1
+Compat FW API ver: 6rJ      Libxcoder API ver: 2.52
+--------------------------------------------------------------------------------
+[LIBXCODER] Add new sidedata type for AVRegionOfInterest
+[LIBXCODER] Add Logan and Quadra co-existence support
+[LIBXCODER] Change default ssim logging to be at debug level.
+            Add -m, --with-info-level-ssim-log to build.sh script to compile with SSIM logging at info level
+[LIBXCODER] Fix FD leak issue in Android 11 docker container
+[LIBXCODER] Fix Code scanner report serious error by modifying the scope of the conditional statement
+[LIBXCODER] Fix rsrc mon card indexing where the devices was being count even if out of queue and reset index count if over 128
+[LIBXCODER] Re-enable libxcoder clang-tidy
+[LIBXCODER] Add a persistent configuration key to turn off P2P HW buffer
+            Changing FW API version to 6rJ
+[LIBXCODER] Add support for disabling parts of resource monitor based on the persistent configuration
+[LIBXCODER] One-to-one correspondence between card index and module_id to avoid changing index if card is removed
+[LIBXCODER] Update all device info when adding a new device
+[LIBXCODER] Return memory usage in ni_check_hw_info and fix return value from ni_quadra_xcoder_encoder_headers 
+[LIBXCODER] Fix libxcoder demo encoders encoding not enough 8k yuv frames
+[LIBXCODER] Add -s option to build.sh to compile with fortifications and fix build warnings in libxcoder
+[LIBXCODER] Support PPU adaptive scale aligned with long and short edge
+            Changing FW API version to 6rI
+[LIBXCODER] Add Slot and domain to rsrc_mon log dump file, for linux only.
+            On non linux hosts and on failure to look up PCIe info resort to using existing naming scheme of {core}_slot_{guid}_0000.log
+            Update PCIe look up to use readlink instead of udevadm
+[LIBXCODER] Support reconfig for intraperiod, force I-frame on reconfig and update rate control
+            Changing FW API version to 6rH 
+            Changing libxcoder API version to 2.52
+[LIBXCODER] Add -b in libxcoder/build.sh to control whether to print backtrace
+[LIBXCODER] Remove thread unsafe function from ni_check_hw_info
+[LIBXCODER] Set default ai_enhance value to 1
+[LIBXCODER] Add iFrameSizeRatio encoding parameter, used to control the size of I frames.
+            Changing FW version to 6rG
+[LIBXCODER] Print device name for ni_rsrc_mon -D 1
+[LIBXCODER] Add new merge filter which combines PPU and 2D engine scaling to improve quality
+            Changing FW API version to 6rF
+[LIBXCODER] Fix one frame decoder delay on h264 decoding
+            Changing FW API version to 6rE
+[LIBXCODER] Validate encoder hw input frame before write
+[LIBXCODER] Support Decoding and Encoding All SEI Types (both custom and standard)
+            Add parameter 'enableAllSeiPassthru' for decoder and encoder
+[LIBXCODER] Update P2P buffer range check
+[LIBXCODER] Add NI_RETCODE_ERROR_STREAM_ERROR error string
+[LIBXCODER] Add UUID for every instance in the ni_log 
+            Changing libxcoder API version to 2.51
+[LIBXCODER] Add a new decoder parameter skipPtsGuess in libxcoder
+[LIBXCODER] Add new non-recoverable stream decoding error classification
+[LIBXCODER] Added the support of xcoder-gop option to libxcoder API
+            Changing libxcoder API version to 2.50
+[LIBXCODER] Change ni_session_keep_alive_thread name as KAT + hw_id + sesion_id on linux macos and android
+[LIBXCODER] Fix compiler warning issues for libxcoder
+[LIBXCODER] Add scaler and Ai checks in ni_rsrc_check_hw_available function
+[LIBXCODER] Update memory bin buffer size to avoid resource unavailable with 32 instances of portrait 1080p
+            Changing FW API version to 6rD
+[LIBXCODER] Support querying card's composite temperature via libxcoder api 
+            Changing FW API version to 6rC
+[LIBXCODER] Check for any active instances before setting load to zero
+[LIBXCODER] Expand custom sei data size from 1024 to 8192
+            Changing libxcoder API version to 2.49
+[LIBXCODER] Fix VPU load showing for AI when no AI instances are running
+[LIBXCODER] Support checking 2D Engine shared memory in checkHWinfo API
+[LIBXCODER] Limit max numbers of memory bins to be obtained to avoid exceeding allocated frames
+            Changing FW API version to 6rB
+[LIBXCODER] Support reconfig maxFrameSize ratio
+            Changing libxcoder API version to 2.48
+[LIBXCODER] Set a default FPS value for decoder if there is no FPS info
+[LIBXCODER] Fix libxcoder demo upload error on small resolutions
+[LIBXCODER] Fix security warning from code scanner
+[LIBXCODER] Support android11 on arm64
+[LIBXCODER] Support short edge adaptive ppu scaling
+            Changing FW API version to 6rA
+[LIBXCODER] Support ipRatio for CBR and VBR, add enableipRatio encoder parameter for CBR and VBR
+            Changing FW API version to 6r9
+[LIBXCODER] Support hwdownload without hwframe session ID context
+[LIBXCODER] Removed dependency on keep_alive_thread in the termination process on decoder session read/write errors
+            Changing libxcoder API version to 2.47
+[LIBXCODER] Fix FFmpeg error on resolution change during transcoding when lookaheadDepth is non-zero
+================================================================================
+Release version: 4.7.0_RC4
+Date: 2023-12-14            SW version: 4.7.0_RC4           FW version: 4.7.0_RC4
+Compat FW API ver: 6r8      Libxcoder API ver: 2.46
+--------------------------------------------------------------------------------
+[LIBXCODER] Add tiled 4x4 HW frame support for scale and overlay filters
+            Changing FW API version to 6r8
+[LIBXCODER] Make system time variables compatible with 32bit systems
+[LIBXCODER] Fix a file handle leak in FFmpeg when using HW frames
+[LIBXCODER] Allow finer encoder rate control tuning with xcoder-params "skipFrameEnable" and "maxConsecutiveSkipFrameNum"
+            Changing FW API version to 6r7
+[LIBXCODER] Add avcodec_flush_buffers() support for h264_ni_quadra_dec and h265_ni_quadra_dec
+[LIBXCODER] Fix bug in libxcoder app when handling large input files on Windows
+[LIBXCODER] Change ni_rsrc_mon LOAD to the greater of VPU_LOAD or FW_LOAD
+[LIBXCODER] Fix minFramesDelay=1 in multicore lookahead encode not enough for encoder to produce output, causing encode stuck
+[LIBXCODER] Support continuously dumping FW logs with "ni_rsrc_mon -D 1"
+[LIBXCODER] Add resolution and userIDR info to "ni_rsrc_mon -d"
+            Changing FW API version to 6r6
+[LIBXCODER] Fix cases where constrained VBR (xcoder-param vbvMaxRate) is not taking effect
+[LIBXCODER] Add decoding xcoder-param "enableLowDelayCheck=1" to cease lowdelay decoding mode when B frame is encountered
+            Changing FW API version to 6r5
+            Changing libxcoder API version to 2.46
+[LIBXCODER] Fix bug in libxcoder app where using `out=hw` and decoding to null output fails
+[LIBXCODER] Stay in decoder lowDelay mode when there is dropped frames using new xcoder-param "forceLowDelay"
+[LIBXCODER] Fix a bug when rapidly opening and closing sessions on Kunpeng ARM server
+[LIBXCODER] Improve performance of AI overlay filter
+            Changing FW API version to 6r4
+[LIBXCODER] Refactor some functions from libxcoder_quadra, nicodec.c, and nienc.c to libxcoder
+            Changing libxcoder API version to 2.45
+[LIBXCODER] Allow HW frames of RGBA/BGRA/ABGR/ARGB pixfmt to be auto-downloaded if filter is a separate card from encoder
+[LIBXCODER] Support user API control of uploader/scaler frame buffer pool size with ni_device_api.h:ni_device_session_update_framepool()
+            Changing FW API version to 6r3
+[LIBXCODER] Add ni_quadra_delogo filter
+            - This filter does not support P2P output
+[LIBXCODER] Reduce minFramesDelay initial frame delay and fix related issues
+            - Reduce 2-pass encode initial frame delay when minFramesDelay is enabled, and increase frame delay (enqueued frames) when open-gop size increases
+            - Reject minFramesDelay when picSkip or lowDelay is enabled
+            Changing FW API version to 6r2
+[LIBXCODER] Support encoder reconfig for xcoder-params vbvMaxRate and vbvBufferSize
+            Changing FW API version to 6r1
+[LIBXCODER] Migrate to 3 character FW API version number format
+            Changing FW API version to 6r0
+[LIBXCODER] Add BT.2020 support to ni_quadra_scale filter
+[LIBXCODER] Fix libxcoder compilation when --with-linux-virt-io-driver is enabled
+[LIBXCODER] Fix incorrectly captured FW error code reported from keep_alive_thread caused by other thread overwriting it
+            Fix incorrect output in macro functions IS_XCODER_DEVICE_TYPE(t)/GET_XCODER_DEVICE_TYPE(t) when `t` is unsigned integer
+[LIBXCODER] Fix exception when using ni_rsrc_api.cpp:check_hw_info() if no Quadra card is present
+[LIBXCODER] Fix libxcoder app AV1 encoding (y2v and y2x) output incorrect DTS when receiving multiple AV1 packets per frame
+            Fix libxocder app latency measurement incorrect when receiving multiple AV1 packets per frame
+[LIBXCODER] Change the names of share memory files generated by libxcoder_quadra to "NI_QUADRA_*"
+[LIBXCODER]` causing segfault when `xcoder_type` is out of bounds
+[LIBXCODER] Add more debug logging and error handling to libxcoder NVMe operations
+            Changing libxcoder API version to 2.44
+[LIBXCODER] Add support in ni_quadra_hwupload filter to select card with NVMe path (eg. /dev/nvme0n1)
+[LIBXCODER] Remove obsolete hardware management API functions:
+            - ni_rsrc_get_available_device()
+            - ni_rsrc_allocate_auto()
+            - ni_rsrc_allocate_direct()
+[LIBXCODER] Support zeroCopyMode in semi-planar pixel formats
+            Support hwupload zeroCopyMode for semi-planar pixel formats (linesize requires 128 bytes alignment)
+            Modify encoder zeroCopyMode=-1 (default) policy to enable zero copy if resolution >= 1080p, regardless of bit depth and pixel format
+            Changing FW API version to 6q
+[LIBXCODER] Fix libxcoder/FFmpeg 2-pass mismatch by adding 32 alignment padding to chroma
+[LIBXCODER] Add encoder per-frame info reporting:
+            - min/max motion vector x/y info
+            - encoded frame (packet) size info
+            - inter/intra CU count
+            Changing FW API version to 6p
+[LIBXCODER] Add xcoder-param "hvsBaseMbComplexity" to control shadow trailing
+            Changing FW API version to 6o
+================================================================================
+Release version: 4.6.0_RC5
+Date: 2023-10-09            SW version: 4.6.0_RC5           FW version: 4.6.0_RC2
+Compat FW API ver: 6n       Libxcoder API ver: 2.43
+--------------------------------------------------------------------------------
+[LIBXCODER] EcPolicy and enableAdvancedEc xcoder params for decoder
+[LIBXCODER] Perform auto download when NS/VF mismatch detected
+[LIBXCODER] Support float point crf:
+            - add new parameter crfFloat to support float point crf
+            - add new API ni_reconfig_crf2
+            - add new reconfig float point crf mode - XCODER_TEST_RECONF_CRF_FLOAT
+[LIBXCODER] Add width and height for overlay
+[LIBXCODER] Add new API to select best card
+[LIBXCODER] Add encoder option to approach target bitrate & option to set pass-1 qp / trigger HW timeout
+            - Add bitrateMode parameter to allow encoder produced bitrate to be closer to target bitrate
+            - Add pass1Qp parameter to set pass-1 qp. Setting pass-1 qp to 0 can increase the chance of triggering HW timeout
+[LIBXCODER] Fix reg Q101215 Q099274 Q099297 && fix memory leak
+[LIBXCODER] Get decoder color info through VUI.
+[LIBXCODER] Add new parameter minFramesDelay to minimize encoder frame delay, revert lowDelay behaviour
+[LIBXCODER] Use ffmpeg's low_delay param if xcoder's lowDelay param is not set.
+[LIBXCODER] Set the initial value of framerate to 30
+            Add the low_delay_mode == 2 support for encoder
+[LIBXCODER] Add Detail Query support for EP and DP
+                        Add text and json format support
+[LIBXCODER] Refactor encode decode filter
+            - support compile t408 and quadra
+            - fix quadra pts dts error
+            - fix pix format occurs warning
+            - remove all ni_logan file
+[LIBXCODER] Fix maxFrameSize log print
+[LIBXCODER] Replace exit() in check_err_rc() with return of NI_RETCODE_FAILURE
+[LIBXCODER] Print decoder, encoder, scaler session ID along with frame index
+[LIBXCODER] Keep roi output sps pps same as input
+            add enum for ddr priority mode
+[LIBXCODER] Use ni_log instead of  printf and fprintf in xcoder utility.
+            Update log in ni_device_test.c and ni_util.c
+[LIBXCODER] Fix frame loss for AV1 encoding
+[LIBXCODER] Make ni_rsrc_list and ni_rsrc_mon report FL and FW versions
+[LIBXCODER] Reset dev_xcoder_name if it is load mode
+[LIBXCODER] Add NI filter latency measurement in ffmpeg
+[LIBXCODER] Overprovision config support ni_rsrc_namespace.c and multi namespace subsystem query support
+[LIBXCODER] Add non-video threshold for dec, enc, upl FW_LOAD
+[LIBXCODER] Add support for watermark filter
+[LIBXCODER] Last ditch check for safe keep_alive_timeout and overwrite during ni_device_session_open
+[LIBXCODER] Add xcoder-param "ddrPriorityMode" to set DDR priority for dec/enc/filter/ai
+            - Set to 0 by default
+            - Set to 1 to prioritize decoder and encoder
+            - Set to 2 to prioritize filter
+            - Set to 3 to prioritize AI
+[LIBXCODER] Sunset clang-format
+[LIBXCODER] Fix xcoder test app h.264 decode SPS packet loss and error log
+[LIBXCODER] Unlock mutex on return ni_device_dec_session_flush
+[LIBXCODER] Support reconfig of CRF
+            - Add reconfDemoMode 14 for reconfig crf via sidedata
+            - Add reconfDemoMode 114 for reconfig crf via API
+[LIBXCODER] Fix minimum scaler resolution
+[LIBXCODER] Check error code in keep alive thread
+[LIBXCODER] Pass VP9 source frame rate to encoder for xcoder app
+[LIBXCODER] Add descriptive error message when resolution is too large
+[LIBXCODER] Reuse device handle in ni_rsrc_mon while loop
+[LIBXCODER] Add ni_quadra_ai_pre filter to FFmpeg for using Quadra AI with custom network binary
+            Add support in libxcoder/FFmpeg for AI preprocessor filter HW frames
+[LIBXCODER] Fix the checking condition to exit immediately in case query for stats failed
+[LIBXCODER] Fixed to reject intraRefreshArg and intraRefreshMode for Jpeg encoder
+[LIBXCODER] Fix xcoder app repeated reads to always grab and send data
+[LIBXCODER] On init ensure that all devices have same count else clean up shared memory
+            - Check all share memory files for integrity and consistency.
+            - reduce lock poll timeout to 9sec, test waits for 10secs we might not get a chance to clean up
+[LIBXCODER] Improve ni_rsrc_mon help text
+[LIBXCODER] Keep device name same as namespace in ni_rsrc_mon
+[LIBXCODER] Ni_rsrc_namespace option support for QoS mode config
+[LIBXCODER] Fix 64-bit size variable print format
+[LIBXCODER] Check process priviledge on device session open for Windows target
+            On Windows the process opening the device session must be in admin priviledge
+            User needs to check NI_RETCODE_ERROR_INVALID_PRIVILEDGE
+            return code for verification in the ni_device_session_open function.
+[LIBXCODER] Remove device from ni_rsrc_mon
+================================================================================
+Release version: 4.5.0_RC6
+Date: 2023-08-16            SW version: 4.5.0_RC6           FW version: 4.5.0_RC5
+Compat FW API ver: 6a       Libxcoder API ver: 2.35
+--------------------------------------------------------------------------------
+[LIBXCODER] Update co-existence support for Logan/T408 to T408 SW v3.3.0
+            Update libxcoder_logan from T408_XCODER_FFMPEG/LIBXCODER_RELEASE_3.3.0
+[LIBXCODER] Add xcoder-param "ppsInitQp" to set h264/h265 PPS init_qp_minus26 value
+            Changing FW API version to 6a
+[LIBXCODER] Add support for xcoder-param "vbvMaxRate" to limit max bitrate during VBR rate control
+            Changing FW API version to 6Z
+[LIBXCODER] Disable strongIntraSmoothing when "hvsQPEnable=1" for better subjective visual quality
+[LIBXCODER] In libxcoder app, implement a flag to terminate all session threads in a job set when a session thread encounters timeout
+[LIBXCODER] Support encoding with RGBA/BGRA/ABGR/ARGB pixel formats:
+            - Support RGBA/BGRA/ABGR/ARGB pixel formats direct data transfer to encoder (previously required hwupload to transfer data)
+            - Support zero copy for RGBA/BGRA/ABGR/ARGB pixel in encoder data transfer path
+            Changing FW API version to 6U
+[LIBXCODER] Fix libxcoder app bad obu headers when outputing AV1 in obu format
+[LIBXCODER] Fix AI session deadlock in libxcoder
+[LIBXCODER] Fix bad frame size check when resolution change (e.g. scale) occurs during zero-copy mode
+[LIBXCODER] In ni_rsrc_mon, set stdout to line buffered so programs calling ni_rsrc_mon without TTY get same print out as with TTY
+[LIBXCODER] Improve CRF rate control mode:
+            - Uncapped CRF mode enabled by combining -xcoder-params 'crf' and 'lookaheadDepth'
+               - 'crf' is equivalent to libx265 'crf'
+               - 'lookaheadDepth' is equivalent to libx265 'rc-lookahead'
+             - Bitrate capped CRF mode enabled by combining -xcoder-params 'crf', 'lookaheadDepth', 'vbvBufferSize', and 'bitrate'
+               - 'vbvBufferSize' is similar to libx265 'vbv-bufsize' but denoted in milli-seconds of 'bitrate'
+               - 'bitrate' is equivalent to libx265 'vbv-maxrate' when using CRF rate control
+            - In CRF mode, support parameters crfMax, qcomp, noMbtree, noHWMultiPassSupport, cuTreeFactor, ipRatio, pbRatio, cplxDecay
+            - Cannot use CRF with low delay B-frame gop patterns (gopPresetIdx 3, 7, 10)
+            - When using CRF with 2pass, min resolution is 288x256
+            Changing libxcoder API version to 2.35
+            Changing FW API version to 6X
+[LIBXCODER] Set max resolution of RGBA/ARGB/ABGR/BGRX to 7040x7040
+[LIBXCODER] Support FW API option to disable decoder picture reording
+            - disable decoder picture reording when using decoder low delay mode
+            Changing FW API version to 6W
+[LIBXCODER] Change MEM column in ni_rsrc_mon to be "usage percentage of memory available to submodule (eg. encoder)"
+            - Previous method of memory calculation will be in SHARE_MEM column
+            - SHARE_MEM is the "usage percentage of memory shared between all submodules on a device"
+            - Add fw_video_shared_mem_usage in ni_instance_mgr_general_status_t and ni_load_query_t structs for old method of MEM usage percentage calculation
+            - Modify ni_rsrc+mon -o full to include TOTAL and CRITICAL (i.e. MEM_ID_SHARED) only in MEM
+            Changing FW API version to 6V
+            Changing Libxcoder API version to 2.34
+[LIBXCODER] Allow libxcoder to parse xcoder-params with '-' and '_' used interchangeably
+[LIBXCODER] Fix range check for vbvBufferSize so it can be set to 0
+[LIBXCODER] Add support in xcoder-param "maxFrameSize" for setting max frame size as a multiple of average frame packet size as determined by encoder
+            - Use syntax "maxFrameSize=ratio[#]" (eg. maxFrameSize=ratio[8])
+[LIBXCODER] In ni_rsrc_mon, buffer output tables/json for print in one go to avoid libxcoder log messages bisecting tables/json
+[LIBXCODER] Reject use of xcoder-param "gopPresetIdx=10" with "longTermReferenceEnable=1" as hierarchical P-frames is incompatible with long term reference
+[LIBXCODER] Add multi-slice encoding support:
+            - Add xcoder-param "sliceMode" to enable multiple slices per frame encoding
+            - Add xcoder-param "sliceArg" to select number of CTU/MB rows per slice
+            Changing FW API version to 6U
+[LIBXCODER] Fixes for overcapacity handling
+            Changing libxcoder API version to 2.32
+================================================================================
+Release version: 4.4.0_RC4
+Date: 2023-06-16            SW version: 4.4.0_RC4           FW version: 4.4.0_RC3
+Compat FW API ver: 6T       Libxcoder API ver: 2.31
+--------------------------------------------------------------------------------
+[LIBXCODER] Add support for aspect ratio, color desc, and timing info in SPS/sequence-header of AV1 & AVC
+[LIBXCODER] In libxcoder P2P demo app add support for ABGR/ARGB/BGRA/BGR0 inputs via color space conversion on Quadra
+[LIBXCODER] For Netint codecs in libavcodec, add params for autoselection of card to use based on modeled load (-bestmodelload) or real load (-bestload)
+[LIBXCODER] Move SSIM information printed by xcoder-param "enableSSIM=1" to loglevel info
+[LIBXCODER] Add ni_log.h:ni_log_set_log_tag() in Android compile to set a global log message prefix
+            Changing libxcoder API version to 2.29
+[LIBXCODER] Fix incorrect stream FPS of libxcoder app transcoded outputs
+[LIBXCODER] Reject unsupported xcoder-params on JPEG and AV1 encoders
+[LIBXCODER] In ni_rsrc_mon, prevent error messages from printing in between lines of ni_rsrc_mon output table
+[LIBXCODER] Add maxFrameSize_Bytes encoder param
+            Add maxFrameSize_Bits encoder param
+            Changing libxcoder API version to 2.29
+[LIBXCODER] Improve robustness of keep-alive signal check on hosts with strained CPU resources:
+            - Add last_access_time consideration when determining session timeout to better account for when CPU does not regularly check keep alive signal
+            Changing libxcoder API version to 2.28
+[LIBXCODER] Add support for ARGB and ABGR pixel format input to encoder when using HW frames
+[LIBXCODER] Add encoder xcoder-param "AIEnhanceLevel" (1-3) for use with AI enhanced encoding feature "enableAIEnhance=1"
+            Changing FW API version to 6R
+[LIBXCODER] Fix wrong log level for a log message during device connection on windows
+[LIBXCODER] For 2-pass encode, check and block custom gop patterns incompatible with 2-pass encode
+[LIBXCODER] Add ni_util.h:ni_ai_errno_to_str() to translate AI session error codes to description strings
+            Changing libxcoder API version to 2.27
+[LIBXCODER] Move log messages in libxcoder which can print more than once per frame to NI_LOG_TRACE
+[LIBXCODER] In h264_ni_quadra_dec add support for decoding selected temporal layers with -xcoder-params "svctDecodingLayer"
+[LIBXCODER] Add xcoder-param "zeroCopyMode" to enable or disable zero copy (by default auto-enabled for resolution >=1080p)
+            - Improves performance by reducing host memory copy
+            - Add zero copy sample code in libxcoder app encode and sequence change paths
+            Changing libxcoder API version to 2.26
+            Changing FW API version to 6Q
+[LIBXCODER] Fix invalid encoder session completion printout when using Gstreamer's avhwupload_ni_quadra element
+[LIBXCODER] Map libxcoder log levels to Android log levels error, info, and debug
+[LIBXCODER] In libxcoder app add support for multi-threaded yuv444to420 encoding
+[LIBXCODER] Add xcoder-param "enable2PassGop" for 2pass encoding to retain same GOP pattern as set in gopPresetIdx
+            Otherwise, encoder will use B frames instead of P frames for visual improvement
+            Changing FW API version to 6P
+[LIBXCODER] Add "system load" to ni_rsrc_mon
+            - "system load" is a summary of the highest load amongst the subsystems (decoder, encoder, etc.) of a Quadra device
+            - add simple and full output formats accessible with '-o'
+            Changing libxcoder API version to 2.25
+            Changing FW API version number to 6O
+[LIBXCODER] Fix file descriptor leak in libxcoder compiled for Android
+[LIBXCODER] Set supported minimum resolution to be 144x144 for all codecs except JPEG
+            Minimum resolution for JPEG is 48x48 when decoding, 32x32 when encoding
+[LIBXCODER] Allow main-tier (default) or high-tier selection on AV1 and H265 encoders
+[LIBXCODER] Add scaler session context into hwupload thread function param to support yuv420p pixel format conversion for NI encoding
+            Changing libxcoder API version to 2.24
+[LIBXCODER] Add ni_ai_session_read_metrics() to ni_device_api.h for querying performance metrics
+            Changing FW API version to 6N
+================================================================================
+Release version: 4.3.0_RC3
+Date: 2023-04-18            SW version: 4.3.0_RC3           FW version: 4.3.0_RC3
+Compat FW API ver: 6M       Libxcoder API ver: 2.23
+--------------------------------------------------------------------------------
+[LIBXCODER] Fix deadlock on Windows when lowDelay decoding is interrupted by non-sequential frames in stream and separate threads are being used for decoder send&recv
+[LIBXCODER] Add more return code checks to calls of ni_rsrc_get_device_context() as it could fail due to insufficient file permission, etc.
+[LIBXCODER] In Netint filters add "is_p2p" param for outputting to P2P destination
+[LIBXCODER] Fix bug in ni_quadra_scale filter processing NV16 and BGRP frames with width that is not a multiple of 8
+[LIBXCODER] Set minimum vbvBufferSize to bitrate/framerate
+[LIBXCODER] Add Netint HW frame drawtext filter ni_quadra_drawtext
+            Due to dependecy upon libfreetype and libfontconfig this filter must be explicitly enabled in build_ffmpeg.sh using --nidrawtext
+[LIBXCODER] Fix libxcoder app AV1 encoding sequence change
+[LIBXCODER] Fix bug where zombie processes may appear in ni_rsrc_mon seldomly due to unclosed popen() handles
+[LIBXCODER] Initial AI enhanced encoding support with xcoder-param "enableAIEnhance=1"
+            Changing FW API version to 6M
+            Changing libxcoder API version to 2.23
+[LIBXCODER] Add "-e" arg to libxcoder app to control encoder throughput framerate
+[LIBXCODER] Add support for Quadra+Logan co-existence on Windows
+[LIBXCODER] In ni_quadra_overlay/avoverlay_ni_quadra filter, add support for inplace overlay for improved performance
+            - Enable functionality with param "inplace=1"
+            - Note, do not use inplace overlay after ni_split or split filter in filter graph
+            Changing FW API version to 6L
+[LIBXCODER] Add check to reject 2-pass encode when using intra refresh or long term reference frames
+[LIBXCODER] Add AI background removal filter ni_quadra_bgr/avbgr_ni_quadra
+            This is more performant than AI background replacement filter ni_quadra_bg/avbg_ni_quadra
+            Add skip parameter to ni_quadra_bgr/avbgr_ni_quadra and ni_quadra_bg/avbg_ni_quadra filters to allow skipping AI inference for n frames
+[LIBXCODER] Fix incorrect values reported by FFmpeg showinfo filter for "is_key", "type", and "pos" when using Netint decoder
+            Changing libxcoder API version to 2.22
+[LIBXCODER] Add -lrt to libxcoder pkg-config settings
+[LIBXCODER] Support using ni_session_statistic_t query in AI interfacing functions to improve performance
+            Changing FW API version to 6K
+[LIBXCODER] Support combining AI network input and output limits to a single limit of 10 for I/O
+            Changing FW API version to 6J
+[LIBXCODER] Fix random stream hang in libxcoder app when transcoding in low delay mode
+[LIBXCODER] Add support for libxcoder on Android 11 and 9 using customized Android service: nidec
+[LIBXCODER] Fix loss of bitrate/frame rate reconfig setting after sequence change to larger resolution
+            Changing libxcoder API version number to 2.21
+[LIBXCODER] Add support for temporal layers and hierarchical-P gop pattern (gopPresetIdx 10)
+            1. Enable temporal layer ID generation with xcoder-params "temporalLayersEnable=1"
+            2. Add hierarchical-P gop pattern (gopPresetIdx 10)
+            3. Reject encode command if gop pattern conflicts with useLowDelayPocType setting
+            4. Modify contraints of useLowDelayPocType, this option is allowed for gopPresetIdx 1/3/7/9 and custom gop with gop size 1
+            Changing libxcoder API version to 2.20
+            Changing FW API version to 6I
+[LIBXCODER] In ni_rsrc_mon add output format "-o json1" (all info in one js object)
+[LIBXCODER] Fix stream termination when VP9 sequence changes from low to high resolution
+[LIBXCODER] Support YUV444P to 2xYUV420P encoding in libxcoder app
+            This is similar to the ni_quadra_yuv444to420 filter in libavfilter
+            Refactor code from ni_quadra_yuv444to420 filter to new libxcoder function ni_util.c:ni_copy_yuv_444p_to_420p()
+[LIBXCODER] Add support in libxcoder app for multiple output files (eg. for yuv444to420 encoding) using multiple "-o" args
+[LIBXCODER] Add support for encoding reconfig of minQpI, maxQpI, minQpPB, maxQpPB, and maxDeltaQp
+            Changing libxcoder API version to 2.19
+[LIBXCODER] For ni_quadra_drawbox filter support drawing up to 5 boxes per frame
+            Changing FW API version to 6H
+            Changing libxcoder API version to 2.18
+[LIBXCODER] Add value check for video_full_range_flag arg of libxcoder/source/ni_device_test.c:encoder_open_session()
+            Now, the arg must be explicitly set to 0 or 1
+[LIBXCODER] Fix out of bounds memory access when encoding from YUV with masterDisplay and maxCLL parameters
+[LIBXCODER] Add checks for unsupported features on jpeg and av1 encoders
+            - add checks for invalid feature+codec combinations in libxcoder
+            - add checks for use of DolbyVision on unsupported FFmpeg versions
+            - disable xcoder-param "repeatHeaders" for JPEG encoder
+[LIBXCODER] Add support in gopPresetIdx=9 (consecutive P frames) for lookAheadDepth>0
+            Changing libxcoder API version 2.17
+[LIBXCODER] Added "-u | --user_data_sei_passthru" to libxcoder app for enabling user data unregistered SEI passthrough
+[LIBXCODER] Add support for RGBA encoding in libxcoder app
+            - underlying implementation will use Quadra HW scaler filter to change pixel format to yuv420p before encoding
+[LIBXCODER] Add pixel format input arg to libxcoder app
+[LIBXCODER] Refactor hwupload code of libxcoder app
+[LIBXCODER] Add libxcoder/source/ni_device_api.c:ni_hwframe_buffer_recycle2() function
+            - compared to ni_hwframe_buffer_recycle() it does not require inputting device handle parameter
+[LIBXCODER] Fix Netint rsrc initialization on MacOS in presence of non-Netint NVMe devices
+[LIBXCODER] Add xcoder-param "newRcEnable" to enable/disable new rate control (enabled by default for 1-pass non-low-delay gop presets)
+            Add xcoder-param "ctbRowQpStep" for CU level RC tuning (default -255)
+            Changing libxcoder API version to 2.16
+            Changing FW API version to 6G
+[LIBXCODER] Fix pthreads library usage issues when attempting to start streams over max instance capacity on linux 3.10.*
+[LIBXCODER] Fix stream loss when scaling to non-32 aligned horizontal stride, then converting to BGRP format, and then hwdownloading the BGRP frame
+[LIBXCODER] Make error messages more clear when encoder open session fails due to invalid parameters detected by FW
+[LIBXCODER] Improve performance of libxcoder app by using 4K aligned buffer for YUV frames
+[LIBXCODER] Move ni_pthread_*() functions to libxcoder public API
+[LIBXCODER] Add drawbox, rotate, and xstack to ni_rsrc_list description of quadra capabilites
+            Fix description for bg filter in FFmpeg "-filters" output
+[LIBXCODER] Fix inability to use semiplanar pixfmt (eg. NV12) output in libxcoder app
+================================================================================
+Release version: 4.2.1_RC1
+Date: 2023-01-17            SW version: 4.2.1_RC1           FW version: 4.2.1_RC1
+Compat FW API ver: 6F       Libxcoder API ver: 2.15
+--------------------------------------------------------------------------------
+[LIBXCODER] Add support for multi-threaded filter
+            Multi-threaded filtering will no longer result in "ERROR ni_decoder_session_read_desc(): Oversized metadata!" symptom
+            Changing libxcoder API version to 2.15
+================================================================================
+Release version: 4.2.0_RC5
+Date: 2023-01-13            SW version: 4.2.0_RC5           FW version: 4.2.0_RC3
+Compat FW API ver: 6F       Libxcoder API ver: 2.14
+--------------------------------------------------------------------------------
+[LIBXCODER] Improve performance in libxcoder app by using 4K aligned buffer to hold YUV data when encoding
+            Optimize metadata buffer allocation so that it does not always allocate minimum of 8KB
+[LIBXCODER] Add support for VP9 input (decode) and AV1 output (encode) when transcoding in libxcoder app
+[LIBXCODER] Update ni_libxcoder_dynamic_loading.h for v4.2.0
+[LIBXCODER] Use log level debug for ni_rsrc_api messages about detecting non-Netint NVMe devices
+[LIBXCODER] Fix ni_device_test.c:vp9_parse_header() bug
+[LIBXCODER] Fix bug using ni_quadra_scaler filter with p2p mode when system has different indicies for NVMe device path vs namespace path
+[LIBXCODER] Add ni_rsrc_namespace application to configure individual SRIOV NVMe namespace number
+            Changing FW API version to 6F
+[LIBXCODER] Fix rare I/O error when using hwdownload filter
+[LIBXCODER] Allow for non-contiguous memory allocation and transfer for Frame's YUV vs metadata
+            - Better when system memory is more fragmented
+            - Add new struct member ni_device_api.h:ni_frame_t->separate_metadata to control contiguous allocation/transfer behavior
+            - Add new function ni_av_codec.h:ni_enc_write_from_yuv_buffer() to send one frame to encoder
+            - ni_enc_write_from_yuv_buffer() deprecates ni_device_session_write()
+            - xcoder app updated to demonstrate how to use ni_enc_write_from_yuv_buffer() in place of ni_device_session_write()
+            Changing libxcoder version to 2.14
+            Changing FW API version to 6E
+[LIBXCODER] Fix PTS calculation inaccuracy decoding VFR stream for frames received from decoder after flushing begins
+            For more details see: "APPS564-Codensity QUADRA PTS App Note v2.0.pdf" chapter 5.4
+            Changing FW API version to 6D
+[LIBXCODER] Fix Gstreamer frame loss when transcoding with HW frames
+[LIBXCODER] Add low-latency send/recv synchronization mode and its demo case in xcoder app
+            New mode is accessed through ni_session_context_t->async_mode=1 (not enabled by default)
+            When activated, libxcoder will synchronously write and read one frame at a time to Quadra
+            Use of this mode is recommended when send/recv operate on separate threads
+            xcoder app will use new low-latency mode when lowDelay and multi-thread is enabled
+            When new low-latency mode is enabled, non-zero values in xcoder-param 'lowDelay' will be used to specify milliseconds for low-latency sync to wait for sync before proceeding without sync
+[LIBXCODER] Fix incorrect number of rows intra-refreshed per frame when intraRefreshMode=1 and I-frames are forced
+[LIBXCODER] Add xcoder-param "intra_reset_refresh=1" to reset intraPeriod counter when an I-frame is forced
+            Changing libxcoder API version to 2.13
+            Changing FW API version to 6C
+[LIBXCODER] Fix erroneous error messages stating PTS cannot be found from decoder for JPEG
+[LIBXCODER] Add support for ni_quadra_drawbox filter
+            Changing FW API version to 6B
+[LIBXCODER] Fix incorrect session statistics at stream completion when using HW frame by adding statistics query when closing session running HWframes
+[LIBXCODER] Return success when using ni_device_session_close() with invalid session_id as it should be legal
+[LIBXCODER] Added support to libxcoder and libavcodec to specify a Quadra card by its NVMe block name instead of its dec/enc index
+[LIBXCODER] Fix bug finding NVMe block path from NVMe device path on systems with long path names 
+            Increase command return string buffer size in ni_util.c:ni_find_blk_name() from 80B to 128B
+[LIBXCODER] Update test_rsrc_api app options
+            Remove outdated options '-u' and '-r'
+            Add options '-i', '-d', '-D', and '-x' on Linux (see help text for details)
+[LIBXCODER] Add support for maxFrameSize reconfig
+            Changing libxcoder API version to 2.12
+            Changing FW API version to 6A
+[LIBXCODER] In xcoder app, add support for HW upload + ladder encode for non multi-thread, non-AV1 codec usage
+[LIBXCODER] Fix stack overflow
+            - In ni_device_test.c, allocate ni_xcoder_params_t on heap rather than stack
+[LIBXCODER] Fix improper libxcoder resource init when context index is present in NVMe block path (eg. /dev/nvme0c0n1)
+[LIBXCODER] Support raw NV12 input to xcoder app using '-is_planar 0' arg
+[LIBXCODER] Add ni_rsrc_mon support for json output using '-o json' arg
+[LIBXCODER] Fix getting stuck when ni_rsrc_api attempts to read resource file that is indefinitely locked due to locking process unclean termination
+            Use non-blocking query and timeout to read resource files
+[LIBXCODER] Add xcoder-param av1ErrorResilientMode=1 to enable AV1 error_resilient_mode in AV1 encoder
+            This will set primary_ref_frame to PRIMARY_REF_NONE and allow decoders to continue when keyframes are lost/corrupted during transmission
+            This will cost some compression efficiency
+            Changing libxcoder API version to 2.11
+            Changing FW API version to 69
+[LIBXCODER] Full tiled transcoding support:
+            - Adds tiled decoding
+            - Enable with decoder xcoder-params semiplanar0=2
+            - Improves 8k60 10bit performance when used in conjunction with hardware transcoding
+            Changing Libxcoder API version number to 2.10
+            Changing FW API version number to 68
+[LIBXCODER] Fix early termination of 2-pass h265/AV1 encoding/transcoding caused by incorrect frame buffer alignment in second pass
+[LIBXCODER] Move xcoder_params parsing functions from xcoder app (ni_xcoder_test.cpp) to ni_defs.h/c
+            Changing libxcoder API version to 2.9
+================================================================================
+Release version: 4.1.0_RC4
+Date: 2022-10-18            SW version: 4.1.0_RC4           FW version: 4.1.0_RC1
+Compat FW API ver: 67       Libxcoder API ver: 2.8
+--------------------------------------------------------------------------------
+[LIBXCODER] Changed encoder_receive_data() to use meta_size from encoder context instead of NI_FW_ENC_BITSTREAM_META_DATA_SIZE
+            Fixed example validation condition after ni_encoder_session_read_stream_header() to be `if (rc > 0)`
+            Changed NI_FW_ENC_BITSTREAM_META_DATA_SIZE to be within private libxcoder API
+[LIBXCODER] Fix memory leaks during HW frames and sequence change
+[LIBXCODER] Increase line limit for bitrate reconfig file
+[LIBXCODER] Fix missing frames in libxcoder app when encoding long, 10bit, 4k/8k streams caused by int overflow in variables tracking file size, etc.
+[LIBXCODER] Fix for decoder read/write getting blocked when write buff full
+[LIBXCODER] Fix performance loss on certain hosts/scenarios caused by glibc heap management constantly requesting and returning memory blocks from kernel
+[LIBXCODER] Fix bugs preventing operation of some parameters in ni_rsrc_update
+[LIBXCODER] Add 'ni_rsrc_mon -S' to skip init_rsrc
+[LIBXCODER] Disable CU level rate control if rate control is disabled (to match T408 behaviour)
+[LIBXCODER] Add Libxcoder build support for Linux virtIO
+[LIBXCODER] Add libxcoder API function ni_rsrc_remove_all_devices() to remove all NI resources on a host
+            Use 'ni_rsrc_update -D' to remove all NI resources on a host
+[LIBXCODER] Add ni_quadra_rotate filter
+            Changing libxcoder API version to 67
+[LIBXCODER] Increase query loops in encoder read when write buffer full
+[LIBXCODER] Add customSeiPassthru and enableUserDataSeiPassthru to decoder's xcoder-params
+            Remove nvme_io_size from decoder's xcoder-params
+            Changing libxcoder API version to 2.8
+[LIBXCODER] Fix AV1 non-8x8-aligned resolution with ROI cause failure
+[LIBXCODER] Xcoder app will output AV1 packets into ivf container
+[LIBXCODER] Fix odd width encode fail caused by incorrect chroma stride calculation
+[LIBXCODER] Fix cases where output bitrate different than set bitrate when encoding VFR
+            Changing libxcoder API version to 2.7
+[LIBXCODER] Add error message in libxcoder when Quadra does not have sufficient resources to start a session
+[LIBXCODER] Fix xcoder app --repeat option
+[LIBXCODER] Fix libxcoder app input read on Windows when file is not 4KB aligned
+[LIBXCODER] Refactor decoder bitstream buffer reallocation
+            Changing libxcoder API version to 66
+[LIBXCODER] Fix incorrect endianess conversions for max_content_light_level
+[LIBXCODER] Add API to get session statistics same as T408
+            Report encoded/decoded frame number in encoder/decoder stats when encoder/decoder session complete
+[LIBXCODER] Add support for defining HEVC HDR Mastering Display Colour Volume SEI through xcoder-params
+            Changing FW API version to 65
+            Changing libxcoder API version to 2.6
+[LIBXCODER] Force IDR on reconfig BR, reset sei send check
+            Changing libxcoder API version to 2.5
+[LIBXCODER] Xcoder app decoder read single thread optimization
+================================================================================
+Release version: 4.0.0_RCB
+Date: 2022-08-05            SW version: 4.0.0_RCB           FW version: 4.0.0_RCA
+Compat FW API ver: 64       Libxcoder API ver: 2.4
+--------------------------------------------------------------------------------
+[LIBXCODER] Support h265, vp9 decoding and av1 encoding in libxcoder app
+[LIBXCODER] Add support for accessing Quadra APIs and Logan APIs through same application code
+            - libxcoder_logan folder contains logan's libxcoder code
+            - FFmpeg/Libavcodec contains both quadra and logan code
+              - use build_ffmpeg.sh options '--quadra' or '--logan'
+              - build_ffmpeg.sh defaults to compile quadra when neither '--logan' and '--quadra' are specified
+              - codec names have been changed to contain chip name (eg. h264_ni_quadra_enc)
+            - Logan function/struct/var/etc names in APIs have been made unique (added 'logan' in name) so they can be imported into same application with Quadra libxcoder
+[LIBXCODER] Fix some memory and file descriptor leaks in ni_device_session_open() when ni_device_context_t is not free'd
+[LIBXCODER] Libxcoder MacOS compile support
+[LIBXCODER] Add acquire+rety mechanism for filter buffer
+[LIBXCODER] Add zero byte frame copy feature built into FFmpeg API with nienc support
+[LIBXCODER] Add libxcoder/source/ni_libxcoder_dynamic_loading.h for Linux dynamic loading support
+[LIBXCODER] Enable custom sei passthru and support error concealment for SEI after VCL NAL unit
+[LIBXCODER] Port decoder/encoder gstreamer support from T408 to Quadra
+[LIBXCODER] Implement 50-input compositor by cascading 8 x 8-input in-place overlay operations
+            Changing FW API version to 64
+            Changing libxcoder API version to 24
+[LIBXCODER] Add yuyv/uyuv/nv16/bgrp/rgba/argb/bgra/abgr/bgr0 format support for netint filter
+[LIBXCODER] Fix PTS guessing for error streams where two consecutive frames have same PTS
+[LIBXCODER] Add ni_rsrc_list to Android
+[LIBXCODER] Enable the support of VUI reconfiguration
+            Add new reconfigurable parameter videoFullRange
+            Changing FW API version to 63
+            Changing libxcoder API version to 23
+[LIBXCODER] Add encoder SSIM calculation and reporting through xcoder-param "enableSSIM=1"
+            Changing FW API version to 62
+            Changing libxcoder API version to 22
+[LIBXCODER] Fix decoder model load calculation bug causing it to show 0 when under load
+[LIBXCODER] When uploading RGBA, 2D engine requires that frames must have a 16 pixel width alignment and a 64-byte stride
+[LIBXCODER] Add FFmpeg and libxcoder support for decoder low-delay
+             - Enable low delay mode with -xcoder-param "lowdelay=1" or ffmpeg param "-low_delay 1"
+             - FFmpeg parses header for frame order and disables low_delay if input packets is out of order
+             - Low delay mode makes use of busy-query on decoder read
+             Changing FW API version to 61
+[LIBXCODER] Fix xcoder demo application decode/transcode fail when -s resolution is not specified in xcoder command line
+[LIBXCODER] Reject encode if intra refresh cycle (height / intraRefreshArg MB or CTU) = 1 (invalid intra refresh setting)
+[LIBXCODER] Set fixed_frame_rate_flag to 1 when encoding CFR bitstream
+[LIBXCODER] Support VFR in Quadra same as T408
+[LIBXCODER] Add support for encoder sequence change in xcoder demo app
+[LIBXCODER] Add Android OpenMax Support
+[LIBXCODER] Fix SPS->VUI->video_range_full_flag not set properly
+[LIBXCODER] Add check for 2-pass encode minimum input resolution width of 288
+[LIBXCODER] Reduce libxcoder default keep alive timeout from 15s to 3s
+[LIBXCODER] Add keep alive timeout configuration for upload + 2D sessions
+[LIBXCODER] Add query+retry mechanism when acquiring a P2P frame
+[LIBXCODER] Deprecate NI_MAX_HWDESC_FRAME_INDEX in favour of NI_GET_MAX_HWDESC_FRAME_INDEX(x)
+            Changing FW API version to 55
+[LIBXCODER] Improve xcoder demo app speed by checking for /dev/null in output to skip saving outputs
+[LIBXCODER] Allow reallocation of decoder bitstream on first frame to handle some lowQP low resolution streams
+[LIBXCODER] Add definitions for NI_DEPRECATED and NI_DEPRECATED_MACRO
+[LIBXCODER] Fix one lost frame when hwupload retry occurs
+[LIBXCODER] Fix a memory leak in ni_config_read_inout_layers() function
+[LIBXCODER] Allow picSkip to be enabled when user selects low delay gop (gopPresetIdx 1,3,7,9)
+[LIBXCODER] Fix file handle leak issues in ni_rsrc_api when it fails to lock a shared file
+[LIBXCODER] Making ni_rsrc_refresh() thread safe by using local variables instead of static for names
+[LIBXCODER] Restrict minimal encoding resolution of jpeg to 48x48, AV1 to 144x128
+================================================================================
+Release version: 3.1.0_RC7
+Date: 2022-05-18            SW version: 3.1.0_RC7           FW version: 3.1.0_RC6
+Compat FW API ver: 54       Libxcoder API ver: 2.0
+--------------------------------------------------------------------------------
+[LIBXCODER] Init scaler config structure reserved bytes to 0
+[LIBXCODER] Tidy up public API structures and remove privately used structs:
+            Remove ni_card_info_t as it is unused
+            Move ni_nvme_command_t to ni_nvme.h as it is only used internally
+            Do not export ni_bitstream.h to public API
+            Move latency measurement functions/definitions from ni_util.c/h to ni_lat_meas.c/h to make private
+            Add ni_lat_meas_q_destroy()
+            Add comment to ni_device_t to store in heap
+            Move ni_resolution_t definition to ni_device_api_priv.h
+            Remove ni_populate_serial_number() and ni_serial_num struct
+[LIBXCODER] Add an optional '-a' command line flag to ni_rsrc_list which additionally lists uninitialized Quadra cards
+[LIBXCODER] Fix libxcoder android build, removed phtread library linking
+[LIBXCODER] Fix hardcoded version number in msys2 compile of libxcoder.so and xcoder.pc
+[LIBXCODER] Add new macro for LIBXCODER_API_VERSION
+            Add functions ni_get_libxcoder_api_ver(), ni_get_compat_fw_api_ver(), ni_get_libxcoder_release_ver()
+[LIBXCODER] Support sequence change by config new resolution instead of close / open encoder instance, if resolution changes from large to small
+            Add FW API version check, reject sequence change if running FW API <54
+[LIBXCODER] Support AV1 non-8x8-aligned resolution
+            Changing FW API version to 54
+[LIBXCODER] API to allocate packet buffer using a user provided pointer.
+            Adding use of temporary aligned buffer if unaligned memory is provided in nvme reads and writes
+[LIBXCODER] '--prefix' to libxcoder/build.sh to specify installation path of libxcoder
+[LIBXCODER] Added the support of maxFrameSize parameter to limit the frame size
+            Changing FW API version to 53
+[LIBXCODER] Selecting bestload device for hw upload will select device with
+            lowest number of active instances
+[LIBXCODER] Use error exit code when build step fails in libxcoder/build.sh
+[LIBXCODER] Extend ni_rsrc_list to list uninitialized cards
+            - An optional `-a` command line flag, when specified,
+              lists initialized and uninitialized Quadra cards.
+            - Uninitialized Quadra cards will not include device
+              capability prints.
+            - Serial number and model number are now processed by
+              ni_rsrc_list_all_devices()
+[LIBXCODER] Retrieve timestamp of scaler session of its session timestamp check
+[LIBXCODER] In ni_device_api.c, add example for ni_get_dma_buf_file_descriptor() to
+            retrieve the dma buffer descriptor from ni_frame_t structure
+[LIBXCODER] If PTS of source clip doesn’t exist, start PTS of decoded output
+            from 0 instead of estimation from DTS
+[LIBXCODER] Return EOF in xcoder_send_frame() when nothing to encode
+            to prevent errant output
+[LIBXCODER] Adding ni_encoder_sw_frame_buffer_alloc() API to be used
+            to allocate either planar or semi planar frames.
+            Encoding type detection logic taken from
+            ni_device_session_acquire()
+[LIBXCODER] Harden -xcoder-params for NI decoder
+[LIBXCODER] Add "NI_" prefix for shared memory files in /dev/shm/
+[LIBXCODER] Fix coredump when decoding udp with packet loss
+================================================================================
+Release version: 3.0.0_RC2
+Date: 2022-04-15            SW version: 3.0.0_RC2           FW version: 3.0.0_RC2
+--------------------------------------------------------------------------------
+[LIBXCODER] Libxcoder API changes
+            Fixed pixel format in ni_device_session_acquire(). Add new API
+            call ni_encoder_session_read_stream_header() so that application
+            need not worry about incrementing a packet count in the encoder
+            session after reading the stream header.
+[LIBXCODER] Update netint license statement to MIT-0. Note, dma-buf remains GPLv2
+[LIBXCODER] Update to libxcoder text description and utility program output
+[LIBXCODER] Fix ni_rsrc_mon timeout issue
+[LIBXCODER] Fix coredump issue when decoding udp packet loss videos
+[LIBXCODER] Remove outdated SW side model load calculation which caused 32bit overflow on Android
+[LIBXCODER] Update uploader load balance logic and struct
+            Changing API version to 52
+================================================================================
+Release version: 3.0.0_RC1
+Date: 2022-04-13            SW version: 3.0.0_RC1           FW version: 3.0.0_RC1
+--------------------------------------------------------------------------------
+[LIBXCODER] Report P2P Memory Bin Usage in ni_rsrc_mon
+            Changing API version to 51
+[LIBXCODER] Retrieve xcoder_support type (2) for Quadra in NVMe identify data and update xcoder capability numbers
+            Changing API version to 50
+[LIBXCODER] Exit process with invalid reconfig file
+[LIBXCODER] Use recursive mutex for Xcoder open/close API
+[LIBXCODER] Add version info printout arg to all libxcoder applications
+[LIBXCODER] Add include to support compilation on GCC 8.3.1 and GCC 9.4
+[LIBXCODER] Use a macro to take care of applying null to ptr after ni_aligned_free()
+            Remove ni_decoder_session_close() call from ni_decoder_session_open() when it fails to acquire session from FW
+[LIBXCODER] Integrate ni_pthread API
+[LIBXCODER] Timeout val was not being passed to session params in xcoder app
+[LIBXCODER] Xcoder input repeat option for H.264 source; remove obsolete libxcoder build options
+[LIBXCODER] Redirect xcoder log to android OS
+[LIBXCODER] FFmpeg support of uploader auto load balancing
+[LIBXCODER] Realloc dec bitstream for seqchange
+            Changing API version to 41
+[LIBXCODER] Fix hw uploader free issue on Windows
+[LIBXCODER] Replace NI_MAX_SW_INSTANCE_COUNT with NI_MAX_CONTEXTS_PER_HW_INSTANCE
+            Rename NI_MAX_PROFILE_NAME_LEN, NI_MAX_LEVEL_NAME_LEN, NI_MAX_ADDITIONAL_INFO_LEN to NI_PROFILES_SUPP_STR_LEN, NI_LEVELS_SUPP_STR_LEN, NI_LEVELS_SUPP_STR_LEN
+            Replace NI_MAX_HW_XCODER_COUNT and MAX_DEVICE_CNT with NI_MAX_DEVICE_CNT
+            Change MAX_DEVICE_NAME_LEN to NI_MAX_DEVICE_NAME_LEN and move its definition to ni_defs.h
+            Remove NI_MAX_CONTEXTS_PER_DECODER_INSTANCE as it is unused and confusing
+[LIBXCODER] Fix lock condition in ni_ai_config_network_binary()
+[LIBXCODER] Port windows msys fix
+            - fix yuvbypass failure on windows and disable p2p on windows
+            - fix false mem-free extradata
+            - set max_nvme_io_size to NI_MAX_PACKET_SZ on Windows,
+              max_nvme_io_size will be used to allocate p_leftover buffer,
+              fix allocation of p_leftover buffer to 0.
+            - fix filter open device failure on Windows
+            - fix free hw buffer issue on Windows
+            - fix compiling issues
+[LIBXCODER] Add support for android
+[LIBXCODER] Encoder performance improvements in xcoder util
+            1. Add zero copy to libxcoder encode test when input resoultion is stride aligned
+[LIBXCODER] Send 1 NVME command to Scaler instead of 3 Optimizes scaler by reducing ConfigInput and
+            ConfigOutput tranfers to occuring only when needed.
+[LIBXCODER] Parallel instance upload
+            - Upload instance no longer takes up encoder instance
+            - Limit of 128 upload instances
+            Changing API version to 40
+[LIBXCODER] Fixed freeing DMA buf fd causing close of random file descriptors
+[LIBXCODER] Port for session keep alive timeout command line option from t408
+            * Changing keep alive timeout from 3 to 15. this now matches the default in FW
+            * Updating gitignore to ignore some files in doc/, taken from 4.3.1/doc/.gitignore
+            * Adding keep_alive_timeout option to xcoder params as keepAliveTimeout. ni_en/decoder_params_set_value() functions replace _ with -
+            * Adding timeout option to netint avfilters
+            * Updating ni_session_keep_alive_thread() to use close_thread flag instead of pthread_cancel(), same as t408.
+[LIBXCODER] Port ni_log.c from T408
+[LIBXCODER] Support confgurable long term references count & Block multicore joint mode when low delay enabled
+            1. Allow user to configure long term references count (1 or 2) to workaround 2 LTRs decode issue
+            2. Block encoding if user sets both multicore joint mode and low delay, which are incompatible features
+            Changing API version to 31
+[LIBXCODER] When the roi enable, even if roi_demo_mode is zero, we should also add the sizeof(ni_encoder_change_params_t) in extra_data_len
+            Fix the set_qp error: set the set_qp type int32_t, because there will be forced type conversion later
+[LIBXCODER] p2p demo util support frame by frame YUV input read and repeat option
+[LIBXCODER] Fix AV1 pic skip encode fail & AV1 frame loss when PTS is repeated
+            1. Fix skipping frame cause AV1 encode fail by not output packet if frame is skipped
+            2. Fix repeated PTS cause AV1 frame loss by modifying packet merge to be based on show frame info
+            Changing API version to 30
+[LIBXCODER] Change async-io to sync-io for windows
+[LIBXCODER] Open, test and (if required) cleanup shared memory during ni_rsrc_init()
+[LIBXCODER] Fix Overcapacity test issues
+            1. Fix libxcoder does not wait for keepalive thread terminated before session close, causing nvme IO error
+            2. Fix filter session not closed if session ID is 0, causing session timeout
+[LIBXCODER] Remove not required reconfig modes & Add AV1 height constraint
+            1. Remove no rqeuired reconfig modes 2 (Intra QP / Intra Period), 3 (VUI), 5 (RC Vbv Size / CU Level RC), 6 (Min / Max QP)
+            2. For AV1 add check condition to make sure height <= 4352 (MaxVSize supported by AV1 level 5.1)
+[LIBXCODER] Modify compile and configure script to support windows build
+            replace usleep() with ni_usleep()
+            add changes required by cppcheck and clang-format
+[LIBXCODER] Remove '-xcoder' parameter
+            - Remove "BEST" column for ni_rsrc_mon
+[LIBXCODER] Remove blocking in encoding/decoding inputs threads of xcoder util
+[LIBXCODER] Xcoder YUV input repeat input parameter and reduced mem usage
+            - new -r or --repeat parameter to repeat yuv input
+            - YUV input files no longer read to cache entirely
+            - YUV frames from file will be read to memory as needed
+            - no change on compressed bitstream inputs
+[LIBXCODER] Support in ffmpeg by adding a new command line
+            parameter to enable the scaler instance to use
+            filterblit.
+[LIBXCODER] Add api for tensor and data conversion
+[LIBXCODER] Calculate input bitstream buffer size of decoder according to resolution
+================================================================================
+Release version: 2.3.0_RC1
+Date: 2022-02-28            SW version: 2.3.0_RC1           FW version: 2.3.0_RC1
+--------------------------------------------------------------------------------
+[LIBXCODER] Resolve conflict between P2P DMA upload and encoder config naming and placement
+[LIBXCODER] Added the check in ni_query_session_stats() to see if the session ID used by last command is invalid
+            - if invalid session id is detected, further commands associated with the current session will be blocked
+[LIBXCODER] Support reconfig framerate, Add rcQpDeltaRange
+            1. Support reconfig framerate, including reconfDemoMode 9, libxcoder aux data, wrapper API
+            2. Reject framerate larger than max threshold 65535
+            3. Add rcQpDeltaRange in config parameter
+            Changing API version to 20
+[LIBXCODER] Hwupload optimization / xcoder fps update
+            - Hwupload combines buffer query and hwdesc read
+            - the xcoder FPS is now in float rather than int
+            - hwframe upload path latency measurement support
+[LIBXCODER] Unify device open in Filters with rsrc_api
+[LIBXCODER] Added error check for pread()/pwrite() in ni_nvme_send_read_cmd()/ni_nvme_send_write_cmd()
+[LIBXCODER] Improve encoder config naming and placement
+            -ni_encoder_params_t -> ni_xcoder_params_t
+            -hevc_enc_params -> cfg_enc_params
+            -ni_h265_encoder_params_t -> ni_encoder_cfg_params_t
+            -Reordered the encoder_cfg_params by compatibility
+[LIBXCODER] Support HW-mode multi-thread in libxcoder utility app
+[LIBXCODER] Fix libxcoder incorrect session id check causing open session failure undetected, resulting in nvme cmd error and overcapacity test fail
+[LIBXCODER] Added keep-alive thread support.
+[LIBXCODER] Fix bug where ni_rsrc_remove_device() does not remove /dev/shm/lck_* files
+[LIBXCODER] Fix ni_rsrc_allocate_direct() and ni_rsrc_allocate_auto() when input p_load=NULL
+[LIBXCODER] Remove 'codec' param from ni_rsrc_release_resource() as it is unnecessary
+[LIBXCODER] Change codec_format from int to ni_codec_format_t
+[LIBXCODER] Remove duplicate error code from ni_defs.h NI_RETCODE_PARAM_ERROR_VBVBUFFERSIZE
+================================================================================
+Release version: 2.2.1_EN1
+Date: 2022-02-11            SW version: 2.2.1_EN1           FW version: 2.2.0_EN1
+--------------------------------------------------------------------------------
+[LIBXCODER] Update license statements and texts for libxcoder/ and tools/
+[LIBXCODER] Libxcoder utility (ni_device_test.c) return non-0 on failure
+[LIBXCODER] Set resource pool files permission accessible by creator's group
+[LIBXCODER] Auto select least loaded card when using HWupload+enc without targeting specific card
+[LIBXCODER] Updates/fixes to P2P DMA demo app and kernel driver (dma-buf)
+================================================================================
+Release version: 2.2.0_EN1
+Date: 2022-01-29            SW version: 2.2.0_EN1           FW version: 2.2.0_EN1
+--------------------------------------------------------------------------------
+[LIBXCODER] Low delay encode changes for P2P DMA copy demo
+            1. For P2P DMA copy demo, pass low delay mode setting to encoder manager
+[LIBXCODER] Add P2P DMA demo app and kernel driver (dma-buf)
+================================================================================
+Release version: 2.2.0_RC2
+Date: 2022-01-25            SW version: 2.2.0_RC2           FW version: 2.2.0_RC2
+--------------------------------------------------------------------------------
+[LIBXCODER] Fix multi-threading blocked issue
+================================================================================
+Release version: 2.2.0_RC1
+Date: 2022-01-22            SW version: 2.2.0_RC1           FW version: 2.2.0_RC1
+--------------------------------------------------------------------------------
+[LIBXCODER] Added wrapper API and demo modes for LTR
+[LIBXCODER] API rename and added comments
+[LIBXCODER] Support multi-thread in libxcoder utility app
+[LIBXCODER] FFmpeg using refactored libxcoder API, 4.3.1 only; fixed an xcoder memory leak of mutex; ported demo modes to xcoder and adjusted ROI demo in FFmpeg versions
+[LIBXCODER] Fix non-integer framerate encode fail & Fix gopPresetIdx 1 issues
+            1. Fix framerate numerator derived from mp4 container can be higher than acceptable max value, causing encode fail
+            2. Fix gopPresetIdx 1 max_dec_pic_buffering and max_num_reorder_pics calculations mismatch
+            3. Do not reject encode with gopPresetIdx 1 and intra refresh enabled (output will be all I-frames)
+================================================================================
+Release version: 2.1.0_RC1
+Date: 2022-01-14            SW version: 2.1.0_RC1           FW version: 2.1.0_RC1
+--------------------------------------------------------------------------------
+[LIBXCODER] LIBXCODER tester features and API comments
+            -corrected and/or added api comments
+            -Added decoder param for xcoder tester
+            -Added yuv bypass mode for xcoder tester
+            -Added hwframe support for enc/dec for xcoder tester
+            -Added HWupload + encode mode for xcoder tester
+            -Fixed memory leak on upload open within priv api
+[LIBXCODER] Fix GNU ld 2.37 issues
+[LIBXCODER] Libxcoder API name and description cleanup to match doc
+[LIBXCODER] Re-enable calloc for p_ctx->enc_change_params
+[LIBXCODER] Make libxcoder API thread-safe
+[LIBXCODER] Fix CTB rate control not affecting output size
+[LIBXCODER] Port demo modes to xcoder; fixed YUV stride padding and output issues
+[LIBXCODER] Fix libxcoder mem leak and HDR10+ SEI in libavcodec, FFmpeg 4.3.1 only
+[LIBXCODER] Made ctbRcMode, gopSize, and gopLowdelay deprecated
+[LIBXCODER] Support LTR & short term / long term reference invalidation
+            1. Support config LTR enable and LTR interval
+            2. Support reconfig LTR interval
+            3. Support side data and metadata for setting LTR on frame basis
+            4. Support reconfig parameter for short term / long term reference invalidation
+[LIBXCODER] Add preset gop patterns
+            1. Support gopPresetIdx
+            2. When gopPresetIdx is not specified, gop pattern is decided by gopSize and gopLowdelay
+            3. Allow custom gop settings when gopPresetIdx is not specified
+[LIBXCODER] Change default encode config settings for video quality
+            1. Change default intraPeriod to 120
+            2. Change default tolCtbRcInter to -1.0
+================================================================================
+Release version: 1.2.0
+Date: 2021-11-03            SW version: 1.2.0               FW version: 1.2.0
+--------------------------------------------------------------------------------
+[LIBXCODER] Initial general availability

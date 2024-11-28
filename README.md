@@ -1,92 +1,135 @@
-# netint_libxcoder
+# NETINT Quadra Libxcoder README
 
+Libxcoder is the software driver for [NETINT Quadra Video Processing Units (VPU)](https://netint.com/technology/codensity-g5/)  
+It contains APIs and tools for video processing and Quadra device management.
 
+The Libxcoder API can be interfaced with directly, or accesed via higher-level APIs/aplications such as [NETINT's FFmpeg fork](https://github.com/NETINT-Technologies/netint_ffmpeg).
 
-## Getting started
+## Public Libraries
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+* `ni_device_api.h` API for video processing
+* `ni_rsrc_api.h` API for Quadra hardware management
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+## Tools
 
-## Add your files
+* `init_rsrc` is an application to detect Quadra devices and create their resource entries in host's file system
+* `ni_rsrc_list` is an application to list info about detected Quadra devices
+* `ni_rsrc_mon` is an application to display performance related info about detected Quadra devices
+* `ni_rsrc_namespace` is an application to manage NVMe configuration for Quadra devices
+* `ni_rsrc_update` is an application to manage detected Quadra resource entries
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+## Documentation
 
-```
-cd existing_repo
-git remote add origin https://git.netint.ca/public-github/netint_libxcoder.git
-git branch -M main
-git push -uf origin main
-```
+Libxcoder documentation is availabled at the [NETINT Docs Portal](https://docs.netint.com/quadra/documentation/libxcoder)
 
-## Integrate with your tools
-
-- [ ] [Set up project integrations](https://git.netint.ca/public-github/netint_libxcoder/-/settings/integrations)
-
-## Collaborate with your team
-
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Automatically merge when pipeline succeeds](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
-
-## Test and Deploy
-
-Use the built-in continuous integration in GitLab.
-
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing(SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!).  Thank you to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+Doxygen documentation may be generated with `bash build.sh -d`
 
 ## License
-For open source projects, say how it is licensed.
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+NETINT Quadra Libxcoder is MIT-0 licensed for NETINT written code.  
+Software not written by NETINT but included in libxcoder:
+* `source/ni_bitstream.*`
+  * code derived from Kvazaar HEVC encoder for encoded bitstream filtering
+  * Copyright (c) 2021, Tampere University
+  * BSD-3 License
+
+## Building
+### Scripted Build and Install
+```bash
+bash build.sh
+```
+See options using `bash build.sh -h`
+
+This will compile libxcoder and install its tools/shared-libraries/headers to the system.
+
+### Manually Build and Install
+```bash
+bash configure
+```
+See options using `bash configure -h`
+
+```bash
+make
+sudo make install
+```
+
+Default install location is `/usr/local/lib`, `/usr/local/include`, and `/usr/local/bin`.  
+This may be changed via `configure` options:  
+```bash
+bash configure --libdir=/custom_lib_folder --bindir=/custom_bin_folder \
+               --includedir=/custom_include_folder --shareddir=/additional_lib_folder
+```
+
+### Uninstall
+```bash
+sudo make uninstall
+```
+
+alternate option
+
+```bash
+sudo make uninstall LIBDIR=/custom_lib_folder BINDIR=/custom_bin_folder \
+                    INCLUDEDIR=/custom_include_folder SHAREDDIR=/additional_lib_folder
+```
+
+<!-- ## xcoderp2p
+`xcoderp2p` is a demo app for PCIe peer-to-peer DMA  
+Not supported on Windows or MacOS or Linux kernel < 5.10  .
+See instructions in NETINT dma-buf project. -->
+
+## xcoder
+
+`xcoder` is a demo app for video decoding/encoding/transcoding using libxcoder.  
+See `./build/xcoder -h` for options.
+
+### Example commands:
+
+#### Decoding
+```bash
+./build/xcoder -c 0 -i test/1280x720p_Basketball.264 -m a2y -o bball.yuv
+```
+
+#### Encoding
+```bash
+./build/xcoder -c 0 -s 1280x720 -i bball.yuv -m y2h -o bball.265
+```
+
+#### Transcoding
+```bash
+./build/xcoder -c 0 -i test/1280x720p_Basketball.264 -m a2h -o bball_xcod.265
+```
+
+#### Transcoding with HW frames 
+With this command the YUV data remains on Quadra HW.
+```bash
+./build/xcoder -c 0 -d out=hw -i test/1280x720p_Basketball.264 -m a2h -o bball_xcod_hwframe.265
+```
+
+#### Hardware Frame Upload + Encoding
+```bash
+./build/xcoder -c 0 -s 1280x720 -i bball.yuv -m u2h -o bball_hwframe.265
+```
+
+## Integration
+
+Codec library: `libxcoder.a`  
+API header: `ni_device_api.h`
+
+1. Add libxcoder.a as one of libraries to link
+2. Add ni_device_api.h in source code calling Codec API
+
+### C
+```C
+#include "ni_device_api.h"
+```
+
+### C++
+```C++
+extern "C" {
+#include "ni_device_api.h"
+}
+```
+
+<!-- ## Forums
+
+https://community.netint.ca/ -->

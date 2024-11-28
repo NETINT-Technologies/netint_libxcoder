@@ -1,0 +1,9 @@
+service ni_rsrc_initialize /system/bin/ni_rsrc_mon
+class main
+user root
+group root
+disabled
+oneshot
+
+on property:ni_ashmem_service_boot_completed=yes
+    start ni_rsrc_initialize
