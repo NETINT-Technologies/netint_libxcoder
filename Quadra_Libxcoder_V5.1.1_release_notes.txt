@@ -1,4 +1,10 @@
 ================================================================================
+Release version: 5.1.1_RC2
+Date: 2024-12-11            SW version: 5.1.1_RC2           FW version: 5.1.1_RC1
+Compat FW API ver: 6rt      Libxcoder API ver: 2.68
+--------------------------------------------------------------------------------
+[LIBXCODER] Add backpressure support for ni_quadra_drawtext
+================================================================================
 Release version: 5.1.0_RC4
 Date: 2024-11-26            SW version: 5.1.0_RC4           FW version: 5.1.0_RC4
 Compat FW API ver: 6rt      Libxcoder API ver: 2.68

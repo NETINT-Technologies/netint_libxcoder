@@ -87,7 +87,7 @@ extern "C"
 // NI_XCODER_REVISION[4:5] = compatible FW API semantic minor version
 // NI_XCODER_REVISION[6:7] = optional
 // The definition macro in ni_quadra_filter_api.h need to be synchronized with libxcoder
-#define NI_XCODER_REVISION "5106rtr4"
+#define NI_XCODER_REVISION "5116rtr2"
 #define NI_XCODER_REVISION_API_MAJOR_VER_IDX 3
 #define NI_XCODER_REVISION_API_MINOR_VER_IDX 4
 

@@ -25,5 +25,5 @@
  *  \brief  Release identification data generated at release time
  ******************************************************************************/
 
-#define NI_SW_RELEASE_TIME "2024-11-26_17:51:44_-0800"
-#define NI_SW_RELEASE_ID "Netint_Quadra_release_v5.1.0_RC4"
+#define NI_SW_RELEASE_TIME "2024-12-11_17:37:28_-0800"
+#define NI_SW_RELEASE_ID "Netint_Quadra_release_v5.1.1_RC2"

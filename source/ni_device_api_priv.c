@@ -5480,6 +5480,7 @@ ni_retcode_t ni_scaler_alloc_frame(ni_session_context_t* p_ctx,
     switch (p_ctx->scaler_operation)
     {
         case NI_SCALER_OPCODE_OVERLAY:
+        case NI_SCALER_OPCODE_WATERMARK:
             if ((options & NI_SCALER_FLAG_IO) && !(options & NI_SCALER_FLAG_PC))
             {
                 p_data->frame_index = frame_index; // background
