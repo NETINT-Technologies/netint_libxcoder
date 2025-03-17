@@ -1,4 +1,97 @@
 ================================================================================
+Release version: 5.2.0_RC3
+Date: 2025-03-13            SW version: 5.2.0_RC3           FW version: 5.2.0_RC1
+Compat FW API ver: 6s5      Libxcoder API ver: 2.76
+--------------------------------------------------------------------------------
+[LIBXCODER] Fix exit condition check and some typos in libxcoder demos
+[LIBXCODER] Fix multiple ivf header write issue when encoder demo sequence change
+[LIBXCODER] Prevent vbv buffer overflow in 2-pass encode when HRD conformance is enabled
+            1. Add vbvBufferReencode parameter. When enabled, encoder will prevent vbv buffer overflow by re-encoding frame(s) when necessary. Also note that vbvBufferRencode cannot be enabled in AV1 multicoreJointMode
+            2. Print warning message to inform user HRD conformance cannot be guaranteed in multicoreJointMode when user sets hrdEnable and multicoreJointMode
+            Changing FW API version to 6s5
+[LIBXCODER] Add ni_quadra_card_identify_precheck() to precheck if a device can be read by ni_device_capability_query
+[LIBXCODER] Fix xcoder demo when the decoder write buffer is full in multi thread transcoding
+[LIBXCODER] Refactor libxcoder API demo (ni_device_test)
+[LIBXCODER] Added SW support for decoding power
+                1.Added decoding logic from current to power based on PCB config in SN
+                2.Added new current parameter in structure ni_device_extra_info_t
+                3.Existing API ni_query_extra_info has decoding logic added which queries for SN information
+                Changing FW API version to 6s4
+[LIBXCODER] Support querying the input format of encoding streams and session id in ni_rsrc_mon -d
+            Changing FW API version to 6s3
+[LIBXCODER] Support config bicubic params for ni_quadra_scale and ni_quadra_merge
+            Changing FW API version to 6s2
+            Changing Libxcoder API version to 2.76
+[LIBXCODER] Fix check condition for identifying close caption SEI
+[LIBXCODER] Fix xcoder demo encoder hang issue when using crf and zeroCopyMode=0
+[LIBXCODER] Support reconstructed frames luma channel for hevc with getPsnrMode=4
+[LIBXCODER] Add AV_FRAME_DATA_NETINT_ERROR_RATIO to save decoded frame error ratio info
+            Changing Libxcoder API version to 2.75
+[LIBXCODER] Fix p2p demo application
+            Fixed calculation in number of bytes read. Also removed
+            useless calls to lock and unlock the P2P frame.
+[LIBXCODER] Support new decoder ecPolicy best_effort_out_dc
+            best_effort_out_dc is similar to best_effort but it will drop frames
+            whose error ratio is larger than threshold
+            Changing FW API version to 6s1
+[LIBXCODER] Incorporate Netflix's kernel driver enhancement
+            Add Netflix's changes to the NetInt kernel driver which
+            allow an upload context to support up to six dma-buf
+            file descriptors. Change p2p read test program to
+            test this enhancement.
+[LIBXCODER] Fix xcoder demo not work with filter due to hwframe not be recycled
+[LIBXCODER] Fix a libxcoder issue when calling ni_close_event
+[LIBXCODER] AV1 spatial layers EL to BL reference structure
+            1. Add spatialLayersRefBaseLayer parameter to support Base Layer to Enhancement Layer reference structure
+            Changing FW API version to 6s0
+[LIBXCODER] Deprecate libxcoder option 'genHdrs', replace with libavcodec option '-gen_global_headers'
+            '-gen_global_headers' also added for logan codecs, but 'genHdrs' not deprecated in logan
+            Also refactor libavcodec encoder params
+            Changing Libxcoder API version to 2.74
+[LIBXCODER] Add libxcoder API version check to FFmpeg*/configure
+[LIBXCODER] Added AVCC & HVCC support
+            Changing Libxcoder API version to 2.73
+            Changing FW API version to 6rz
+[LIBXCODER] Revise printouts during init_rsrc
+            Remove FW to Libxcoder minor version mismatch warning during HW frame session start
+[LIBXCODER] Fix AV1 multiple spatial layers unnecessarily rejected in low delay mode and add intra period check
+            1. Modify libxcoder to allow multiple spatial layers (spatialLayers > 1) encode when lowDelay is enabled, which was unnecessarily rejected before
+            2. Modify libxcoder to reject multiple spatial layers (spatialLayers > 1) encode if intraPeriod is not divisible by number of spatial layers
+[LIBXCODER] Update ni_rsrc_list print info
+[LIBXCODER] Add libxcoder option to build systemd service
+[LIBXCODER] Add API to support inserting timecode info into SEI
+            Changing Libxcoder API version to 2.72
+            Changing FW API version to 6ry
+[LIBXCODER] Add SN, Fw version, temperature, power as default values to ni_rsrc_mon
+[LIBXCODER] Fix coredump by call ni_check_hw_info in multi-thread
+            Changing Libxcoder API version to 2.71
+[LIBXCODER] Remove unused goppresetidx code and fix the memory overflow
+[LIBXCODER] Support h264/h265 decoder ppu resolution reconfig when sequence change
+            Changing Libxcoder API version to 2.70
+            Changing FW API version to 6rx
+[LIBXCODER] Fix an issue where decoder frame loss caues AV to no longer sync
+[LIBXCODER] Fix an issue where a null pointer was called by the libxcoder api
+[LIBXCODER] Fix an issue with ni_quadra_merge causing high FW load
+[LIBXCODER] Support AV1 multiple spatial layers encode
+            Changing FW API version to 6rw
+            Changing libxcoder API version to 2.69
+[LIBXCODER] Add openharmony support
+[LIBXCODER] Add backpressure support for ni_quadra_drawtext
+[LIBXCODER] Support float value for overprovision percent
+            Changing FW API version to 6rv
+[LIBXCODER] Add enc param enableCompensateQp
+            Changing FW API version to 6ru
+[LIBXCODER] Update public README in Libxcoder/FFmpeg
+[LIBXCODER] Transfer SPS/PPS of AVC in extradata to FW for quadra card
+[LIBXCODER] Fix multi-threaded upload and encode path in libxcoder app
+[LIBXCODER] Fix an issue where deadlock occurs on filter buffer acquire
+[LIBXCODER] Buffer backpressure support for FFmpeg filters
+            Changing FW API version to 6rt
+            Changing libxcoder API version to 2.67
+[LIBXCODER] Added the support of hwframe for hvsplus filter
+[LIBXCODER] Add a new API ni_device_session_restart() to restart the encoder after flushed
+            Changing libxcoder API version to 2.67
+================================================================================
 Release version: 5.1.1_RC2
 Date: 2024-12-11            SW version: 5.1.1_RC2           FW version: 5.1.1_RC1
 Compat FW API ver: 6rt      Libxcoder API ver: 2.68

@@ -41,6 +41,32 @@ extern "C"
 {
 #endif
 
+#define NI_INVALID_POWER 0xFFFFFFFF
+/* Value and formula retrieved from tps25940 EFUSE manual */
+#define TPS25940_IMON_OS     0.8f
+#define TPS25940_GAIN_IMON   52.0f
+#define TPS25940_R_IMON      5.6f
+
+/* Value and formula retrieved from tps25946 EFUSE manual */
+#define TPS25946_GAIN_IMON     182.0f
+#define TPS25946_GAIN_IMON_T1M 105.5f
+#define TPS25946_R_IMON_T2A    1000.0f
+#define TPS25946_R_IMON_T1U_UA 1130.0f
+#define TPS25946_R_IMON_T1S    562.0f
+#define TPS25946_R_IMON_T1M    750.0f
+
+/* Value and formula retrieved from MAX15162AAWE+T EFUSE manual */
+#define MAX15162AAWE_C_IRATIO   4000.0f
+#define MAX15162AAWE_R_IMON     1500.0f
+
+/* Value and formula retrieved from MAX17613B EFUSE manual */
+#define MAX17613B_R_ISET_TOTAL 1510.0f /* Voltage Divider at ADC */
+#define MAX17613B_R_ISET_R2    1000.0f
+#define MAX17613B_C_IRATIO     3000.0f
+
+#define MCU_FSR_ADC     4096.0f
+#define MCU_REF_VOLTAGE 2500.0f   //mV
+
 static inline int ni_min(int a, int b)
 {
     return a < b ? a : b;
@@ -131,6 +157,23 @@ int32_t ni_atobool(const char *p_str, bool *b_error);
 int32_t ni_atoi(const char *p_str, bool *b_error);
 double ni_atof(const char *p_str, bool *b_error);
 int32_t ni_parse_name(const char *arg, const char *const *names, bool *b_error);
+uint32_t ni_decode_power_measurement(uint32_t power_value, const uint8_t *serial_number);
+
+/*!******************************************************************************
+ *  \brief   precheck a device can be read by ni_device_capability_query()
+ *           INFO OR ERROR logs will not be printed in this function
+ *  \param[in]   p_dev device path string. eg: "/dev/nvme1n2"
+ *
+ *  \return
+ *           returns NI_RETCODE_FAILURE 
+ *           when the device can not be read by ni_device_capability_query()
+ *
+ *           returns NI_RETCODE_SUCCESS 
+ *           when the device can not be read by ni_device_capability_query() or
+ *           the result can not be determined to prevent query failures due to 
+ *           some reasons such as missing commands on the system
+ *******************************************************************************/
+ni_retcode_t ni_quadra_card_identify_precheck(const char *p_dev);
 
 // Netint HW YUV420p data layout related utility functions
 

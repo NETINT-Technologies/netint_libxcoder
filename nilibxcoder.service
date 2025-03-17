@@ -1,0 +1,16 @@
+[Unit]
+Description=Initialize Netint Libxcoder to detect Netint Quadra devices
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+#Quadra Product Line
+ExecStart=-/usr/local/bin/init_rsrc -t 5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ni_libxcoder_devices
+User=
+Group=
+
+[Install]
+WantedBy=multi-user.target

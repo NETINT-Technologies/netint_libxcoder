@@ -59,6 +59,13 @@ else
     shareddir=''
 fi
 
+if [ $XCODER_SYSTEMDIR != NO ]; then
+    echo "XCODER_SYSTEMDIR: ${XCODER_SYSTEMDIR}"
+    systemdir=${XCODER_SYSTEMDIR}
+else
+    systemdir='/etc/systemd/system'
+fi
+
 # Create build folder for compilation
 if [ ! -d "${XCODER_WORKDIR}/${XCODER_OBJS_DIR}" ]; then
      mkdir ${XCODER_WORKDIR}/${XCODER_OBJS_DIR}
@@ -76,6 +83,7 @@ libdir=$libdir
 bindir=$bindir
 includedir=$includedir
 shareddir=$shareddir
+systemdir=$systemdir
 
 Name: xcoder
 Description: Network Intelligence Xcoder Quadra Codec library
@@ -187,4 +195,14 @@ if [ $XCODER_DISABLE_BACKTRACE_PRINT = YES ]; then
         echo -e "${GREEN}XCODER_DISABLE_BACKTRACE_PRINT is enabled${BLACK}"
 else
         echo -e "${YELLOW}XCODER_DISABLE_BACKTRACE_PRINT is disabled${BLACK}"
+fi
+
+if [ $SETUP_SYSTEMD = YES ]; then
+        echo -e "${GREEN}SETUP_SYSTEMD is enabled${BLACK}"
+        current_user=$(whoami)
+        current_group=$(id -gn)
+        sed -i "s/^User=.*/User=$current_user/" nilibxcoder.service
+        sed -i "s/^Group=.*/Group=$current_group/" nilibxcoder.service
+else
+        echo -e "${YELLOW}SETUP_SYSTEMD is disabled${BLACK}"
 fi

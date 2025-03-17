@@ -15,8 +15,10 @@ XCODER_LIBDIR=NO
 XCODER_BINDIR=NO
 XCODER_INCLUDEDIR=NO
 XCODER_SHAREDDIR=NO
+XCODER_SYSTEMDIR=NO
 XCODER_DISABLE_BACKTRACE_PRINT=NO
 XCODER_SSIM_INFO_LEVEL_LOGGING=NO
+SETUP_SYSTEMD=NO
 
 #####################################################################################
 # menu
@@ -54,6 +56,9 @@ Options:
   --with-backtrace-print          enable print backtrace (default)
   --without-backtrace-print       disable print backtrace
 
+  --with-setup-systemd            Setup service to initilize libxcoder and resource monitor
+  --without-setup-systemd         Do not setup service to initilize libxcoder and resource monitor (default)
+
   --prefix                        Set custom install location preix
                                   (default: /usr/local/)
   --libdir                        Set custom install location for libxcoder.so and pkgconfig files
@@ -64,7 +69,7 @@ Options:
                                   (default: /usr/local/include/)
   --shareddir                     Set additional install location for libxcoder.so
                                   (ex. /usr/lib/x86_64-linux-gnu/ or /usr/lib64/) (default: NONE)
-
+  --systemdir                     Set custom install location for libxcoder systemd service
 END
 }
 
@@ -116,6 +121,8 @@ function parse_user_option() {
             --without-backtrace-print)  XCODER_DISABLE_BACKTRACE_PRINT=YES;;
             --with-info-level-ssim-log)     XCODER_SSIM_INFO_LEVEL_LOGGING=YES;;
             --without-info-level-ssim-log)  XCODER_SSIM_INFO_LEVEL_LOGGING=NO;;
+            --with-setup-systemd)       SETUP_SYSTEMD=YES;;
+            --without-setup-systemd)    SETUP_SYSTEMD=NO;;
             --prefix*)                  extract_arg "\-\-prefix" $1 $2; eprc=$?;
                                         if [ "$eprc" -eq 1 ]; then
                                             shift;
@@ -141,6 +148,11 @@ function parse_user_option() {
                                             shift;
                                         fi
                                         XCODER_SHAREDDIR=$extract_arg_ret;;
+            --systemdir*)               extract_arg "\-\-systemdir" $1 $2; eprc=$?;
+                                        if [ "$eprc" -eq 1 ]; then
+                                            shift;
+                                        fi
+                                        XCODER_SYSTEMDIR=$extract_arg_ret;;
             *)                          echo "Unknown option $1, exiting"; exit 1;;
         esac
         shift
@@ -156,6 +168,7 @@ function regenerate_options() {
     XCODER_AUTO_CONFIGURE="--bindir=${XCODER_BINDIR}"
     XCODER_AUTO_CONFIGURE="--includedir=${XCODER_INCLUDEDIR}"
     XCODER_AUTO_CONFIGURE="--shareddir=${XCODER_SHAREDDIR}"
+    XCODER_AUTO_CONFIGURE="--systemdir=${XCODER_SYSTEMDIR}"
     if [ "$XCODER_WIN32" = YES ]; then XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --with-win32"; else XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --without-win32"; fi
     if [ "$XCODER_ANDROID" = YES ]; then XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --with-android"; else XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --without-android"; fi
     if [ "$XCODER_SELF_KILL_ERR" = YES ]; then XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --with-self-kill"; else XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --without-self-kill"; fi
@@ -165,6 +178,7 @@ function regenerate_options() {
     if [ "$XCODER_LINUX_VIRT_IO_DRIVER" = YES ]; then XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --with-linux-virt-io-driver"; else XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --without-linux-virt-io-driver"; fi
     if [ "$XCODER_DISABLE_BACKTRACE_PRINT" = YES ]; then XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --without-backtrace-print"; else XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --with-backtrace-print"; fi
     if [ "$XCODER_SSIM_INFO_LEVEL_LOGGING" = YES ]; then XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --with-info-level-ssim-log"; else XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --without-info-level-ssim-log"; fi
+    if [ "$SETUP_SYSTEMD" = YES ]; then XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --with-setup-systemd"; else XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --without-setup-systemd"; fi
     echo "regenerate config: ${XCODER_AUTO_CONFIGURE}"
 }
 
@@ -182,6 +196,7 @@ function check_option_conflicts() {
     if [ "$XCODER_LINUX_VIRT_IO_DRIVER" = RESERVED ]; then echo "you must specify for the vm linux virt-io driver, see: ./configure --help"; __check_ok=NO; fi
     if [ "$XCODER_DUMP_DATA" = RESERVED ]; then echo "you must specify whether to compile data-dump macro, see: ./configure --help"; __check_ok=NO; fi
     if [ "$XCODER_DISABLE_BACKTRACE_PRINT" = RESERVED ]; then echo "you must specify whether to compile with print backtrace, see: ./configure --help"; __check_ok=NO; fi
+    if [ "$SETUP_SYSTEMD" = RESERVED ]; then echo "you must specify whether to setup systemd service for libxcoder, see: ./configure --help"; __check_ok=NO; fi
 }
 
 #####################################################################################

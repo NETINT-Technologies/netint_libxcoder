@@ -646,6 +646,12 @@ typedef struct _ni_encoder_config_t
   uint8_t ui8sceneChangeDetectLevel;
   uint8_t ui8mallocStrategy;
   uint8_t ui8enableSmoothCrf;
+  uint8_t ui8enableCompensateQp;
+  uint8_t ui8spatialLayersMinusOne;
+  uint8_t ui8enableTimecode;
+  uint8_t ui8avccHvcc;
+  uint8_t ui8spatialLayersRefBaseLayer;
+  uint8_t ui8vbvBufferReencode;
 } ni_encoder_config_t;
 
 typedef struct _ni_uploader_config_t
@@ -756,8 +762,10 @@ typedef struct _ni_scaler_config
 {
     uint8_t filterblit;
     uint8_t numInputs;
+    uint16_t scaler_param_b;
+    uint16_t scaler_param_c;
     uint8_t ui8Reserved[2];
-    uint32_t ui32Reserved[3];
+    uint32_t ui32Reserved[2];
 } ni_scaler_config_t;
 
 typedef struct _ni_ddr_priority_config
@@ -840,7 +848,8 @@ ni_retcode_t ni_check_ratecontrol_params(ni_encoder_config_t* p_cfg, char* param
 void ni_params_print(ni_xcoder_params_t *const p_encoder_params);
 
 int32_t ni_get_frame_index(uint32_t* value);
-void ni_populate_device_capability_struct(ni_device_capability_t* p_cap, void * p_data);
+void ni_populate_device_capability_struct(ni_device_capability_t* p_cap, void * p_data,
+                                ni_device_handle_t device_handle, bool device_in_ctxt);
 
 int ni_xcoder_session_query(ni_session_context_t *p_ctx,
                             ni_device_type_t device_type);

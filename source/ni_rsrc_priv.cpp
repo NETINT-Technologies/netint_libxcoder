@@ -36,11 +36,17 @@
 #include <setjmp.h>
 
 #if __linux__ || __APPLE__
+#ifdef __OPENHARMONY__
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#endif
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <limits.h>
 #endif
 
 #if __APPLE__
@@ -86,7 +92,7 @@ ni_retcode_t ni_rsrc_fill_device_info(ni_device_info_t* p_device_info, ni_codec_
         LRETURN;
     }
 
-    ni_log(NI_LOG_INFO, "%s type %d fmt %d\n", __func__, type, fmt);
+    ni_log(NI_LOG_DEBUG, "%s type %d fmt %d\n", __func__, type, fmt);
 
     for (i = 0; i < EN_CODEC_MAX; i++)
     {
@@ -273,78 +279,11 @@ void ni_rsrc_get_shm_name(ni_device_type_t device_type, int32_t guid, char* p_na
     }
 }
 
-/*!*****************************************************************************
- *  \brief Check if a FW_rev retrieved from card is supported by this version of
- *         libxcoder.
- *
- *  \param[in] fw_rev FW revision queried from card firmware
- *
- *  \return If FW is fully compatible return 1
- *          If FW not compatible return 0
- *          If FW is partially compatible return 2
- ******************************************************************************/
-int ni_is_fw_compatible(uint8_t fw_rev[8])
-{
-    if ((uint8_t)fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX] ==
-        (uint8_t)NI_XCODER_REVISION[NI_XCODER_REVISION_API_MAJOR_VER_IDX])
-    {
-        if (ni_cmp_fw_api_ver((char*) &fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
-                              &NI_XCODER_REVISION[NI_XCODER_REVISION_API_MAJOR_VER_IDX]))
-        {
-            return 2;
-        } else
-        {
-            return 1;
-        }
-    } else
-    {
-        return 0;
-    }
-}
-
-static bool check_device_capability(const ni_device_handle_t device_handle,
-                                    ni_device_capability_t *device_capability,
-                                    const char *device_name,
-                                    const int should_match_rev,
-                                    int *compatibility)
-{
-    ni_retcode_t retcode;
-
-    memset(device_capability, 0, sizeof(ni_device_capability_t));
-    retcode = ni_device_capability_query(device_handle, device_capability);
-    if (retcode != NI_RETCODE_SUCCESS)
-    {
-        ni_log(NI_LOG_ERROR,
-               "Capability query failed for %s! Skipping...\n",
-               device_name);
-        return false;
-    }
-    if (!is_supported_xcoder(device_capability->device_is_xcoder))
-    {
-        ni_log(NI_LOG_INFO,
-               "%s not supported! Skipping...\n",
-               device_name);
-        return false;
-    }
-    *compatibility = ni_is_fw_compatible(device_capability->fw_rev);
-    if (should_match_rev && !(*compatibility))
-    {
-        ni_log(NI_LOG_INFO,
-               "%s with FW revision %.*s not compatible! Skipping...\n",
-               device_name,
-               (int)sizeof(device_capability->fw_rev),
-               device_capability->fw_rev);
-        return false;
-    }
-
-    return true;
-}
-
 static void fill_device_info(ni_device_info_t *device_info,
                              const int module_id,
                              const ni_device_handle_t device_handle,
                              const char device_name[NI_MAX_DEVICE_NAME_LEN],
-                             const int compatibility,
+                             const int fw_ver_compat_warning,
                              ni_device_capability_t *device_capability,
                              const ni_device_type_t device_type)
 {
@@ -356,7 +295,7 @@ static void fill_device_info(ni_device_info_t *device_info,
     strncpy(device_info->blk_name, device_name, (MAX_CHAR_IN_DEVICE_NAME-1));
     device_info->hw_id = hw_capability->hw_id;
     device_info->module_id = module_id;
-    device_info->fw_ver_compat_warning = (compatibility == 2);
+    device_info->fw_ver_compat_warning = fw_ver_compat_warning;
 
     memcpy(device_info->fw_rev,
            device_capability->fw_rev,
@@ -471,12 +410,12 @@ bool add_to_shared_memory(const char device_name[NI_MAX_DEVICE_NAME_LEN],
                           const int should_match_rev,
                           ni_device_queue_t *device_queue)
 {
-    int compatibility;
     int32_t guid;
-    int i, j;
+    int i, j, fw_compat_cmp;
     uint32_t max_io_size;
+    char fw_api_ver_str[5];
 
-    ni_device_capability_t device_capability;
+    ni_device_capability_t device_capability = {0};
     ni_device_handle_t device_handle;
     ni_device_info_t device_info = {0};
     bool success = true;
@@ -496,26 +435,31 @@ bool add_to_shared_memory(const char device_name[NI_MAX_DEVICE_NAME_LEN],
         return true;
     }
 
-    if (!check_device_capability(device_handle,
-                                 &device_capability,
-                                 device_name,
-                                 should_match_rev,
-                                 &compatibility))
+    if (ni_device_capability_query2(device_handle, &device_capability, false) != NI_RETCODE_SUCCESS)
     {
+        ni_log(NI_LOG_INFO, "Skipping %s init: unable to query capability\n",
+               device_name);
         LRETURN;
     }
-
-    if (compatibility == 2)
+    if (!is_supported_xcoder(device_capability.device_is_xcoder))
+    {
+        ni_log(NI_LOG_INFO, "Skipping %s init: model not supported\n", device_name);
+        LRETURN;
+    }
+    ni_fmt_fw_api_ver_str((char*) &device_capability.fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+                          &fw_api_ver_str[0]);
+    if (should_match_rev && \
+        ((uint8_t) device_capability.fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX] != \
+         (uint8_t) NI_XCODER_REVISION[NI_XCODER_REVISION_API_MAJOR_VER_IDX]))
     {
         ni_log(NI_LOG_INFO,
-               "WARNING: %s with FW revision %.*s is below the minimum "
-               "supported version of this SW revision. Some features "
-               "may be missing!\n",
+               "Skipping %s init: device FW v%s incompatible with this version of Libxcoder\n",
                device_name,
-               (int)sizeof(device_capability.fw_rev),
-               device_capability.fw_rev);
+               fw_api_ver_str);
+        LRETURN;
     }
-
+    fw_compat_cmp = ni_cmp_fw_api_ver((char*) &device_capability.fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+                                      (char*) &NI_XCODER_REVISION[NI_XCODER_REVISION_API_MAJOR_VER_IDX]);
 
     for (i = NI_DEVICE_TYPE_DECODER; i < NI_DEVICE_TYPE_XCODER_MAX; i++)
     {
@@ -532,10 +476,9 @@ bool add_to_shared_memory(const char device_name[NI_MAX_DEVICE_NAME_LEN],
         guid = j ? device_queue->xcoders[i][j-1] + 1 : 0;
         if (guid >= NI_MAX_DEVICE_CNT && !find_available_guid(device_queue, i, &guid))
         {
-            ni_log(NI_LOG_ERROR,
-                   "ERROR: %s(): Failed to add %s: too many devices\n",
-                   __FUNCTION__,
-                   device_name);
+            ni_log(NI_LOG_ERROR, "ERROR: %s(): Skipping %s init: number of "
+                   "initialized devices exceeds %d\n", __FUNCTION__,
+                   device_name, NI_MAX_DEVICE_CNT);
             success = false;
             LRETURN;
         }
@@ -546,11 +489,23 @@ bool add_to_shared_memory(const char device_name[NI_MAX_DEVICE_NAME_LEN],
                          guid,
                          device_handle,
                          device_name,
-                         compatibility,
+                         (should_match_rev && fw_compat_cmp) ? 1 : 0,
                          &device_capability,
                          (ni_device_type_t)i);
 
         ni_rsrc_get_one_device_info(&device_info);
+    }
+
+    if (fw_compat_cmp < 0) {
+        ni_log(NI_LOG_INFO, "Initialized %s with FW API v%s that is older than "
+               "Libxcoder supported FW API version\n", device_name,
+               fw_api_ver_str);
+    } else if (fw_compat_cmp > 0) {
+        ni_log(NI_LOG_INFO, "Initialized %s with FW API v%s that is newer than "
+               "Libxcoder supported FW API version\n", device_name,
+               fw_api_ver_str);
+    } else {
+        ni_log(NI_LOG_INFO, "Initialized %s\n", device_name, fw_api_ver_str);
     }
 
 END:
@@ -558,102 +513,6 @@ END:
 
     return success;
 }
-
-#ifdef _ANDROID
-/*!*****************************************************************************
- *  \brief Open file and create file descriptor for mmap in android
- *
- *  \param[out] fd file descriptor
- * 
- *  \param[in] path file path
- * 
- *  \param[in] flag only O_CREAT and O_EXCL now, other flags will be ignored
- * 
- *  \param[in] size set the size of file (do not use ftruncate after the file descriptor is created in android)
- * 
- *  \return If flag is O_CREAT|O_EXCL and file already exist return -17
- *          If get one descriptor return 0
- *          If can not get one file descriptor return -1
- ******************************************************************************/
-static int android_open_shm_file(int &fd, const char *path, int flag, size_t size)
-{
-    int ret = ni_rsrc_android_init();
-    if (service == NULL)
-    {
-        ni_log(NI_LOG_ERROR, "ni_rsrc_get_device_pool Error service ..\n");
-        return -1;
-    }
-
-    string param(path);
-
-    Return<void> retvalue =
-        service->GetAppFlag(param, [&](int32_t ret, const hidl_handle &handle) {
-            ni_log(NI_LOG_INFO, "GetAppFlag: ret %d\n", ret);
-            if (ret > 0)
-            {
-                fd = dup(handle->data[0]);
-                ni_log(NI_LOG_INFO, "vendor:GetAppFlag fd:%d\n", fd);
-            } else
-            {
-                ni_log(NI_LOG_ERROR, "Error %d: get fd ..\n", NI_ERRNO);
-                fd = -1;
-                
-            }
-        });
-
-    if (!retvalue.isOk())
-    {
-        ni_log(NI_LOG_ERROR, "service->GetAppFlag ret failed ..\n");
-        fd = -1;
-        return -1;
-    }
-
-    if(fd != -1)
-    {
-        if(flag & O_CREAT && flag & O_EXCL)
-        {
-            //when O_CREAT|O_EXCL and fd already exist, shm_open() will set errno = 17 and return -1
-            //fd = -1;//do not set fd to -1 as shm_open(),return the existing fd and set the return value to -17
-            return -17;
-        }
-        else
-        {
-            return 0;
-        }
-    }
-    else if(flag & O_CREAT)
-    {
-        int shm_fd = ashmem_create_region(path, size);
-        if(shm_fd >= 0)
-        {
-            native_handle_t *handle = native_handle_create(1, 0);
-            handle->data[0] = shm_fd;
-            hidl_handle this_hidl_handle;
-            this_hidl_handle.setTo(handle, true);
-            service->SetAppFlag(param, this_hidl_handle);
-            fd = dup(handle->data[0]);
-            if(fd == -1)
-            {
-                ni_log(NI_LOG_ERROR, "shm_fd %d was created but dup failed. errno:%s\n", handle->data[0], strerror(errno));
-                return -1;
-            }
-        }
-        else
-        {
-            ni_log(NI_LOG_ERROR, "Could not create shm fd\n");
-            fd = -1;
-            return -1;
-        }
-    }
-    else
-    {
-        ni_log(NI_LOG_ERROR, "%s does not exist and O_CREAT was not set", path);
-        fd = -1;
-        return -1;
-    }
-    return 0;
-}
-#endif
 
 #ifdef _WIN32
 
@@ -696,7 +555,7 @@ void ni_rsrc_get_one_device_info(ni_device_info_t* p_device_info)
 
   ni_rsrc_get_shm_name(p_device_info->device_type, p_device_info->module_id, shm_name, sizeof(shm_name));
   ni_rsrc_get_lock_name(p_device_info->device_type, p_device_info->module_id, lck_name, sizeof(lck_name));
-  ni_log(NI_LOG_INFO, "Creating shm_name: %s\n", shm_name);
+  ni_log(NI_LOG_DEBUG, "%s(): shm_name %s, lck_name %s\n", __func__, shm_name, lck_name);
 
   //Create a mutex for protecting the memory area
   mutex_handle = CreateMutex(NULL,        // default security attributes
@@ -927,141 +786,6 @@ int ni_rsrc_init_priv(const int should_match_rev,
 
 #elif __linux__ || __APPLE__
 
-static ni_retcode_t create_or_read_shm(int &shm_fd,
-                                       int *oflag,
-                                       const mode_t mode)
-{
-    *oflag = O_CREAT | O_EXCL | O_RDWR;
-#ifdef _ANDROID
-    int android_open_shm_file_ret = android_open_shm_file(shm_fd, CODERS_SHM_NAME, *oflag, sizeof(ni_device_queue_t));
-    if(android_open_shm_file_ret == -17)/* EEXIST */
-    {
-        *oflag = O_RDWR;
-        ni_log(NI_LOG_INFO, "%s exists\n", CODERS_SHM_NAME);
-    }
-    else if(android_open_shm_file_ret == -1)
-    {
-        ni_log(NI_LOG_ERROR, "failed to open file: %s\n", CODERS_SHM_NAME);
-        return NI_RETCODE_FAILURE;
-    }
-#else
-    shm_fd = shm_open(CODERS_SHM_NAME, *oflag, mode);
-    while (shm_fd == -1)
-    {
-        if (NI_ERRNO == 17 /* EEXIST */)
-        {
-            ni_log(NI_LOG_INFO, "%s exists\n", CODERS_SHM_NAME);
-            *oflag = O_RDWR;
-            shm_fd = shm_open(CODERS_SHM_NAME, *oflag, mode);
-        }
-        else
-        {
-           ni_log(NI_LOG_ERROR,
-                  "ERROR: %s(): shm_open failed for %s: %s\n",
-                  __func__,
-                  CODERS_SHM_NAME,
-                  strerror(NI_ERRNO));
-           return NI_RETCODE_FAILURE;
-        }
-    }
-#endif
-
-    if (*oflag == O_RDWR)
-    {
-        ni_log(NI_LOG_INFO, "checking correctness of %s\n", CODERS_SHM_NAME);
-    }
-
-#ifndef _ANDROID
-    else
-    {
-        if (ftruncate(shm_fd, sizeof(ni_device_queue_t)) == -1)
-        {
-           ni_log(NI_LOG_ERROR,
-                  "ERROR: %s(): ftruncate for %s: %s\n",
-                  __func__,
-                  CODERS_SHM_NAME,
-                  strerror(NI_ERRNO));
-           shm_unlink(CODERS_SHM_NAME);
-           return NI_RETCODE_FAILURE;
-        }
-        ni_log(NI_LOG_INFO, "%s created\n", CODERS_SHM_NAME);
-    }
-#endif
-
-    return NI_RETCODE_SUCCESS;
-}
-
-static ni_retcode_t get_lock(int *lck_fd, const mode_t mode)
-{
-    int lockf_obtained, flags, xcoder_lck_fd;
-    unsigned int i;
-
-    flags = O_RDWR|O_CREAT|O_CLOEXEC;
-
-#ifdef _ANDROID
-    if (0 != access(LOCK_DIR, 0))
-    {
-        if (0 != mkdir(LOCK_DIR, 777))
-        {
-            ni_log(NI_LOG_ERROR, "ERROR: Could not create the %s directory",
-                    LOCK_DIR);
-            return NI_RETCODE_FAILURE;
-        }
-    }
-#endif
-
-    *lck_fd = open(CODERS_LCK_NAME, flags, mode);
-    if (*lck_fd == -1)
-    {
-        ni_log(NI_LOG_ERROR,
-               "ERROR: %s(): open failed for %s: %s\n",
-               __func__,
-               CODERS_LCK_NAME,
-               strerror(NI_ERRNO));
-        return NI_RETCODE_FAILURE;
-    }
-
-    lockf_obtained = 0;
-    for (i = 0; i < 500 && !lockf_obtained; i++)
-    {
-        if (!lockf(*lck_fd, F_TLOCK, 0))
-        {
-            lockf_obtained = 1;
-        }
-        else
-        {
-            ni_usleep(10000); /* 10 milliseconds */
-        }
-    }
-
-    if (!lockf_obtained)
-    {
-        ni_log(NI_LOG_ERROR,
-               "ERROR: %s(): lock failed for %s: %s\n",
-               __func__,
-               CODERS_LCK_NAME,
-               strerror(NI_ERRNO));
-        return NI_RETCODE_FAILURE;
-    }
-
-    for (i = NI_DEVICE_TYPE_DECODER; i < NI_DEVICE_TYPE_XCODER_MAX; i++)
-    {
-        xcoder_lck_fd = open(XCODERS_RETRY_LCK_NAME[i], flags, mode);
-        if (xcoder_lck_fd == -1)
-        {
-            ni_log(NI_LOG_ERROR,
-                   "ERROR: %s(): open failed for %s: %s\n",
-                   __func__,
-                   XCODERS_RETRY_LCK_NAME[i],
-                   strerror(NI_ERRNO));
-            return NI_RETCODE_FAILURE;
-        }
-        close(xcoder_lck_fd);
-    }
-
-    return NI_RETCODE_SUCCESS;
-}
-
 /**
  * @brief This function is used to check if the existing device queue matches the expectation.
 */
@@ -1070,7 +794,6 @@ static bool check_correctness_count(const ni_device_queue_t *existing_device_que
                                     const int existing_number_of_devices,
                                     const char device_names[NI_MAX_DEVICE_CNT][NI_MAX_DEVICE_NAME_LEN])
 {
-    int compatibility;
     uint32_t max_io_size;
     int i, j, k;
 
@@ -1089,11 +812,12 @@ static bool check_correctness_count(const ni_device_queue_t *existing_device_que
             continue;
         }
 
-        if (!check_device_capability(device_handle,
-                                     &device_capability,
-                                     device_names[i],
-                                     should_match_rev,
-                                     &compatibility))
+        memset(&device_capability, 0, sizeof(ni_device_capability_t));
+        if (ni_device_capability_query2(device_handle, &device_capability, false) != NI_RETCODE_SUCCESS || \
+            !is_supported_xcoder(device_capability.device_is_xcoder) ||
+            (should_match_rev && \
+             ((uint8_t) device_capability.fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX] != \
+              (uint8_t) NI_XCODER_REVISION[NI_XCODER_REVISION_API_MAJOR_VER_IDX])))
         {
             goto NEXT;
         }
@@ -1132,9 +856,10 @@ NEXT:
             continue;
         }
         ni_log(NI_LOG_ERROR,
-               "WARNING: %s(): Discovered blocks %u != Existing blocks %u\n",
+               "WARNING: %s(): Discovered %u %s, expected %u\n",
                __func__,
                device_queue.xcoder_cnt[i],
+               GET_XCODER_DEVICE_TYPE_STR(i),
                existing_device_queue->xcoder_cnt[i]);
         return false;
     }
@@ -1274,105 +999,36 @@ end:
     return result;
 }
 
-static void delete_shm(void)
-{
-#ifdef _ANDROID
-    /*! return if init has already been done */
-    int ret = ni_rsrc_android_init();
-    if (service == NULL)
-    {
-        ni_log(NI_LOG_ERROR, "ni_rsrc_get_device_pool Error service ..\n");
-        return;
-    }
-
-    Return<void> retvalue = service->RemoveAllAppFlags();
-
-    if (!retvalue.isOk())
-    {
-        ni_log(NI_LOG_ERROR, "service->RemoveAllAppFlags ret failed ..\n");
-        return;
-    }
-#else
-    DIR *dir;
-    struct dirent *dirent;
-    char path_to_remove[PATH_MAX];
-
-    ni_log(NI_LOG_ERROR, "Deleting shared memory files in %s\n", LOCK_DIR);
-
-    dir = opendir(LOCK_DIR);
-    if (!dir)
-    {
-        ni_log(NI_LOG_ERROR,
-               "ERROR: %s(): opendir failed for %s: %s\n",
-               __func__,
-               LOCK_DIR,
-               strerror(NI_ERRNO));
-        return;
-    }
-
-    while ((dirent = readdir(dir)) != NULL)
-    {
-        if (strncmp(dirent->d_name, "NI_", 3) != 0)
-        {
-            continue;
-        }
-        snprintf(path_to_remove, PATH_MAX, "%s/%s", LOCK_DIR, dirent->d_name);
-        remove(path_to_remove);
-    }
-
-    if (closedir(dir) == -1)
-    {
-        ni_log(NI_LOG_ERROR,
-               "ERROR: %s(): closedir failed for %s: %s\n",
-               __func__,
-               LOCK_DIR,
-               strerror(NI_ERRNO));
-        return;
-    }
-#endif
-    ni_log(NI_LOG_INFO, "Deleted shared memory files in %s\n", LOCK_DIR);
-}
-
 int ni_rsrc_init_priv(const int should_match_rev,
                       const int existing_number_of_devices,
                       const char existing_device_names[NI_MAX_DEVICE_CNT][NI_MAX_DEVICE_NAME_LEN],
                       int limit_depth)
 {
-    const mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP;
-
     int return_value = 0;
     int lck_fd = -1;
     int shm_fd = -1;
-    int shm_flag;
+    ni_rsrc_shm_state state = NI_RSRC_SHM_IS_INVALID;
+    int flags = O_CREAT | O_RDWR | O_CLOEXEC;
+    mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP;
     ni_device_queue_t *p_device_queue = NULL;
 
-    if ((create_or_read_shm(shm_fd, &shm_flag, mode) != NI_RETCODE_SUCCESS) ||
-        (get_lock(&lck_fd, mode) != NI_RETCODE_SUCCESS))
-    {
+    if ((ni_rsrc_try_get_shm_lock(CODERS_LCK_NAME, flags, mode, &lck_fd) < 0) ||
+        (ni_rsrc_open_shm(CODERS_SHM_NAME, sizeof(ni_device_queue_t), &state, &shm_fd) < 0)) {
         return_value = 1;
         LRETURN;
     }
 
-    p_device_queue = (ni_device_queue_t *)mmap(0,
-                                               sizeof(ni_device_queue_t),
-                                               PROT_READ | PROT_WRITE,
-                                               MAP_SHARED,
-                                               shm_fd,
-                                               0);
-    if (p_device_queue == MAP_FAILED)
-    {
-        ni_log(NI_LOG_ERROR,
-               "ERROR: %s(): mmap failed: %s\n",
-               __func__,
-               strerror(NI_ERRNO));
+    if ((ni_rsrc_mmap_shm(CODERS_SHM_NAME,
+                          shm_fd,
+                          sizeof(ni_device_queue_t),
+                          (void **)&p_device_queue)) < 0) {
+        ni_log(NI_LOG_ERROR, "%s(): Failed to ni_rsrc_mmap_shm\n", __func__);
         return_value = 1;
         LRETURN;
-    } else {
-        ni_log(NI_LOG_DEBUG, "in %s do mmap for %s\n", __func__, CODERS_SHM_NAME);
     }
 
-    if (shm_flag == O_RDWR)
-    {
+    //share momery exist
+    if (NI_RSRC_SHM_IS_EXISTED == state) {
         if (check_correctness(p_device_queue,
                               should_match_rev,
                               existing_number_of_devices,
@@ -1381,12 +1037,20 @@ int ni_rsrc_init_priv(const int should_match_rev,
             LRETURN;
         }
 
-        munmap(p_device_queue, sizeof(ni_device_queue_t));
+        ni_rsrc_munmap_shm((void *)p_device_queue, sizeof(ni_device_queue_t));
         ni_log(NI_LOG_DEBUG, "in %s do munmap for %s, shm_flag is O_RDWR\n", __func__, CODERS_SHM_NAME);
-        lockf(lck_fd, F_ULOCK, 0);
+
+        if (lockf(lck_fd, F_ULOCK, 0) < 0) {
+          ni_log(NI_LOG_ERROR, "%s(): Failed to unlock lck_fd for %s\n", __func__, CODERS_SHM_NAME);
+        }
+
         close(lck_fd);
+
+#ifndef __OPENHARMONY__
         close(shm_fd);
-        delete_shm();
+#endif
+        ni_rsrc_remove_all_shm();
+
         if (limit_depth <= 0)
         {
             return 1;
@@ -1404,20 +1068,24 @@ int ni_rsrc_init_priv(const int should_match_rev,
 
 end:
     if (p_device_queue && p_device_queue != MAP_FAILED) {
-        munmap(p_device_queue, sizeof(ni_device_queue_t));
+        ni_rsrc_munmap_shm((void *)p_device_queue, sizeof(ni_device_queue_t));
         p_device_queue = NULL;
         ni_log(NI_LOG_DEBUG, "in %s do munmap for %s\n", __func__, CODERS_SHM_NAME);
     }
 
     if (lck_fd != -1) {
-      lockf(lck_fd, F_ULOCK, 0);
+      if (lockf(lck_fd, F_ULOCK, 0) < 0) {
+        ni_log(NI_LOG_ERROR, "Will exit from %s(), but failed to unlock lck_fd for %s\n", __func__, CODERS_SHM_NAME);
+      }
+
       close(lck_fd);
     }
 
-    if (shm_fd >= 0)
-    {
+#ifndef __OPENHARMONY__
+    if (shm_fd >= 0) {
         close(shm_fd);
     }
+#endif
 
     return return_value;
 }
@@ -1432,171 +1100,73 @@ end:
 void ni_rsrc_get_one_device_info (ni_device_info_t * p_device_info)
 {
   int32_t shm_fd = -1;
+  ni_rsrc_shm_state state = NI_RSRC_SHM_IS_INVALID;
+  int32_t lock = -1;
+  int flags = O_CREAT | O_RDWR | O_CLOEXEC;
+  mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP;
   char shm_name[32] = { 0 };
   char lck_name[32] = { 0 };
-  int32_t lock = -1;
-  bool skip_ftruncate = false;
   ni_device_info_t * p_coder_info_dst = NULL;
 
-  if( !p_device_info )
-  {
+  if(! p_device_info) {
     return;
   }
 
   ni_rsrc_get_shm_name(p_device_info->device_type, p_device_info->module_id, shm_name, sizeof(shm_name));
   ni_rsrc_get_lock_name(p_device_info->device_type, p_device_info->module_id, lck_name, sizeof(lck_name));
 
-  ni_log(NI_LOG_INFO, "shm_name: %s, lck_name %s\n", shm_name, lck_name);
+  ni_log(NI_LOG_DEBUG, "%s(): shm_name %s, lck_name %s\n", __func__, shm_name, lck_name);
 
-#ifdef _ANDROID
-  lock =
-      open(lck_name, O_CREAT | O_RDWR | O_CLOEXEC, S_IRWXU | S_IRWXG | S_IRWXO);
-#else
-  lock =
-      open(lck_name, O_CREAT | O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
-#endif
-
-  if (lock < 1)
-  {
-    ni_log(NI_LOG_ERROR, "ERROR: %s() open() %s: %s\n", __func__, lck_name,
-           strerror(NI_ERRNO));
-    return;
+  if (ni_rsrc_try_get_shm_lock(lck_name, flags, mode, (int *)&lock) < 0) {
+    ni_log(NI_LOG_ERROR, "%s: Failed to get lock\n", __func__);
+    return ;
   }
 
-  int retry_cnt = 0;
-  //use non blocking F_TLOCK in case broken instance has indefinitely locked it
-  while (lockf(lock, F_TLOCK, 0) != 0)
-  {
-    retry_cnt++;
-    ni_usleep(LOCK_WAIT);    //10ms
-    if (retry_cnt >= 900)   //10s
-    {
-      ni_log(NI_LOG_ERROR, "ERROR %s() lockf() %s: %s\n", __func__, lck_name, strerror(NI_ERRNO));
-      ni_log(NI_LOG_ERROR, "ERROR %s() If persists, stop traffic and run rm /dev/shm/NI_*\n", __func__);
-      close(lock);
-      return ;
-    }
-  }
-
-#ifdef _ANDROID
-  int ret = ni_rsrc_android_init();
-
-  if (service == NULL)
-  {
-      ni_log(NI_LOG_ERROR, "ni_rsrc_get_one_device_info Error service ..");
-      return;
-  }
-  string param = shm_name;
-  Return<void> retvalue =
-      service->GetAppFlag(param, [&](int32_t ret, hidl_handle handle) {
-          ni_log(NI_LOG_INFO, "GetAppFlag: ret %d\n", ret);
-          if (ret > 0)
-          {
-              shm_fd = dup(handle->data[0]);
-              ni_log(NI_LOG_INFO, "vendor:GetAppFlag shm_fd:%d\n", shm_fd);
-          } else
-          {
-              ni_log(NI_LOG_ERROR, "Error %d: shm_get shm_fd ..\n",
-                     NI_ERRNO);
-          }
-      });
-
-  if (!retvalue.isOk())
-  {
-      ni_log(NI_LOG_ERROR, "service->GetAppFlag ret failed ..\n");
-      LRETURN;
-  }
-  if (shm_fd < 0)
-  {
-      int fd = ashmem_create_region(shm_name, sizeof(ni_device_info_t));
-      if (fd >= 0)
-      {
-          native_handle_t *handle = native_handle_create(1, 0);
-          handle->data[0] = fd;
-          service->SetAppFlag(param, handle);
-          shm_fd = dup(fd);
-          ni_log(NI_LOG_ERROR, "Create shm fd %d\n", shm_fd);
-      }
-  }
-#else
-  shm_fd = shm_open(shm_name,
-                    O_CREAT | O_RDWR | O_EXCL,
-                    S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
-  if (shm_fd == -1)
-  {
-    if (NI_ERRNO == 17 /* EEXIST */)
-    {
-      skip_ftruncate = true;
-      shm_fd = shm_open(shm_name,
-                        O_RDWR,
-                        S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
-    }
-    else
-    {
-      ni_log(NI_LOG_ERROR,
-             "ERROR %s() shm_open() CODERS_SHM_NAME: %s\n",
-             __func__,
-             strerror(NI_ERRNO));
-      LRETURN;
-    }
-  }
-#endif
-
-  if (shm_fd < 0)
-  {
-    ni_log(NI_LOG_ERROR, "ERROR %s() shm_open() %s: %s\n",
-           __func__, shm_name, strerror(NI_ERRNO));
+  if (ni_rsrc_open_shm(shm_name,
+                       sizeof(ni_device_info_t),
+                       &state,
+                       (int *)&shm_fd) < 0) {
+    ni_log(NI_LOG_ERROR, "%s: Failed to ni_rsrc_open_shm\n", __func__);
     LRETURN;
   }
 
-#ifndef _ANDROID
-  /*! configure the size to ni_device_info_t */
-  if (!skip_ftruncate && ftruncate(shm_fd, sizeof(ni_device_info_t)) < 0)
-  {
-    ni_log(NI_LOG_ERROR, "ERROR %s() ftruncate() shm_fd: %s\n", __func__,
-           strerror(NI_ERRNO));
+  if ((ni_rsrc_mmap_shm(shm_name,
+                        (int)shm_fd,
+                        sizeof(ni_device_info_t),
+                        (void **)&p_coder_info_dst)) < 0) {
+    ni_log(NI_LOG_ERROR, "%s(): Failed to ni_rsrc_mmap_shm\n", __func__);
     LRETURN;
-  }
-#endif
-
-  /*! map the shared memory segment */
-  p_coder_info_dst = (ni_device_info_t *)mmap(0, sizeof(ni_device_info_t), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
-  if (MAP_FAILED == p_coder_info_dst)
-  {
-      ni_log(NI_LOG_ERROR, "ERROR %s() mmap() p_coder_info_dst: %s\n", __func__,
-             strerror(NI_ERRNO));
-      LRETURN;
-  } else {
-      ni_log(NI_LOG_DEBUG, "in %s do mmap for %s\n", __func__, shm_name);
   }
 
   memcpy(p_coder_info_dst, p_device_info, sizeof(ni_device_info_t));
 
-  if (msync((void*)p_coder_info_dst, sizeof(ni_device_info_t), MS_SYNC | MS_INVALIDATE))
-  {
+#ifndef __OPENHARMONY__
+  if (msync((void*)p_coder_info_dst, sizeof(ni_device_info_t), MS_SYNC | MS_INVALIDATE)) {
       ni_log(NI_LOG_ERROR, "ERROR %s() msync() p_coder_info_dst: %s\n",
              __func__, strerror(NI_ERRNO));
+  } else {
+    ni_log(NI_LOG_DEBUG, "%s(): written out\n", __func__);
   }
-  else
-  {
-    ni_log(NI_LOG_INFO, "ni_rsrc_get_one_device_info written out.\n");
-  }
+#endif
 
 END:
   if (p_coder_info_dst && p_coder_info_dst != MAP_FAILED) {
-    munmap(p_coder_info_dst, sizeof(ni_device_info_t));
+    ni_rsrc_munmap_shm((void *)p_coder_info_dst, sizeof(ni_device_info_t));
     p_coder_info_dst = NULL;
     ni_log(NI_LOG_DEBUG, "in %s do munmap for %s\n", __func__, shm_name);
   }
 
-  if (shm_fd >= 0)
-  {
+#ifndef __OPENHARMONY__
+  if (shm_fd >= 0) {
     close(shm_fd);
   }
+#endif
 
-  lockf(lock, F_ULOCK, 0);
-  if (lock >= 0)
-  {
+  if (lockf(lock, F_ULOCK, 0) < 0) {
+    ni_log(NI_LOG_ERROR, "Will exit from %s(), but failed to unlock lck_fd for %s\n", __func__, shm_name);
+  }
+
+  if (lock >= 0) {
       close(lock);
   }
 }
@@ -1729,6 +1299,506 @@ void get_dev_pcie_addr(char *device_name,
 end:
   return;
 #endif
+}
+
+/*!******************************************************************************
+ *  \brief   try to get lock for specified shared memory
+ *
+ *  \param[in] const char *lck_name, specified lock name for shared memory
+ *  \param[in] int flags, open lock with specified flags
+ *  \param[in] const mode_t mode, open lock with specified mode
+ *  \param[out] int *lck_fd, Pointer to opened file handle for lock
+ *
+ *  \return On success
+ *                     NI_RETCODE_SUCCESS
+ *          On failure
+ *                     NI_RETCODE_INVALID_PARAM
+ *                     NI_RETCODE_FAILURE
+ *******************************************************************************/
+ni_retcode_t ni_rsrc_try_get_shm_lock(const char *lck_name,
+                                      int flags,
+                                      const mode_t mode,
+                                      int *lck_fd)
+{
+  int lock = -1;
+
+  if (!lck_name || !lck_fd) {
+    ni_log(NI_LOG_ERROR, "ERROR: %s() input params is invalid\n", __func__);
+    return NI_RETCODE_INVALID_PARAM;
+  }
+
+#ifdef _ANDROID
+  if (0 != access(LOCK_DIR, F_OK)) {
+    if (0 != mkdir(LOCK_DIR, S_IRWXU | S_IRWXG | S_IRWXO)) {
+      ni_log(NI_LOG_ERROR, "ERROR: Could not mkdir : %s directory", LOCK_DIR);
+      return NI_RETCODE_FAILURE;
+    }
+  }
+#endif
+
+  lock = open(lck_name, flags, mode);
+  if (lock < 0) {
+    ni_log(NI_LOG_ERROR, "ERROR: %s() open() %s fail: %s\n",
+        __func__, lck_name, strerror(NI_ERRNO));
+    return NI_RETCODE_FAILURE;
+  }
+
+  int retry_cnt = 0;
+  //use non blocking F_TLOCK in case broken instance has indefinitely locked it
+  while (lockf(lock, F_TLOCK, 0) != 0)
+  {
+    retry_cnt++;
+    ni_usleep(LOCK_WAIT);    //10ms
+    if (retry_cnt >= 900)   //10s
+    {
+      ni_log(NI_LOG_ERROR, "ERROR %s() lockf() %s fail: %s\n", __func__, lck_name, strerror(NI_ERRNO));
+      ni_log(NI_LOG_ERROR, "ERROR %s() If persists, stop traffic and run rm /dev/shm/NI_*\n", __func__);
+      close(lock);
+      return NI_RETCODE_FAILURE;
+    }
+  }
+
+  *lck_fd = lock;
+
+  return NI_RETCODE_SUCCESS;
+}
+
+#if defined(__OPENHARMONY__)
+static ni_retcode_t openharmony_open_shm(const char *shm_name,
+                                         int shm_size,
+                                         ni_rsrc_shm_state *state,
+                                         int *shm_fd)
+{
+  int shm_id = -1;
+  int flag = IPC_CREAT | IPC_EXCL;
+  char shm_path[PATH_MAX];
+
+  if (!shm_name || !shm_fd) {
+    ni_log(NI_LOG_ERROR, "ERROR: %s() input params is invalid\n", __func__);
+    return NI_RETCODE_INVALID_PARAM;
+  }
+
+  memset(shm_path, 0, PATH_MAX);
+  snprintf(shm_path, PATH_MAX, "%s/%s", LOCK_DIR, shm_name);
+
+  //If file not exist, create the file for ftok
+  if (0 != access(shm_path, F_OK)) {
+    int fd = open(shm_path, O_RDWR | O_CREAT | O_CLOEXEC,
+                  S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+    if (fd < 0) {
+      ni_log(NI_LOG_ERROR, "ERROR: %s() open() %s fail: %s\n", __func__, shm_name, strerror(NI_ERRNO));
+      return NI_RETCODE_FAILURE;
+    }
+
+    close(fd);
+  }
+
+  //create unique key for share memory
+  key_t key = ftok(shm_path, PROJ_ID);
+  if (key == -1) {
+    ni_log(NI_LOG_ERROR, "ERROR: %s() ftok() fail: %s\n", __func__, strerror(NI_ERRNO));
+    return NI_RETCODE_FAILURE;
+  }
+
+  *state = NI_RSRC_SHM_IS_CREATED;
+
+  //create share memory
+  mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
+  shm_id = shmget(key, shm_size, mode | flag);
+  if (shm_id < 0) {
+    if (EEXIST == NI_ERRNO) {
+      *state = NI_RSRC_SHM_IS_EXISTED;
+      flag = IPC_CREAT;
+      shm_id = shmget(key, shm_size, mode | flag);
+    }
+
+    if (shm_id < 0) {
+      ni_log(NI_LOG_ERROR, "ERROR: %s() shmget() fail: %s\n", __func__, strerror(NI_ERRNO));
+      return NI_RETCODE_FAILURE;
+    }
+  }
+  *shm_fd = shm_id;
+
+  return NI_RETCODE_SUCCESS;
+}
+
+static ni_retcode_t openharmony_remove_shm(const char *shm_name,
+                                           int shm_size)
+{
+  int shm_id = -1;
+  char shm_path[PATH_MAX];
+
+  if (!shm_name) {
+    ni_log(NI_LOG_ERROR, "ERROR: %s() input params is invalid\n", __func__);
+    return NI_RETCODE_INVALID_PARAM;
+  }
+
+  memset(shm_path, 0, PATH_MAX);
+  snprintf(shm_path, PATH_MAX, "%s/%s", LOCK_DIR, shm_name);
+
+  //If file not exist, exit directly
+  if (0 != access(shm_path, F_OK)) {
+    return NI_RETCODE_SUCCESS;
+  }
+
+  //create unique key for share memory
+  key_t key = ftok(shm_path, PROJ_ID);
+  if (key == -1) {
+    ni_log(NI_LOG_ERROR, "ERROR: %s() ftok() fail: %s\n", __func__, strerror(NI_ERRNO));
+    return NI_RETCODE_FAILURE;
+  }
+
+  //create share memory
+  mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
+  shm_id = shmget(key, shm_size, mode);
+  if (shm_id < 0) {
+    ni_log(NI_LOG_ERROR, "ERROR: %s() shmget() fail: %s\n", __func__, strerror(NI_ERRNO));
+    return NI_RETCODE_FAILURE;
+  }
+
+  shmctl(shm_id, IPC_RMID, nullptr);
+
+  return NI_RETCODE_SUCCESS;
+}
+
+#elif defined(_ANDROID)
+static ni_retcode_t android_open_shm(const char *shm_name,
+                                     int shm_size,
+                                     ni_rsrc_shm_state *state,
+                                     int *shm_fd)
+{
+  int shm_fd_tmp = -1;
+
+  if (!shm_name || !shm_fd) {
+    ni_log(NI_LOG_ERROR, "ERROR: %s() input params is invalid\n", __func__);
+    return NI_RETCODE_INVALID_PARAM;
+  }
+
+  int ret = ni_rsrc_android_init();
+  if (ret < 0) {
+    ni_log(NI_LOG_ERROR, "ERROR: %s() failed to get android service\n", __func__);
+    return NI_RETCODE_FAILURE;
+  }
+
+  *state = NI_RSRC_SHM_IS_CREATED;
+
+  string param = shm_name;
+  Return<void> retvalue =
+      service->GetAppFlag(param, [&](int32_t ret, hidl_handle handle) {
+        if (ret > 0) {
+          *state = NI_RSRC_SHM_IS_EXISTED;
+          shm_fd_tmp = dup(handle->data[0]);
+        } else {
+          ni_log(NI_LOG_ERROR, "ERROR: failed to get shm_fd when call GetAppFlag\n");
+        }
+      });
+
+  if (!retvalue.isOk()) {
+    ni_log(NI_LOG_ERROR, "ERROR: %s() maybe something is wrong with Android service\n");
+    return NI_RETCODE_FAILURE;
+  }
+
+  if (shm_fd_tmp < 0) {
+    int fd = ashmem_create_region(shm_name, shm_size);
+    if (fd >= 0) {
+      native_handle_t *native_handle = native_handle_create(1, 0);
+      if (!native_handle) {
+        close(fd);
+        return NI_RETCODE_FAILURE;
+      }
+      native_handle->data[0] = fd;
+
+      hidl_handle handle;
+      handle.setTo(native_handle, true);
+      service->SetAppFlag(param, handle);
+      shm_fd_tmp = dup(fd);
+    } else {
+      ni_log(NI_LOG_ERROR, "Could not create ashmem under Android\n");
+      return NI_RETCODE_FAILURE;
+    }
+  }
+  *shm_fd = shm_fd_tmp;
+
+  return NI_RETCODE_SUCCESS;
+}
+
+static ni_retcode_t android_remove_shm(const char *shm_name,
+                                       int shm_size)
+{
+  if (!shm_name) {
+    ni_log(NI_LOG_ERROR, "ERROR: %s() input params is invalid\n", __func__);
+    return NI_RETCODE_INVALID_PARAM;
+  }
+
+  int ret = ni_rsrc_android_init();
+  if (ret < 0) {
+    ni_log(NI_LOG_ERROR, "ERROR: %s() failed to get android service\n", __func__);
+    return NI_RETCODE_FAILURE;
+  }
+
+  string param = shm_name;
+  Return<void> retvalue = service->RemoveAppFlag(param);
+  if (!retvalue.isOk()) {
+    ni_log(NI_LOG_ERROR, "ERROR: %s() failed to remove shm\n", __func__);
+    return NI_RETCODE_FAILURE;
+  }
+
+  return NI_RETCODE_SUCCESS;
+}
+
+static ni_retcode_t android_remove_all_shm()
+{
+  int ret = ni_rsrc_android_init();
+  if (ret < 0) {
+    ni_log(NI_LOG_ERROR, "ERROR: %s() failed to get android service\n", __func__);
+    return NI_RETCODE_FAILURE;
+  }
+
+  Return<void> retvalue = service->RemoveAllAppFlags();
+  if (!retvalue.isOk()) {
+    ni_log(NI_LOG_ERROR, "ERROR: %s() failed to remove all shm\n", __func__);
+    return NI_RETCODE_FAILURE;
+  }
+
+  return NI_RETCODE_SUCCESS;
+}
+
+#else
+static ni_retcode_t linux_open_shm(const char *shm_name,
+                                   int shm_size,
+                                   ni_rsrc_shm_state *state,
+                                   int *shm_fd)
+{
+  int shm_fd_tmp = -1;
+  const mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP;
+  int flag = O_CREAT | O_EXCL | O_RDWR;
+  bool skip_ftruncate = false;
+
+  if (!shm_name || !shm_fd) {
+    ni_log(NI_LOG_ERROR, "ERROR: %s() input params is invalid\n", __func__);
+    return NI_RETCODE_INVALID_PARAM;
+  }
+
+  *state = NI_RSRC_SHM_IS_CREATED;
+
+  //create share memory
+  shm_fd_tmp = shm_open(shm_name, flag, mode);
+  if (shm_fd_tmp < 0) {
+    if (EEXIST == NI_ERRNO) {
+      skip_ftruncate = true;
+      *state = NI_RSRC_SHM_IS_EXISTED;
+      flag = O_RDWR;
+      shm_fd_tmp = shm_open(shm_name, flag, mode);
+    }
+
+    if (shm_fd_tmp < 0) {
+      ni_log(NI_LOG_ERROR, "ERROR: %s() %s shm_open() fail: %s\n",
+         __func__, shm_name, strerror(NI_ERRNO));
+      return NI_RETCODE_FAILURE; 
+    }
+  }
+
+  //set share memory size
+  if (!skip_ftruncate && ftruncate(shm_fd_tmp, shm_size) < 0) {
+    close(shm_fd_tmp);
+    shm_unlink(shm_name);
+    return NI_RETCODE_FAILURE;
+  }
+
+  *shm_fd = shm_fd_tmp;
+
+  return NI_RETCODE_SUCCESS;
+}
+#endif
+
+/*!******************************************************************************
+ *  \brief    open shared memory for specified shm_name
+ *
+ *  \param[in] const char *shm_name, specified shared memory name
+ *  \param[in] int shm_size, the size of shared memory
+ *  \param[out] ni_rsrc_shm_state *state, Pointer to the shared memory's state
+ *              if the shared memor isn't created, it will be created at first and
+ *              then open it, param "state" will be set to 0
+ *              if the shared memor has been created yet, only open it,
+ *              param "state" will be set to 1
+ *  \param[out] int *shm_fd, Pointer to opened file handle for shared memory
+ *
+ *  \return On success
+ *                     NI_RETCODE_SUCCESS
+ *          On failure
+ *                     NI_RETCODE_INVALID_PARAM
+ *                     NI_RETCODE_FAILURE
+ *******************************************************************************/
+ni_retcode_t ni_rsrc_open_shm(const char *shm_name,
+                              int shm_size,
+                              ni_rsrc_shm_state *state,
+                              int *shm_fd)
+{
+#if defined(__OPENHARMONY__)
+  return openharmony_open_shm(shm_name, shm_size, state, shm_fd);
+#elif defined(_ANDROID)
+  return android_open_shm(shm_name, shm_size, state, shm_fd);
+#else
+  return linux_open_shm(shm_name, shm_size, state, shm_fd);
+#endif
+}
+
+/*!******************************************************************************
+ *  \brief   map shared memory to the address space of the calling process
+ *
+ *  \param[in] const char *shm_name, specified shared memory name
+ *  \param[in] int shm_fd, file handle for shared memory
+ *  \param[in] int shm_size, the size of shared memory
+ *  \param[out] int *shm_addr, pointer to the mapped area
+ *
+ *  \return On success
+ *                     NI_RETCODE_SUCCESS
+ *          On failure
+ *                     NI_RETCODE_INVALID_PARAM
+ *                     NI_RETCODE_FAILURE
+ *******************************************************************************/
+ni_retcode_t ni_rsrc_mmap_shm(const char *shm_name,
+                              int shm_fd,
+                              int shm_size,
+                              void **shm_addr)
+{
+  if (!shm_name || !shm_addr) {
+    ni_log(NI_LOG_ERROR, "ERROR: %s() input params is invalid\n", __func__);
+    return NI_RETCODE_INVALID_PARAM;
+  }
+
+#ifdef __OPENHARMONY__
+  *shm_addr = shmat(shm_fd, nullptr, 0);
+  if ((void *)(-1) == *shm_addr) {
+    ni_log(NI_LOG_ERROR, "%s(): %s shmat() fail: %s\n", __func__,
+           shm_name, strerror(NI_ERRNO));
+    return NI_RETCODE_FAILURE;
+  }
+#else
+  *shm_addr = mmap(0, shm_size, PROT_READ | PROT_WRITE,
+                   MAP_SHARED, shm_fd, 0);
+  if (MAP_FAILED == *shm_addr) {
+    ni_log(NI_LOG_ERROR, "%s(): %s mmap() fail: %s\n", __func__,
+           shm_name, strerror(NI_ERRNO));
+    return NI_RETCODE_FAILURE;
+  }
+#endif
+
+  return NI_RETCODE_SUCCESS;
+}
+
+/*!******************************************************************************
+ *  \brief   do munmap for shared memory
+ *
+ *  \param[in] int *shm_addr, pointer to the mapped area
+ *  \param[in] int shm_size, the size of shared memory
+ *
+ *  \return On success
+ *                     NI_RETCODE_SUCCESS
+ *          On failure
+ *                     NI_RETCODE_INVALID_PARAM
+ *******************************************************************************/
+ni_retcode_t ni_rsrc_munmap_shm(void *shm_addr,
+                                int shm_size)
+{
+  if (!shm_addr) {
+    ni_log(NI_LOG_ERROR, "ERROR: %s() input params is invalid\n", __func__);
+    return NI_RETCODE_INVALID_PARAM;
+  }
+
+#ifdef __OPENHARMONY__
+  shmdt(shm_addr);  
+#else
+  munmap(shm_addr, shm_size);
+#endif
+
+  return NI_RETCODE_SUCCESS;
+}
+
+/*!******************************************************************************
+ *  \brief   delete shared memory
+ *
+ *  \param[in] const char *shm_name, specified shared memory name
+ *  \param[in] int shm_size, the size of shared memory
+ *
+ *  \return On success
+ *                     NI_RETCODE_SUCCESS
+ *          On failure
+ *                     NI_RETCODE_INVALID_PARAM
+ *                     NI_RETCODE_FAILURE
+ *******************************************************************************/
+ni_retcode_t ni_rsrc_remove_shm(const char *shm_name,
+                                int shm_size)
+{
+#ifdef __OPENHARMONY__
+  return openharmony_remove_shm(shm_name, shm_size);
+#elif defined(_ANDROID)
+  return android_remove_shm(shm_name, shm_size);
+#else
+  shm_unlink(shm_name);
+#endif
+
+  return NI_RETCODE_SUCCESS;
+}
+
+/*!******************************************************************************
+ *  \brief   delete all shared memory
+ *
+ *
+ *  \return On success
+ *                     NI_RETCODE_SUCCESS
+ *          On failure
+ *                     NI_RETCODE_INVALID_PARAM
+ *                     NI_RETCODE_FAILURE
+ *******************************************************************************/
+ni_retcode_t ni_rsrc_remove_all_shm()
+{
+  DIR *dir;
+  struct dirent *dirent;
+  char path_to_remove[PATH_MAX];
+
+  ni_log(NI_LOG_ERROR, "Deleting shared memory files in %s\n", LOCK_DIR);
+
+  dir = opendir(LOCK_DIR);
+  if (!dir) {
+    ni_log(NI_LOG_ERROR, "ERROR: %s(): opendir failed for %s: %s\n",
+         __func__, LOCK_DIR, strerror(NI_ERRNO));
+    return NI_RETCODE_FAILURE;
+  }
+
+  while ((dirent = readdir(dir)) != NULL) {
+    if (strncmp(dirent->d_name, "NI_", 3) != 0) {
+      continue;
+    }
+
+    snprintf(path_to_remove, PATH_MAX, "%s/%s", LOCK_DIR, dirent->d_name);
+
+#ifndef _ANDROID
+    if (strncasecmp(dirent->d_name, "NI_SHM", 6) == 0) {
+#ifdef __OPENHARMONY__
+      openharmony_remove_shm(dirent->d_name, 1); //for created share mem we can ignore size
+#else
+      shm_unlink(dirent->d_name);
+#endif
+    }
+#endif
+
+    remove(path_to_remove);
+  }
+
+#ifdef _ANDROID
+  android_remove_all_shm();
+#endif
+
+  if (closedir(dir) == -1) {
+    ni_log(NI_LOG_ERROR, "ERROR: %s(): closedir failed for %s: %s\n",
+           __func__, LOCK_DIR, strerror(NI_ERRNO));
+    return NI_RETCODE_FAILURE;
+  }
+
+  ni_log(NI_LOG_INFO, "Deleted shared memory files in %s\n", LOCK_DIR);
+
+  return NI_RETCODE_SUCCESS;
 }
 
 #endif

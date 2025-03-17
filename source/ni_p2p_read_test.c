@@ -64,6 +64,7 @@
 #endif
 
 #define FILE_NAME_LEN 256
+#define MAX_SWAP_SIZE 3
 
 int send_fin_flag = 0;
 int receive_fin_flag = 0;
@@ -88,6 +89,12 @@ uint8_t *g_curr_cache_pos = NULL;
 uint8_t *g_raw_frame = NULL;
 
 uint8_t g_rgb2yuv_csc = 0;
+
+int g_swapchain_size = 1;
+
+typedef struct {
+    ni_frame_t gpu_frame[MAX_SWAP_SIZE];
+} swapchain_t;
 
 /*!****************************************************************************
  *  \brief  Exit on argument error
@@ -458,7 +465,7 @@ int gpu_render_frame(
  *          -1  on error
  ******************************************************************************/
 int gpu_prepare_frame(ni_session_context_t *p_gpu_ctx, int input_video_width,
-                       int input_video_height, ni_frame_t *gpu_frame)
+                      int input_video_height, ni_frame_t *gpu_frame)
 {
     int ret = 0;
 
@@ -850,12 +857,13 @@ int encoder_open_session(ni_session_context_t *p_enc_ctx, int dst_codec_format,
  *          [in]  iXcoderGUID pointer to  Quadra card hw id
  *          [in]  width       width of the frames
  *          [in]  height      height of the frames
+ *          [in]  poolsize    pool size to create on session
  *          [in]  p2p         p2p session
  *
  *  \return 0 if successful, < 0 otherwise
  ******************************************************************************/
 int uploader_open_session(ni_session_context_t *p_upl_ctx, int *iXcoderGUID,
-                          int width, int height, int p2p)
+                          int width, int height, int poolsize, int p2p)
 {
     int ret = 0;
     ni_pix_fmt_t frame_format;
@@ -889,7 +897,7 @@ int uploader_open_session(ni_session_context_t *p_upl_ctx, int *iXcoderGUID,
     }
 
     // Create a P2P frame pool for the uploader sesson of pool size 1
-    ret = ni_device_session_init_framepool(p_upl_ctx, 1, p2p);
+    ret = ni_device_session_init_framepool(p_upl_ctx, poolsize, p2p);
     if (ret < 0)
     {
         fprintf(stderr, "Error: Can't create frame pool\n");
@@ -938,7 +946,9 @@ void print_usage(void)
            "format:\n"
            "                     INTYPE2OUTTYPE. [p2a, p2h, r2a, r2h]\n"
            "                     Type notation: p=P2P, a=AVC, h=HEVC, r=ABGR\n"
-           "  -o | --output      Output file path.\n",
+           "  -o | --output      Output file path.\n"
+           "  -w | --swapchain   Set size of swapchain.\n"
+           "                     (Default: 1) Valid values are 1, 2, or 3.\n",
            NI_XCODER_REVISION);
 }
 
@@ -970,7 +980,7 @@ void parse_arguments(int argc, char *argv[], char *input_filename,
     int opt_index;
     ni_log_level_t log_level;
 
-    static const char *opt_string = "hvl:c:g:i:s:m:o:r:";
+    static const char *opt_string = "hvl:c:g:i:s:m:o:r:w:";
     static const struct option long_options[] = {
         {"help", no_argument, NULL, 'h'},
         {"version", no_argument, NULL, 'v'},
@@ -982,6 +992,7 @@ void parse_arguments(int argc, char *argv[], char *input_filename,
         {"mode", required_argument, NULL, 'm'},
         {"output", required_argument, NULL, 'o'},
         {"repeat", required_argument, NULL, 'r'},
+        {"swapchain", required_argument, NULL, 'w'},
         {NULL, 0, NULL, 0},
     };
 
@@ -1071,6 +1082,11 @@ void parse_arguments(int argc, char *argv[], char *input_filename,
                     arg_error_exit("-r | --repeat", optarg);
                 g_repeat = atoi(optarg);
                 break;
+            case 'w':
+                if (!(atoi(optarg) >= 1))
+                    arg_error_exit("-w | --swapchain", optarg);
+                g_swapchain_size = atoi(optarg);
+                break;
             default:
                 print_usage();
                 exit(1);
@@ -1095,6 +1111,12 @@ void parse_arguments(int argc, char *argv[], char *input_filename,
     if (*iXcoderGUID == *iGpuGUID)
     {
         printf("Error: card and gpucard arguments cannot be the same\n");
+        exit(-1);
+    }
+
+    if (!(g_swapchain_size > 0 && g_swapchain_size <= MAX_SWAP_SIZE))
+    {
+        printf("Error: swapchain cannot be more than %d\n", MAX_SWAP_SIZE);
         exit(-1);
     }
 }
@@ -1123,10 +1145,11 @@ int main(int argc, char *argv[])
     ni_session_context_t upl_ctx = {0};
     ni_session_context_t gpu_ctx = {0};
     ni_frame_t p2p_frame = {0};
-    ni_frame_t gpu_frame = {0};
+    swapchain_t swapchain = {0};
     ni_session_data_io_t out_packet = {0};
     int input_file_fd = -1;
-    ni_p2p_sgl_t dma_addrs = {0};
+    ni_p2p_sgl_t dma_addrs[MAX_SWAP_SIZE] = {0};
+    int swap_index = 0;
 
     parse_arguments(argc, argv, input_filename, output_filename, &iXcoderGUID,
                     &iGpuGUID, &arg_width, &arg_height, &dst_codec_format);
@@ -1199,23 +1222,28 @@ int main(int argc, char *argv[])
 
     // Open a P2P upload session to the destination Quadra device that will
     // be doing the video encoding
-    if (uploader_open_session(&upl_ctx, &iXcoderGUID, arg_width, arg_height, 0))
+    if (uploader_open_session(&upl_ctx, &iXcoderGUID, arg_width, arg_height,
+                              1, 0))
     {
         goto end;
     }
 
     // Open a P2P upload session for the source Quadra device. The source
     // Quadra device acts as a proxy for the GPU card.
-    if (uploader_open_session(&gpu_ctx, &iGpuGUID, arg_width, arg_height, 1))
+    if (uploader_open_session(&gpu_ctx, &iGpuGUID, arg_width, arg_height,
+                              g_swapchain_size, 1))
     {
         goto end;
     }
 
-    // Prepare a frame on the proxy GPU Quadra device
-    if (gpu_prepare_frame(&gpu_ctx, input_video_width, input_video_height,
-                          &gpu_frame))
+    // Prepare up to three frames on the proxy GPU Quadra device
+    for (int i = 0; i < g_swapchain_size; i++)
     {
-        goto end;
+        if (gpu_prepare_frame(&gpu_ctx, input_video_width, input_video_height,
+                              &swapchain.gpu_frame[i]))
+        {
+            goto end;
+        }
     }
 
 #ifdef _WIN32
@@ -1232,19 +1260,23 @@ int main(int argc, char *argv[])
 
     // Render a frame on the proxy GPU Quadra device
     if (gpu_render_frame(&gpu_ctx, input_file_fd, &g_raw_frame,
-                         &gpu_frame, input_video_width, input_video_height,
-                         &frame_size, &input_exhausted))
+                         &swapchain.gpu_frame[0], input_video_width,
+                         input_video_height, &frame_size, &input_exhausted))
     {
         fprintf(stderr, "Cannot render frame on source Quadra device\n");
         goto end;
     }
 
-    ret = import_dma_buf(&upl_ctx, &gpu_frame, frame_size, &dma_addrs);
-
-    if (ret < 0)
+    for (int i = 0; i < g_swapchain_size; i++)
     {
-        fprintf(stderr, "Cannot import dma buffer %d\n",ret);
-        goto end;
+        ret = import_dma_buf(&upl_ctx, &swapchain.gpu_frame[i], frame_size,
+                         &dma_addrs[i]);
+
+        if (ret < 0)
+        {
+            fprintf(stderr, "Cannot import dma buffer %d\n",ret);
+            goto end;
+        }
     }
 
     ret = enc_prepare_frame(&upl_ctx, input_video_width, input_video_height,
@@ -1335,7 +1367,7 @@ int main(int argc, char *argv[])
         print_time = ((current_time.tv_sec - previous_time.tv_sec) > 1);
 
         // Execute a P2P read into the frame
-        if (ni_p2p_recv(&upl_ctx, &dma_addrs, &p2p_frame) != NI_RETCODE_SUCCESS)
+        if (ni_p2p_recv(&upl_ctx, &dma_addrs[swap_index], &p2p_frame) != NI_RETCODE_SUCCESS)
         {
             fprintf(stderr, "Error: can't read frame\n");
             break;
@@ -1354,9 +1386,12 @@ int main(int argc, char *argv[])
         // Fill the frame buffer with YUV data while the previous frame is being encoded
         if (!input_exhausted && need_to_resend == 0)
         {
+            swap_index = (swap_index + 1) % g_swapchain_size;
+
             gpu_render_frame(&gpu_ctx, input_file_fd, &g_raw_frame,
-                         &gpu_frame, input_video_width, input_video_height,
-                         &frame_size, &input_exhausted);
+                             &swapchain.gpu_frame[swap_index],
+                             input_video_width, input_video_height,
+                             &frame_size, &input_exhausted);
         }
 
         // Receive encoded packet data from the encoder
@@ -1382,11 +1417,15 @@ int main(int argc, char *argv[])
            number_of_packets, number_of_packets / timeDiff,
            total_bytes_received);
 
-    unimport_dma_buf(&upl_ctx, &gpu_frame);
 
-    // Recycle the hardware frames
     recycle_frame(&p2p_frame);
-    recycle_frame(&gpu_frame);
+
+    // Clean up and recycle the hardware frames
+    for (int i = 0; i < g_swapchain_size; i++)
+    {
+        unimport_dma_buf(&upl_ctx, &swapchain.gpu_frame[swap_index]);
+        recycle_frame(&swapchain.gpu_frame[i]);
+    }
 
     ni_device_session_close(&enc_ctx, 1, NI_DEVICE_TYPE_ENCODER);
     ni_device_session_close(&upl_ctx, 1, NI_DEVICE_TYPE_UPLOAD);
@@ -1397,7 +1436,9 @@ int main(int argc, char *argv[])
     ni_device_session_context_clear(&gpu_ctx);
 
     ni_frame_buffer_free(&p2p_frame);
-    ni_frame_buffer_free(&gpu_frame);
+
+    for (int i = 0; i < g_swapchain_size; i++)
+        ni_frame_buffer_free(&swapchain.gpu_frame[i]);
 
     ni_packet_buffer_free(&(out_packet.data.packet));
 

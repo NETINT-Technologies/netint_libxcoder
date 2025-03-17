@@ -51,7 +51,7 @@
 #include <sched.h>
 #include <sys/syscall.h>
 #include <sys/resource.h>
-#ifndef _ANDROID
+#if !defined(_ANDROID) && !defined(__OPENHARMONY__)
 #include <execinfo.h>
 #endif
 #endif
@@ -458,6 +458,7 @@ void calculate_psnr(ni_session_context_t *p_ctx, ni_packet_t *p_packet)
     // snprintf(dump_file_raster, sizeof(dump_file_raster), "output-%04ld-raster.yuv", (long)p_ctx->pkt_num - 1);
     // fout_tile   = fopen(dump_file_tile, "wb");
     // fout_raster = fopen(dump_file_raster, "wb");
+    // FILE *f_out = fopen("out.yuv", "a");
     int bit_depth = (p_ctx->pixel_format == NI_PIX_FMT_YUV420P10LE || p_ctx->pixel_format == NI_PIX_FMT_P010LE) ? 10 : 8;
 
     ni_metadata_enc_bstream_t *p_meta = (ni_metadata_enc_bstream_t *)p_packet->p_data;
@@ -478,21 +479,21 @@ void calculate_psnr(ni_session_context_t *p_ctx, ni_packet_t *p_packet)
       uint8_t *luma_mem = (uint8_t *)p_packet->p_data + p_packet->data_len - p_meta->reconChromaSize - p_meta->reconLumaSize;
       uint8_t *ch_mem   = (uint8_t *)p_packet->p_data + p_packet->data_len - p_meta->reconChromaSize;
 
-      //{
+      int bit_scale = (p_ctx->pixel_format == NI_PIX_FMT_YUV420P10LE || p_ctx->pixel_format == NI_PIX_FMT_P010LE) ? 5 : 4;
+      lum_sz = (2 * p_meta->frameCropTopOffset + height + 3) / 4 * p_meta->reconLumaWidth * bit_scale;
+      chr_sz = (p_meta->frameCropTopOffset + height / 2 + 1) / 2 * p_meta->reconChromaWidth * bit_scale;
       if (p_meta->reconLumaSize)
       {
-        luma_mem_temp = (uint8_t *)malloc(p_meta->reconLumaSize);
-        memset(luma_mem_temp, 0x00, p_meta->reconLumaSize);
+        uint32_t luma_size = (bit_depth == 8) ? p_meta->reconLumaSize : p_meta->reconLumaSize * 2;
+        luma_mem_temp = (uint8_t *)malloc(luma_size);
+        memset(luma_mem_temp, 0x00, luma_size);
       }
       if (p_meta->reconChromaSize)
       {
-        ch_mem_temp   = (uint8_t *)malloc(p_meta->reconChromaSize);
-        memset(ch_mem_temp,   0x00, p_meta->reconChromaSize);
+        uint32_t ch_size = (bit_depth == 8) ? p_meta->reconChromaSize : p_meta->reconChromaSize * 2;
+        ch_mem_temp   = (uint8_t *)malloc(ch_size);
+        memset(ch_mem_temp,   0x00, ch_size);
       }
-
-      lum_sz = (2 * p_meta->frameCropTopOffset + height + 3) / 4 * p_meta->reconLumaWidth * 4;
-      chr_sz = (p_meta->frameCropTopOffset + height / 2 + 1) / 2 * p_meta->reconChromaWidth * 4;
-
       ////////////////////////////
       /////////Tile2Raster////////
       ////////////////////////////
@@ -530,90 +531,109 @@ void calculate_psnr(ni_session_context_t *p_ctx, ni_packet_t *p_packet)
       ////////////////////////////
       ///////calculate PSNR///////
       ////////////////////////////
-      do
+      if (((ni_xcoder_params_t *)(p_ctx->p_session_config))->cfg_enc_params.get_psnr_mode < 3)
       {
-          int max;
-          double noise_y = 0.0, noise_u = 0.0, noise_v = 0.0, noise_yuv = 0.0;
-          double power_y = 0.0, power_u = 0.0, power_v = 0.0, power_yuv = 0.0;
-          double psnr_y  = 0.0, psnr_u  = 0.0, psnr_v  = 0.0, psnr_yuv  = 0.0;
+        do
+        {
+            int max;
+            double noise_y = 0.0, noise_u = 0.0, noise_v = 0.0, noise_yuv = 0.0;
+            double power_y = 0.0, power_u = 0.0, power_v = 0.0, power_yuv = 0.0;
+            double psnr_y  = 0.0, psnr_u  = 0.0, psnr_v  = 0.0, psnr_yuv  = 0.0;
 
-          /// For debug, read raster data from file
-          // FILE *f_out_raster = (FILE *)fopen(dump_file_raster, "rb");
-          // fread(luma_mem_temp, width * height ,    1, f_out_raster);
-          // fread(ch_mem_temp,   width * height / 2, 1, f_out_raster);
-          // fflush(f_out_raster);
-          // fclose(f_out_raster);
+            /// For debug, read raster data from file
+            // FILE *f_out_raster = (FILE *)fopen(dump_file_raster, "rb");
+            // fread(luma_mem_temp, width * height ,    1, f_out_raster);
+            // fread(ch_mem_temp,   width * height / 2, 1, f_out_raster);
+            // fflush(f_out_raster);
+            // fclose(f_out_raster);
 
-          max = (1 << 8) - 1;
-          power_y = 1.0 * max * max * width * height;
-          power_u = power_y / 4.0;
-          power_v = power_y / 4.0;
-          power_yuv = power_y * 3.0 / 2.0;
+            max = (1 << 8) - 1;
+            power_y = 1.0 * max * max * width * height;
+            power_u = power_y / 4.0;
+            power_v = power_y / 4.0;
+            power_yuv = power_y * 3.0 / 2.0;
 
-          uint8_t *p_y_src_buf = NULL;
-          uint8_t *p_u_src_buf = NULL;
-          uint8_t *p_v_src_buf = NULL;
-          for (int i = 0; i < 120; i++)
-          {
-            if (p_ctx->input_frame_fifo[i].p_input_buffer != NULL &&
-                p_ctx->input_frame_fifo[i].pts == p_meta->frame_tstamp)
+            uint8_t *p_y_src_buf = NULL;
+            uint8_t *p_u_src_buf = NULL;
+            uint8_t *p_v_src_buf = NULL;
+            for (int i = 0; i < 120; i++)
             {
-              p_y_src_buf = p_ctx->input_frame_fifo[i].p_input_buffer;
-              p_u_src_buf = p_y_src_buf + p_ctx->input_frame_fifo[i].video_width * p_ctx->input_frame_fifo[i].video_height;
-              p_v_src_buf = p_u_src_buf + (p_ctx->input_frame_fifo[i].video_width / 2) * (p_ctx->input_frame_fifo[i].video_height / 2);
+              if (p_ctx->input_frame_fifo[i].p_input_buffer != NULL &&
+                  p_ctx->input_frame_fifo[i].pts == p_meta->frame_tstamp)
+              {
+                p_y_src_buf = p_ctx->input_frame_fifo[i].p_input_buffer;
+                p_u_src_buf = p_y_src_buf + p_ctx->input_frame_fifo[i].video_width * p_ctx->input_frame_fifo[i].video_height;
+                p_v_src_buf = p_u_src_buf + (p_ctx->input_frame_fifo[i].video_width / 2) * (p_ctx->input_frame_fifo[i].video_height / 2);
 
-              p_ctx->input_frame_fifo[i].usable = 1;
-              ni_log2(p_ctx, NI_LOG_DEBUG, "%s %d i %d pkt_num %ld frame_num %ld frame_tstamp %lld\n",
-                  __FUNCTION__, __LINE__, i, p_ctx->pkt_num, p_ctx->frame_num, p_meta->frame_tstamp);
-              break;
+                p_ctx->input_frame_fifo[i].usable = 1;
+                ni_log2(p_ctx, NI_LOG_DEBUG, "%s %d i %d pkt_num %ld frame_num %ld frame_tstamp %lld\n",
+                    __FUNCTION__, __LINE__, i, p_ctx->pkt_num, p_ctx->frame_num, p_meta->frame_tstamp);
+                break;
+              }
             }
-          }
-          if (p_y_src_buf != NULL)
-          {
-            if (p_meta->reconLumaSize != 0)
+            if (p_y_src_buf != NULL)
             {
-              noise_y = calc_noise(p_y_src_buf, luma_mem_temp, width * height);
-            }
-            else if (p_meta->ui16psnr_y != 0)
-            {
-              noise_y = power_y / pow(10, p_ctx->psnr_y / 10); // This is used for calculation noise_yuv for psnr_yuv
-            }
+              if (p_meta->reconLumaSize != 0)
+              {
+                noise_y = calc_noise(p_y_src_buf, luma_mem_temp, width * height);
+              }
+              else if (p_meta->ui16psnr_y != 0)
+              {
+                noise_y = power_y / pow(10, p_ctx->psnr_y / 10); // This is used for calculation noise_yuv for psnr_yuv
+              }
 
-            if (p_meta->reconChromaSize != 0)
-            {
-              noise_u = calc_noise(p_u_src_buf, ch_mem_temp,   (width / 2) * (height / 2));
-              noise_v = calc_noise(p_v_src_buf, ch_mem_temp + (width / 2) * (height / 2),   (width / 2) * (height / 2));
-            }
-            noise_yuv = noise_y + noise_u + noise_v;
+              if (p_meta->reconChromaSize != 0)
+              {
+                noise_u = calc_noise(p_u_src_buf, ch_mem_temp,   (width / 2) * (height / 2));
+                noise_v = calc_noise(p_v_src_buf, ch_mem_temp + (width / 2) * (height / 2),   (width / 2) * (height / 2));
+              }
+              noise_yuv = noise_y + noise_u + noise_v;
 
-            //This is for the case when encoding some very simple picture
-            //this case the quality is very good. sometimes the noise_y may be zero
-            noise_y = noise_y < 1 ? 1 : noise_y;
-            noise_u = noise_u < 1 ? 1 : noise_u;
-            noise_v = noise_v < 1 ? 1 : noise_v;
-            noise_yuv = noise_yuv < 1 ? 1 : noise_yuv;
+              //This is for the case when encoding some very simple picture
+              //this case the quality is very good. sometimes the noise_y may be zero
+              noise_y = noise_y < 1 ? 1 : noise_y;
+              noise_u = noise_u < 1 ? 1 : noise_u;
+              noise_v = noise_v < 1 ? 1 : noise_v;
+              noise_yuv = noise_yuv < 1 ? 1 : noise_yuv;
 
-            if (p_meta->reconLumaSize != 0)
-            {
-              psnr_y   = 10 * log10(power_y / noise_y);
-            }
-            else if (p_meta->ui16psnr_y != 0)
-            {
-              psnr_y = p_ctx->psnr_y;
-            }
+              if (p_meta->reconLumaSize != 0)
+              {
+                psnr_y   = 10 * log10(power_y / noise_y);
+              }
+              else if (p_meta->ui16psnr_y != 0)
+              {
+                psnr_y = p_ctx->psnr_y;
+              }
 
-            if (p_meta->reconChromaSize != 0)
-            {
-              psnr_u   = 10 * log10(power_u / noise_u);
-              psnr_v   = 10 * log10(power_v / noise_v);
+              if (p_meta->reconChromaSize != 0)
+              {
+                psnr_u   = 10 * log10(power_u / noise_u);
+                psnr_v   = 10 * log10(power_v / noise_v);
+              }
+              psnr_yuv = 10 * log10(power_yuv / noise_yuv);
+              p_ctx->psnr_y = p_packet->psnr_y = psnr_y;
+              p_ctx->psnr_u = p_packet->psnr_u = psnr_u;
+              p_ctx->psnr_v = p_packet->psnr_v = psnr_v;
+              p_ctx->average_psnr = p_packet->average_psnr = psnr_yuv;         
             }
-            psnr_yuv = 10 * log10(power_yuv / noise_yuv);
-            p_ctx->psnr_y = p_packet->psnr_y = psnr_y;
-            p_ctx->psnr_u = p_packet->psnr_u = psnr_u;
-            p_ctx->psnr_v = p_packet->psnr_v = psnr_v;
-            p_ctx->average_psnr = p_packet->average_psnr = psnr_yuv;         
-          }
-      } while(0);
+        } while(0);
+      }
+      else
+      {
+        // get recontructed frame here
+        // int h = 0;
+        // luma
+        // for (h = 0; h < height; h++)
+        // {
+        //   fwrite(luma_mem_temp + (width * h), 1, width, f_out);
+        // }
+        //chroma
+        // for (h = 0; h < height; h++)
+        // {
+        //   fwrite(ch_mem_temp + ((width / 2) * h), 1, width / 2, f_out);
+        // }
+        // fclose(f_out);
+      }
 
       if (luma_mem_temp)
       {
@@ -1098,7 +1118,7 @@ static ni_retcode_t p2p_fill_pcie_address(ni_session_context_t *p_ctx)
 }
 
 #if __linux__ || __APPLE__
-#ifndef _ANDROID
+#if !defined(_ANDROID) && !defined(__OPENHARMONY__)
 #ifndef DISABLE_BACKTRACE_PRINT
 void ni_print_backtrace() {
     void* callstack[128];
@@ -1866,13 +1886,23 @@ int ni_decoder_session_write(ni_session_context_t* p_ctx, ni_packet_t* p_packet)
                "pkt size %u , retry: %d max_retry_fail_count %d\n",
                retval, buf_info.buf_avail_size, packet_size, query_retry, p_ctx->max_retry_fail_count[0]);
 #ifdef XCODER_311
-        if (query_retry > max_retry)
+        if (query_retry > max_retry ||
+            sessionStatistic.ui32RdBufAvailSize > 0)
 #else
-        if (query_retry > NI_MAX_TX_RETRIES)
+        if (query_retry > NI_MAX_TX_RETRIES ||
+            sessionStatistic.ui32RdBufAvailSize > 0)
 #endif
         {
             p_ctx->status = NI_RETCODE_NVME_SC_WRITE_BUFFER_FULL;
-            p_ctx->max_retry_fail_count[0]++;
+#ifdef XCODER_311
+            if (query_retry > max_retry)
+#else
+            if (query_retry > NI_MAX_TX_RETRIES)
+#endif
+            {
+                p_ctx->max_retry_fail_count[0]++;
+            }
+            p_ctx->required_buf_size = packet_size;
             retval = (p_ctx->max_retry_fail_count[0] >= NI_XCODER_FAILURES_MAX) ? NI_RETCODE_FAILURE : NI_RETCODE_SUCCESS;
             LRETURN;
         }
@@ -1959,6 +1989,7 @@ int ni_decoder_session_write(ni_session_context_t* p_ctx, ni_packet_t* p_packet)
 
     // reset session status after successful send
     p_ctx->status = 0;
+    p_ctx->required_buf_size = 0;
 
     sent_size = p_packet->data_len;
     p_packet->data_len = 0;
@@ -2410,6 +2441,16 @@ start:
                   retval = NI_RETCODE_SUCCESS;
                   LRETURN;
               }
+          } else if (NI_RETCODE_NVME_SC_WRITE_BUFFER_FULL == p_ctx->status &&
+                     sessionStatistic.ui32WrBufAvailSize > p_ctx->required_buf_size)
+          {
+              ni_log2(p_ctx, NI_LOG_TRACE, "Info dec write buffer is enough, available buf "
+                      "size %u >= required size %u !\n",
+                      sessionStatistic.ui32WrBufAvailSize, p_ctx->required_buf_size);
+              p_ctx->status = 0;
+              p_ctx->required_buf_size = 0;
+              retval = NI_RETCODE_SUCCESS;
+              LRETURN;
           }
           ni_pthread_mutex_unlock(&p_ctx->mutex);
           ni_usleep(25);
@@ -2744,8 +2785,30 @@ start:
               {
                   ts_diff = ts_diff / nb_diff;
               }
+              p_ctx->decoder_last_drop_frame_num = p_ctx->session_statistic.ui32FramesDropped;
               ni_log2(p_ctx, NI_LOG_DEBUG, "%s(): FramesDropped pop dts "
                       "average diff: %ld\n", __func__, ts_diff);
+          }
+      }
+      else
+      {
+          if (p_ctx->decoder_last_drop_frame_num < p_ctx->session_statistic.ui32FramesDropped)
+          {
+              for(i = p_ctx->decoder_last_drop_frame_num; i < p_ctx->session_statistic.ui32FramesDropped; i++)
+              {
+                  if (ni_timestamp_get_with_threshold(
+                          p_ctx->dts_queue, 0, &tmp_dts,
+                          XCODER_FRAME_OFFSET_DIFF_THRES, 0,
+                          p_ctx->buffer_pool) != NI_RETCODE_SUCCESS)
+                  {
+                      ni_log2(p_ctx, NI_LOG_ERROR, "%s(): FramesDropped pop "
+                              "decoder dts queue %d %ld failed !\n",
+                              __func__, i, tmp_dts);
+                      break;
+                  }
+              }
+              p_ctx->decoder_last_drop_frame_num = p_ctx->session_statistic.ui32FramesDropped;
+              ni_log2(p_ctx, NI_LOG_DEBUG, "%s(): FramesDropped pop dts %d\n", __func__, p_ctx->decoder_last_drop_frame_num);
           }
       }
 
@@ -2909,6 +2972,13 @@ start:
     ni_log2(p_ctx, NI_LOG_DEBUG,  "%s: (best_effort_timestamp) pts %" PRId64 "\n",
            __func__, p_frame->pts);
     p_ctx->frame_num++;
+    
+    p_frame->error_ratio = p_ctx->session_statistic.ui32FramesErrorRatio;
+    if (p_frame->error_ratio > 0)
+    {
+        ni_log2(p_ctx, NI_LOG_DEBUG,  "%s: frame number = %d, error_ratio = %u\n",
+                        __func__, p_ctx->frame_num, p_frame->error_ratio);
+    }
 
 #ifdef MEASURE_LATENCY
 #ifndef XCODER_311
@@ -3420,7 +3490,7 @@ ni_retcode_t ni_encoder_session_open(ni_session_context_t* p_ctx)
 
   if (p_param->staticMmapThreshold) // Set Static Mmap Threshold
   {
-#if defined(__linux__) && !defined(_ANDROID)
+#if defined(__linux__) && !defined(_ANDROID) && !defined(__OPENHARMONY__)
       // If the malloc buffer is larger than the threshold,
       // glibc will use mmap to malloc the memory, which is a low speed method.
       // So, set the M_MMAP_THRESHOLD >= 1 yuv buffer size here.
@@ -3463,27 +3533,22 @@ ni_retcode_t ni_encoder_session_open(ni_session_context_t* p_ctx)
   if (p_ctx->hw_action == NI_CODEC_HW_ENABLE)
   {
       ni_device_capability_t sender_cap, receiver_cap;
-      g_device_in_ctxt = true;
-      ni_device_handle_t temp = g_dev_handle;
-      g_dev_handle = p_ctx->sender_handle;
-      retval = ni_device_capability_query(p_ctx->sender_handle, &sender_cap);
+      bool device_in_ctxt = true;
+      retval = ni_device_capability_query2(p_ctx->sender_handle, &sender_cap, device_in_ctxt);
       if (retval != NI_RETCODE_SUCCESS)
       {
-          ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR: ni_device_capability_query returned %d\n",
+          ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR: ni_device_capability_query2 returned %d\n",
                          retval);
           LRETURN;
       }
-      g_dev_handle = p_ctx->blk_io_handle;
-      retval = ni_device_capability_query(p_ctx->blk_io_handle, &receiver_cap);
+      retval = ni_device_capability_query2(p_ctx->blk_io_handle, &receiver_cap, device_in_ctxt);
+      if (retval != NI_RETCODE_SUCCESS)
+      {
+          ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR: ni_device_capability_query2 returned %d\n",
+                         retval);
+          LRETURN;
+      }
 
-      if (retval != NI_RETCODE_SUCCESS)
-      {
-          ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR: ni_device_capability_query returned %d\n",
-                         retval);
-          LRETURN;
-      }
-      g_dev_handle = temp;
-      g_device_in_ctxt = false; //cleanup
       for (uint8_t ui8Index = 0; ui8Index < 20; ui8Index++)
       {
           if (sender_cap.serial_number[ui8Index] !=
@@ -3988,6 +4053,12 @@ int ni_encoder_session_write(ni_session_context_t* p_ctx, ni_frame_t* p_frame)
   if (ishwframe && !p_frame->end_of_stream)
   {
     // check if the hw input frame is valid
+    if (!p_frame->p_data[3])
+    {
+      ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR: %s() hw input frame is null!, return\n",
+             __func__);
+      return NI_RETCODE_INVALID_PARAM;
+    }
     uint16_t input_frame_idx = ((niFrameSurface1_t*)(p_frame->p_data[3]))->ui16FrameIdx;
     if (!((input_frame_idx > 0 &&
           input_frame_idx < NI_GET_MAX_HWDESC_FRAME_INDEX(p_ctx->ddr_config)) ||
@@ -4408,7 +4479,7 @@ int ni_encoder_session_write(ni_session_context_t* p_ctx, ni_frame_t* p_frame)
       //Save input frame data used for calculate PSNR
       if ((ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6rc") >= 0) &&
           (p_ctx->frame_num == 0 || ((p_ctx->frame_num  % ((ni_xcoder_params_t *)(p_ctx->p_session_config))->interval_of_psnr) == 0)) &&
-          (((ni_xcoder_params_t *)(p_ctx->p_session_config))->cfg_enc_params.get_psnr_mode != 3) &&
+          (((ni_xcoder_params_t *)(p_ctx->p_session_config))->cfg_enc_params.get_psnr_mode < 3) &&
           (!(((ni_xcoder_params_t *)(p_ctx->p_session_config))->cfg_enc_params.get_psnr_mode == 2 && p_ctx->codec_format == NI_CODEC_FORMAT_H265)))
       {
           if (ishwframe && !p_frame->end_of_stream)
@@ -5298,6 +5369,57 @@ ni_retcode_t ni_config_instance_set_scaler_params(ni_session_context_t *p_ctx,
     p_cfg = (ni_scaler_config_t *)p_scaler_config;
     p_cfg->filterblit = p_params->filterblit;
     p_cfg->numInputs = p_params->nb_inputs;
+    p_cfg->scaler_param_b = (uint16_t)(0);
+    p_cfg->scaler_param_c = (uint16_t)(0.75 * 10000);
+
+    if (p_params->enable_scaler_params)
+    {
+      // check fw revision
+      if (ni_cmp_fw_api_ver(
+              (char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+              "6s2") < 0)
+      {
+        ni_log2(p_ctx, NI_LOG_ERROR,  "%s: not supported config scaler params B and C "
+                      "on device with FW API version < 6s1\n", __func__);
+        // Close the session since we can't configure it as per fw
+        retval = ni_scaler_session_close(p_ctx, 0);
+        if (NI_RETCODE_SUCCESS != retval)
+        {
+          ni_log2(p_ctx, NI_LOG_ERROR,
+                  "ERROR: %s failed: blk_io_handle: %" PRIx64 ","
+                  "hw_id, %d, xcoder_inst_id: %d\n",
+                  __func__,
+                  (int64_t)p_ctx->blk_io_handle, p_ctx->hw_id,
+                  p_ctx->session_id);
+        }
+
+        retval = NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION;
+        LRETURN;
+      }
+      if (p_params->scaler_param_b < 0 || p_params->scaler_param_c < 0 ||
+          p_params->scaler_param_b > 1 || p_params->scaler_param_c > 1)
+      {
+        ni_log2(p_ctx, NI_LOG_ERROR,  "%s: scaler_params_b and scaler_params_c must "
+                      "be in [0 , 1]. scaler_params_b is %lf, scaler_params_c is %lf\n",
+                      __func__, p_params->scaler_param_b, p_params->scaler_param_c);
+        // Close the session since we can't configure it as per fw
+        retval = ni_scaler_session_close(p_ctx, 0);
+        if (NI_RETCODE_SUCCESS != retval)
+        {
+          ni_log2(p_ctx, NI_LOG_ERROR,
+                  "ERROR: %s failed: blk_io_handle: %" PRIx64 ","
+                  "hw_id, %d, xcoder_inst_id: %d\n",
+                  __func__,
+                  (int64_t)p_ctx->blk_io_handle, p_ctx->hw_id,
+                  p_ctx->session_id);
+        }
+
+        retval = NI_RETCODE_PARAM_INVALID_VALUE;
+        LRETURN;
+      }
+      p_cfg->scaler_param_b = (uint16_t)(p_params->scaler_param_b * 10000);
+      p_cfg->scaler_param_c = (uint16_t)(p_params->scaler_param_c * 10000);
+    }
 
     retval = ni_nvme_send_write_cmd(p_ctx->blk_io_handle, p_ctx->event_handle,
                                p_scaler_config, buffer_size, ui32LBA);
@@ -6194,7 +6316,7 @@ ni_retcode_t ni_query_session_stats(ni_session_context_t *p_ctx,
                p_ctx->active_video_height);
       
 #if __linux__ || __APPLE__
-#ifndef _ANDROID
+#if !defined(_ANDROID) && !defined(__OPENHARMONY__)
 #ifndef DISABLE_BACKTRACE_PRINT
       ni_print_backtrace(); // log backtrace
 #endif
@@ -7423,7 +7545,7 @@ int ni_create_frame(ni_frame_t* p_frame, uint32_t read_length, uint64_t* p_frame
               else if(ptr[0] == NI_CC_SEI_BYTE0 && ptr[1] == NI_CC_SEI_BYTE1 &&
                       ptr[2] == NI_CC_SEI_BYTE2 && ptr[3] == NI_CC_SEI_BYTE3 &&
                       ptr[4] == NI_CC_SEI_BYTE4 && ptr[5] == NI_CC_SEI_BYTE5 &&
-                      ptr[6] == NI_CC_SEI_BYTE6)
+                      ptr[6] == NI_CC_SEI_BYTE6 && ptr[7] == NI_CC_SEI_BYTE7)
               {
                   // Found CC data
                   // number of 3 byte close captions is bottom 5 bits of
@@ -7559,7 +7681,9 @@ int ni_create_frame(ni_frame_t* p_frame, uint32_t read_length, uint64_t* p_frame
                   p_frame->sei_total_len += ui32Size;
               }
               break;
-
+          case 206:   // Customer reset ppu resolution, need dropped
+              ni_log(NI_LOG_DEBUG, "Custom SEI PPU_RECONFIG dropped", __func__);
+              break;
           default:
               ni_log(NI_LOG_ERROR,
                      "Warning %s: SEI message dropped (unsupported - check "
@@ -7738,7 +7862,8 @@ int ni_create_frame(ni_frame_t* p_frame, uint32_t read_length, uint64_t* p_frame
  *
  *  \return
  *******************************************************************************/
-void ni_populate_device_capability_struct(ni_device_capability_t* p_cap, void* p_data)
+void ni_populate_device_capability_struct(ni_device_capability_t* p_cap, void* p_data,
+                          ni_device_handle_t device_handle, bool device_in_ctxt)
 {
     int i, total_types = 0, total_modules = 0;
     ni_nvme_identity_t *p_id_data = (ni_nvme_identity_t *)p_data;
@@ -7758,7 +7883,7 @@ void ni_populate_device_capability_struct(ni_device_capability_t* p_cap, void* p
   if ((p_id_data->ui16Vid != NETINT_PCI_VENDOR_ID) ||
     (p_id_data->ui16Ssvid != NETINT_PCI_VENDOR_ID))
   {
-      if (g_device_in_ctxt)
+      if (device_in_ctxt)
       {
           ni_log(NI_LOG_ERROR,
                 "ERROR: Previously in context device got an invalid vendor ID 0x%X SSVID 0x%X. Netint "
@@ -7776,7 +7901,7 @@ void ni_populate_device_capability_struct(ni_device_capability_t* p_cap, void* p
 
           ni_event_handle_t event_handle = NI_INVALID_EVENT_HANDLE;
           uint32_t ui32LBA = IDENTIFY_DEVICE_R;
-          if (ni_nvme_send_read_cmd(g_dev_handle, event_handle, p_data,
+          if (ni_nvme_send_read_cmd(device_handle, event_handle, p_data,
                                     NI_NVME_IDENTITY_CMD_DATA_SZ, ui32LBA) < 0)
           {
             LRETURN;
@@ -7896,7 +8021,7 @@ void ni_populate_device_capability_struct(ni_device_capability_t* p_cap, void* p
   {
       ni_log(NI_LOG_ERROR, "Not an xcoder device !\n");
 
-      if (g_device_in_ctxt)
+      if (device_in_ctxt)
       {
           ni_log(NI_LOG_ERROR,
                  "ERROR: Previously in context device is not a xcoder device "
@@ -8042,17 +8167,6 @@ static uint32_t presetGopSize[] = {
   4,
   4,
   8 };
-
-static uint32_t presetGopKeyFrameFactor[] = {
-  1, /*! Custom GOP, Not used */
-  1, /*! All Intra */
-  1, /*! IPP Cyclic GOP size 1 */
-  1, /*! IBB Cyclic GOP size 1 */
-  2, /*! IBP Cyclic GOP size 2 */
-  4, /*! IBBBP */
-  1,
-  1,
-  1 };
 
 /*!******************************************************************************
  *  \brief  insert the 32 bits of integer value at bit position pos
@@ -8267,6 +8381,13 @@ void ni_set_custom_dec_template(ni_session_context_t *p_ctx,
     p_cfg->ui32ErrRatioThreshold = NI_EC_ERR_THRESHOLD_DEFAULT;
     ni_log2(p_ctx, NI_LOG_INFO, "Warning %s(): reset ecErrThreshold to %d\n", __func__, NI_EC_ERR_THRESHOLD_DEFAULT);
   }
+  if (p_cfg->ui8EcPolicy == NI_EC_POLICY_BEST_EFFORT_OUT_DC &&
+      ni_cmp_fw_api_ver((char *)&p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6s1") < 0)
+  {
+    ni_log2(p_ctx, NI_LOG_INFO, "Warning %s(): (EcPolicy == best_effort_out_dc) not supported for FW < 6s1\n", __func__);
+    p_cfg->ui8EcPolicy = NI_EC_POLICY_DEFAULT;
+    ni_log2(p_ctx, NI_LOG_INFO, "Warning %s(): reset EcPolicy to %d\n", __func__, p_cfg->ui8EcPolicy);
+  }
   p_cfg->ui8DisableAdaptiveBuffers = p_dec->disable_adaptive_buffers;
   p_cfg->ui8SurviveStreamErr = p_dec->survive_stream_err;
   if (p_cfg->ui8SurviveStreamErr != 0 && 
@@ -8379,6 +8500,7 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
     p_enc->enable_smooth_crf = 0;
   }
   p_cfg->ui8enableSmoothCrf = p_enc->enable_smooth_crf;
+  p_cfg->ui8enableCompensateQp = p_enc->enable_compensate_qp;
 
   // enable_dynamic_8x8_merge, enable_dynamic_16x16_merge, enable_dynamic_32x32_merge,
   // trans_rate, enable_hvs_qp_scale:
@@ -8915,6 +9037,11 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
       p_cfg->ui8enableSSIM = p_enc->enable_ssim;
   }
 
+  if (p_enc->avcc_hvcc != 0)
+  {
+      p_cfg->ui8avccHvcc = p_enc->avcc_hvcc;
+  }
+
   if (p_enc->av1_error_resilient_mode != 0)
   {
       p_cfg->ui8av1ErrResilientMode = p_enc->av1_error_resilient_mode;
@@ -8923,6 +9050,22 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
   if (p_enc->temporal_layers_enable != 0)
   {
       p_cfg->ui8temporalLayersEnable = p_enc->temporal_layers_enable;
+  }
+
+  if (p_enc->spatial_layers > 1)
+  {
+      p_cfg->ui8spatialLayersMinusOne = p_enc->spatial_layers - 1;
+      if (ni_cmp_fw_api_ver((char *)&p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6rw") < 0) {
+        ni_log2(p_ctx, NI_LOG_INFO, "Warning %s(): spatialLayers is not supported for FW < 6rw\n", __func__);
+      }
+  }
+
+  if (p_enc->spatial_layers_ref_base_layer != 0)
+  {
+      p_cfg->ui8spatialLayersRefBaseLayer = p_enc->spatial_layers_ref_base_layer;
+      if (ni_cmp_fw_api_ver((char *)&p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6s0") < 0) {
+        ni_log2(p_ctx, NI_LOG_INFO, "Warning %s(): spatialLayers is not supported for FW < 6s0\n", __func__);
+      }
   }
 
   if (p_ctx->pixel_format != NI_PIX_FMT_YUV420P)
@@ -8940,6 +9083,16 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
       {
         p_enc->get_psnr_mode = 3;
         ni_log(NI_LOG_INFO, "Warning h.265 psnr_y is only supported for YUV420P, YUV420P10LE, NV12, and P010LE\n");
+      }
+    }
+    else if (p_enc->get_psnr_mode == 4)
+    {
+      p_cfg->ui8compressor = 0;
+      if (p_cfg->ui8PixelFormat != NI_PIX_FMT_YUV420P && p_cfg->ui8PixelFormat != NI_PIX_FMT_NV12)
+      {
+        p_enc->get_psnr_mode = 3;
+        p_cfg->ui8compressor = 3;
+        ni_log(NI_LOG_INFO, "Warning reconstructed frames only supported for YUV420P, NV12\n");
       }
     }
     else
@@ -9162,6 +9315,16 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
   if(p_enc->encMallocStrategy != 0)
   {
       p_cfg->ui8mallocStrategy = p_enc->encMallocStrategy;
+  }
+  
+  if (p_enc->enable_timecode != 0)
+  {
+      p_cfg->ui8enableTimecode = p_enc->enable_timecode;
+  }
+
+  if (p_enc->vbvBufferReencode != 0)
+  {
+      p_cfg->ui8vbvBufferReencode = p_enc->vbvBufferReencode;
   }
 
   ni_log2(p_ctx, NI_LOG_DEBUG, "lowDelay=%d\n", p_src->low_delay_mode);
@@ -9432,6 +9595,7 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui16hdr10_wy=%u\n", p_cfg->ui16hdr10_wy);
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui32hdr10_maxluma=%u\n", p_cfg->ui32hdr10_maxluma);
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui32hdr10_minluma=%u\n", p_cfg->ui32hdr10_minluma);
+  ni_log2(p_ctx, NI_LOG_DEBUG, "ui8avccHvcc=%u\n", p_cfg->ui8avccHvcc);
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui8av1ErrResilientMode=%u\n", p_cfg->ui8av1ErrResilientMode);  
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui8intraResetRefresh=%d\n", p_cfg->ui8intraResetRefresh);  
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui8temporalLayersEnable=%u\n", p_cfg->ui8temporalLayersEnable);  
@@ -9468,6 +9632,10 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
   ni_log2(p_ctx, NI_LOG_DEBUG, "u8customizeRoiQpLevel=%u\n", p_cfg->u8customizeRoiQpLevel);
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui8motionConstrainedMode=%d\n", p_cfg->ui8motionConstrainedMode);
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui8mallocStrategy=%d\n", p_cfg->ui8mallocStrategy);
+  ni_log2(p_ctx, NI_LOG_DEBUG, "ui8spatialLayersMinusOne=%d\n", p_cfg->ui8spatialLayersMinusOne);
+  ni_log2(p_ctx, NI_LOG_DEBUG, "ui8enableTimecode=%d\n", p_cfg->ui8enableTimecode);
+  ni_log2(p_ctx, NI_LOG_DEBUG, "ui8spatialLayersRefBaseLayer=%d\n", p_cfg->ui8spatialLayersRefBaseLayer);
+  ni_log2(p_ctx, NI_LOG_DEBUG, "ui8vbvBufferReencode=%d\n", p_cfg->ui8vbvBufferReencode);
 }
 
 /*!******************************************************************************
@@ -9807,6 +9975,7 @@ void ni_set_default_template(ni_session_context_t* p_ctx, ni_encoder_config_t* p
   p_config->ui16hdr10_wy = 0;
   p_config->ui32hdr10_maxluma = 0;
   p_config->ui32hdr10_minluma = 0;
+  p_config->ui8avccHvcc = 0;
   p_config->ui8av1ErrResilientMode = 0;
   p_config->ui8intraResetRefresh = 0;  
   p_config->ui8temporalLayersEnable = 0;
@@ -9845,6 +10014,10 @@ void ni_set_default_template(ni_session_context_t* p_ctx, ni_encoder_config_t* p
   p_config->ui8stillImageDetectLevel = 0;
   p_config->ui8sceneChangeDetectLevel = 0;
   p_config->ui8mallocStrategy = 0;
+  p_config->ui8spatialLayersMinusOne = 0;
+  p_config->ui8enableTimecode = 0;
+  p_config->ui8spatialLayersRefBaseLayer = 0;
+  p_config->ui8vbvBufferReencode = 0;
 }
 
 /*!******************************************************************************
@@ -10583,10 +10756,11 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     if(p_cfg->ui8enableSSIM != 0)
     {
         if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
-                              "62") < 0)
+                              "62") < 0 || NI_CODEC_FORMAT_AV1 == p_ctx->codec_format)
         {
             p_cfg->ui8enableSSIM = 0;
-            strncpy(p_param_warn, "enableSSIM is not supported on device with FW api version < 6.2. Reported ssim will be 0.", max_err_len);
+            strncpy(p_param_warn, "enableSSIM only supported on device with FW api version < 6.2 "
+                    "and the encoder is not av1_ni_quadra_enc. Reported ssim will be 0.", max_err_len);
             warning = NI_RETCODE_PARAM_WARN;
         }
     }
@@ -10623,6 +10797,36 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
                     max_err_len);
             param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
             LRETURN;
+        }
+    }
+
+    if(p_cfg->ui8enableCompensateQp != 0)
+    {
+        if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6ru") < 0 || 
+            NI_CODEC_FORMAT_AV1 == p_ctx->codec_format || p_cfg->ui16maxFrameSize == 0)
+        {
+            p_cfg->ui8enableCompensateQp = 0;
+            strncpy(p_param_warn, "ui8enableCompensateQp only supported when device with FW api version < 6rt "
+                    "and the encoder is not av1_ni_quadra_enc and ui16maxFrameSize > 0. Reported enableCompensateQp will be 0.", max_err_len);
+            warning = NI_RETCODE_PARAM_WARN;
+        }
+    }
+
+    if (p_cfg->ui8enableTimecode != 0)
+    {
+        if (NI_CODEC_FORMAT_H264 != p_ctx->codec_format)
+        {
+            p_cfg->ui8enableTimecode = 0;
+            if (NI_CODEC_FORMAT_H265 == p_ctx->codec_format)
+            {
+                strncpy(p_param_warn, "enableTimecode does not need to be set for H.265. Use ni_enc_insert_timecode API"
+                        "from libxcoder directly to insert time code SEI", max_err_len);
+            } 
+            else 
+            {
+                strncpy(p_param_warn, "enableTimecode not supported for the codec used. Forcing value to 0.", max_err_len);
+            }
+            warning = NI_RETCODE_PARAM_WARN;
         }
     }
   }
@@ -10748,7 +10952,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       {
           p_cfg->ui8gopSize = 4;
           p_cfg->ui8gopLowdelay = 0;
-      }      
+      }
       if (15 == p_cfg->niParamT408.gop_preset_index)
       {
           p_cfg->ui8gopSize = 16;
@@ -10786,6 +10990,32 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         p_cfg->ui8stillImageDetectLevel  = 0;
         p_cfg->ui8sceneChangeDetectLevel = 0;
       }
+
+      if (p_cfg->ui8spatialLayersMinusOne > 0)
+      {
+        if (p_cfg->niParamT408.gop_preset_index != GOP_PRESET_IDX_DEFAULT)
+        {
+          strncpy(p_param_err,
+                  "currently do not support gop preset in multi spatial layers encode",
+                  max_err_len);
+          param_ret = NI_RETCODE_PARAM_ERROR_GOP_PRESET;
+          LRETURN;
+        }
+        p_cfg->ui8gopSize = p_cfg->ui8spatialLayersMinusOne + 1;
+        p_cfg->ui8gopLowdelay = 0;
+      }
+
+      if (p_cfg->ui8spatialLayersRefBaseLayer != 0)
+      {
+        if (p_cfg->ui8spatialLayersMinusOne == 0)
+        {
+          strncpy(p_param_err,
+                  "higher spatial layers referencing base layer is only supported in multi spatial layers encode",
+                  max_err_len);
+          param_ret = NI_RETCODE_PARAM_ERROR_GOP_PRESET;
+          LRETURN;
+        }
+      }     
   }
 
   if (NI_CODEC_FORMAT_H264 == p_ctx->codec_format)
@@ -10892,6 +11122,14 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
           param_ret = NI_RETCODE_INVALID_PARAM;
           LRETURN;
       }
+      if (p_cfg->ui8spatialLayersMinusOne > 0)
+      {
+          strncpy(p_param_err,
+                  "spatialLayers is not supported for h.264 encode",
+                  max_err_len);
+          param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
+          LRETURN;
+      }      
     }
   }
   else if (NI_CODEC_FORMAT_H265 == p_ctx->codec_format)
@@ -10932,6 +11170,14 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       {
         strncpy(p_param_warn, "HEVC Main Profile does not support 10-bit, auto convert to 8-bit", max_err_len);
         warning = NI_RETCODE_PARAM_WARN;
+      }
+      if (p_cfg->ui8spatialLayersMinusOne > 0)
+      {
+          strncpy(p_param_err,
+                  "spatialLayers is not supported for h.265 encode",
+                  max_err_len);
+          param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
+          LRETURN;
       }
     }
   } else if (NI_CODEC_FORMAT_AV1 == p_ctx->codec_format)
@@ -11056,6 +11302,13 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
+      if (p_cfg->ui8vbvBufferReencode && p_cfg->ui8multicoreJointMode)
+      {
+          strncpy(p_param_err, "vbvBufferReencode is not supported for av1 multicoreJointMode",
+                  max_err_len);
+          param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
+          LRETURN;      
+      }
   } else if (NI_CODEC_FORMAT_JPEG == p_ctx->codec_format)
   {
       if (p_cfg->ui8hdr10_enable)
@@ -11179,6 +11432,14 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
+      if (p_cfg->ui8spatialLayersMinusOne > 0)
+      {
+          strncpy(p_param_err,
+                  "spatialLayers is not supported for jpeg encode",
+                  max_err_len);
+          param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
+          LRETURN;
+      }      
       if (p_cfg->ui8LowDelay)
       {
           strncpy(p_param_err, "LowDelay is not supported on jpeg encoder",
@@ -11456,7 +11717,15 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
                   max_err_len);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
-      }          
+      }
+      if (p_cfg->ui8vbvBufferReencode)
+      {
+          strncpy(p_param_err,
+                  "vbvBufferReencode is not supported on jpeg encoder",
+                  max_err_len);
+          param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
+          LRETURN;
+      }
   }
 
   if (p_src->force_frame_type != 0 && p_src->force_frame_type != 1)
@@ -11544,7 +11813,12 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
           param_ret = NI_RETCODE_PARAM_ERROR_LOOK_AHEAD_DEPTH;
           LRETURN;
       }
-
+      if (p_cfg->ui8spatialLayersMinusOne > 0)
+      {
+        strncpy(p_param_err, "currently do not support lookahead encode with multi spatial layers", max_err_len);
+        param_ret = NI_RETCODE_PARAM_ERROR_LOOK_AHEAD_DEPTH;
+        LRETURN;
+      }
     }
 
     if (p_src->low_delay_mode || p_cfg->ui8picSkipEnable)
@@ -11568,11 +11842,20 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
                  p_cfg->niParamT408.gop_preset_index != GOP_PRESET_IDX_HIERARCHICAL_IPPPP)
       {
         if (p_src->low_delay_mode)
-          strncpy(p_param_err, "Must use low delay GOP (gopPresetIdx 1,3,7,9,10) when lowDelay is enabled", max_err_len);
+        {
+          if (p_cfg->ui8spatialLayersMinusOne == 0)
+          {
+            strncpy(p_param_err, "Must use low delay GOP (gopPresetIdx 1,3,7,9,10) when lowDelay is enabled", max_err_len);
+            param_ret = NI_RETCODE_PARAM_ERROR_GOP_PRESET;
+            LRETURN;
+          }
+        }
         else
+        {
           strncpy(p_param_err, "Must use low delay GOP (gopPresetIdx 1,3,7,9,10) when picSkip is enabled", max_err_len);
-        param_ret = NI_RETCODE_PARAM_ERROR_GOP_PRESET;
-        LRETURN;
+          param_ret = NI_RETCODE_PARAM_ERROR_GOP_PRESET;
+          LRETURN;
+        }
       } else if ((p_cfg->ui8LookAheadDepth != 0) && (!p_cfg->ui8useLowDelayPocType))
       {
         if (p_src->low_delay_mode)
@@ -11609,6 +11892,16 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
                     max_err_len);
           param_ret = NI_RETCODE_INVALID_PARAM;
           LRETURN;
+      }
+    }
+
+    if (p_cfg->ui8spatialLayersMinusOne > 0)
+    {
+      if ((p_cfg->niParamT408.intra_period % (p_cfg->ui8spatialLayersMinusOne+1)) > 0)
+      {
+        strncpy(p_param_err, "intra period must be divisible by the number of spatial layers", max_err_len);
+        param_ret = NI_RETCODE_PARAM_ERROR_INTRA_PERIOD;
+        LRETURN;
       }
     }
 
@@ -11725,6 +12018,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         if (p_cfg->niParamT408.intra_period < p_cfg->ui16gdrDuration)
         {
           strncpy(p_param_warn, "intraPeriod forced to match intra refersh cycle (intraPeriod must >= intra refersh cycle)", max_err_len);
+          warning = NI_RETCODE_PARAM_WARN;
           p_cfg->niParamT408.intra_period = p_cfg->ui16gdrDuration;
         }
       }
@@ -11733,9 +12027,19 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         if (p_cfg->niParamT408.avcIdrPeriod < p_cfg->ui16gdrDuration)
         {
           strncpy(p_param_warn, "intraPeriod forced to match intra refersh cycle (intraPeriod must >= intra refersh cycle)", max_err_len);
+          warning = NI_RETCODE_PARAM_WARN;
           p_cfg->niParamT408.avcIdrPeriod = p_cfg->ui16gdrDuration;
         }
       }
+    }
+
+    if (p_cfg->ui8multicoreJointMode)
+    {
+        if (p_cfg->ui8hrdEnable)
+        {
+            strncpy(p_param_warn, "HRD conformance is not guaranteed in multicoreJointMode", max_err_len);
+            warning = NI_RETCODE_PARAM_WARN;
+        }
     }
 
     if ((p_cfg->ui8hrdEnable) || (p_cfg->ui8fillerEnable))
@@ -11940,6 +12244,16 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         }
       }      
     }
+
+    if (p_cfg->ui8avccHvcc)
+    {
+      if ((STD_AVC != p_cfg->ui8bitstreamFormat) && (STD_HEVC != p_cfg->ui8bitstreamFormat))
+      {
+        strncpy(p_param_warn, "AVCC HVCC forced to 0 for codecs other than AVC HEVC", max_err_len);
+        warning = NI_RETCODE_PARAM_WARN;
+        p_cfg->ui8avccHvcc = 0;
+      }
+    }   
   }
 
   if (p_cfg->niParamT408.cu_size_mode < 0 ||
@@ -12118,11 +12432,6 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     LRETURN;
   }
 
-  if (p_cfg->niParamT408.gop_preset_index != GOP_PRESET_IDX_CUSTOM)
-  {
-    p_ctx->keyframe_factor =
-      presetGopKeyFrameFactor[p_cfg->niParamT408.gop_preset_index];
-  }
   if (warning == NI_RETCODE_PARAM_WARN && param_ret == NI_RETCODE_SUCCESS)
   {
     param_ret = NI_RETCODE_PARAM_WARN;
@@ -13945,6 +14254,16 @@ start:
                   retval = NI_RETCODE_SUCCESS;
                   LRETURN;
               }
+          } else if (NI_RETCODE_NVME_SC_WRITE_BUFFER_FULL == p_ctx->status &&
+                     sessionStatistic.ui32WrBufAvailSize > p_ctx->required_buf_size)
+          {
+              ni_log2(p_ctx, NI_LOG_TRACE, "Info dec write buffer is enough, available buf "
+                      "size %u >= required size %u !\n",
+                      sessionStatistic.ui32WrBufAvailSize, p_ctx->required_buf_size);
+              p_ctx->status = 0;
+              p_ctx->required_buf_size = 0;
+              retval = NI_RETCODE_SUCCESS;
+              LRETURN;
           }
           ni_pthread_mutex_unlock(&p_ctx->mutex);
           ni_usleep(NI_RETRY_INTERVAL_100US);
@@ -14321,8 +14640,30 @@ start:
               {
                   ts_diff = ts_diff / nb_diff;
               }
+              p_ctx->decoder_last_drop_frame_num = p_ctx->session_statistic.ui32FramesDropped;
               ni_log2(p_ctx, NI_LOG_DEBUG, "%s(): FramesDropped pop dts "
                       "average diff: %ld\n", __func__, ts_diff);
+          }
+      }
+      else
+      {
+          if (p_ctx->decoder_last_drop_frame_num < p_ctx->session_statistic.ui32FramesDropped)
+          {
+              for(i = p_ctx->decoder_last_drop_frame_num; i < p_ctx->session_statistic.ui32FramesDropped; i++)
+              {
+                  if (ni_timestamp_get_with_threshold(
+                          p_ctx->dts_queue, 0, &tmp_dts,
+                          XCODER_FRAME_OFFSET_DIFF_THRES, 0,
+                          p_ctx->buffer_pool) != NI_RETCODE_SUCCESS)
+                  {
+                      ni_log2(p_ctx, NI_LOG_ERROR, "%s(): FramesDropped pop "
+                              "decoder dts queue %d %ld failed !\n",
+                              __func__, i, tmp_dts);
+                      break;
+                  }
+              }
+              p_ctx->decoder_last_drop_frame_num = p_ctx->session_statistic.ui32FramesDropped;
+              ni_log2(p_ctx, NI_LOG_DEBUG, "%s(): FramesDropped pop dts %d\n", __func__, p_ctx->decoder_last_drop_frame_num);
           }
       }
 
@@ -14417,7 +14758,7 @@ start:
             {
                 // if the first frame is I frame and there are dropped frames,
                 // find the dts closest to its pts using the average of dts diff
-		if (p_frame->dts != NI_NOPTS_VALUE &&
+                if (p_frame->dts != NI_NOPTS_VALUE &&
                     p_frame->pts != NI_NOPTS_VALUE &&
                     PIC_TYPE_I == p_frame->ni_pict_type &&
                     p_ctx->session_statistic.ui32FramesDropped > 0 &&
@@ -14487,6 +14828,13 @@ start:
     ni_log2(p_ctx, NI_LOG_DEBUG,  "%s: (best_effort_timestamp) pts %" PRId64 "\n",
            __func__, p_frame->pts);
     p_ctx->frame_num++;
+
+    p_frame->error_ratio = p_ctx->session_statistic.ui32FramesErrorRatio;
+    if (p_frame->error_ratio > 0)
+    {
+        ni_log2(p_ctx, NI_LOG_DEBUG,  "%s: frame number = %d, error_ratio = %u\n",
+                        __func__, p_ctx->frame_num, p_frame->error_ratio);
+    }
 
 #ifdef MEASURE_LATENCY
 #ifndef XCODER_311
@@ -15212,7 +15560,7 @@ ni_retcode_t ni_scaler_session_read_hwdesc(
     niFrameSurface1_t *pFrameSurface;
     int query_retry = 0;
 
-    if (!p_ctx)
+    if (!p_ctx || !p_frame || !p_frame->p_data[3])
     {
         ni_log2(p_ctx, NI_LOG_ERROR, "ERROR: %s() passed parameters are null!, return\n",
                __func__);
@@ -15690,8 +16038,6 @@ ni_retcode_t ni_config_instance_hvsplus(ni_session_context_t *p_ctx)
     ni_retcode_t retval = NI_RETCODE_SUCCESS;
     uint32_t ui32LBA = 0;
     uint32_t config_size;
-    void *p_buffer = NULL;
-    uint32_t dataLen;
 
     ni_log2(p_ctx, NI_LOG_TRACE,  "%s(): enter\n", __func__);
 
@@ -15765,21 +16111,12 @@ ni_retcode_t ni_config_instance_hvsplus(ni_session_context_t *p_ctx)
         LRETURN;
     }
 
-    dataLen = (sizeof(ni_network_layer_info_t) + (NI_MEM_PAGE_ALIGNMENT - 1)) &
-        ~(NI_MEM_PAGE_ALIGNMENT - 1);
-    if (ni_posix_memalign(&p_buffer, sysconf(_SC_PAGESIZE), dataLen))
-    {
-        ni_log2(p_ctx, NI_LOG_ERROR, "ERROR: Cannot allocate buffer.\n");
-        retval = NI_RETCODE_ERROR_MEM_ALOC;
-        LRETURN;
-    }
-
 END:
     ni_pthread_mutex_unlock(&p_ctx->mutex);
 
     ni_aligned_free(p_ai_config);
     ni_aligned_free(p_nb_data);
-    ni_aligned_free(p_buffer);
+    ni_aligned_free(p_stream_info);
 
     ni_log2(p_ctx, NI_LOG_TRACE,  "%s(): exit\n", __func__);
 
@@ -17544,8 +17881,9 @@ ni_retcode_t ni_device_config_ns_qos(ni_device_handle_t device_handle,
                                             uint32_t value)
 {
     char buf[NI_DATA_BUFFER_LEN] = {'\0'};
-    buf[0] = (uint8_t)key;
-    buf[1] = (uint8_t)value;
+    uint32_t *u32_buf = (uint32_t *)buf;
+    u32_buf[0] = key;
+    u32_buf[1] = value;
     // event handle could be ignored
     return ni_nvme_send_write_cmd(device_handle, NI_INVALID_EVENT_HANDLE,
                                   (void *)buf, NI_DATA_BUFFER_LEN,

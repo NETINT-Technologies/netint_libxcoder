@@ -304,7 +304,7 @@ void ni_close_event(ni_event_handle_t event_handle)
 
 #ifdef _WIN32
   BOOL retval;
-  ni_log(NI_LOG_DEBUG, "%s(): closing %p\n", event_handle);
+  ni_log(NI_LOG_DEBUG, "%s(): closing %p\n", __func__, event_handle);
 
   retval = CloseHandle(event_handle);
   if (FALSE == retval)
@@ -571,6 +571,8 @@ void ni_device_close(ni_device_handle_t device_handle)
 
 /*!*****************************************************************************
  *  \brief  Query device and return device capability structure
+ *          This function had been replaced by ni_device_capability_query2
+ *          This function can't be callback in multi thread
  *
  *  \param[in] device_handle  Device handle obtained by calling ni_device_open
  *  \param[in] p_cap  Pointer to a caller allocated ni_device_capability_t
@@ -582,7 +584,7 @@ void ni_device_close(ni_device_handle_t device_handle)
  *                     NI_RETCODE_ERROR_MEM_ALOC
  *                     NI_RETCODE_ERROR_NVME_CMD_FAILED
  ******************************************************************************/
-ni_retcode_t ni_device_capability_query(ni_device_handle_t device_handle, ni_device_capability_t* p_cap)
+NI_DEPRECATED ni_retcode_t ni_device_capability_query(ni_device_handle_t device_handle, ni_device_capability_t* p_cap)
 {
   void * p_buffer = NULL;
   ni_retcode_t retval = NI_RETCODE_SUCCESS;
@@ -616,7 +618,68 @@ ni_retcode_t ni_device_capability_query(ni_device_handle_t device_handle, ni_dev
     LRETURN;
   }
 
-  ni_populate_device_capability_struct(p_cap, p_buffer);
+  ni_populate_device_capability_struct(p_cap, p_buffer, g_dev_handle, g_device_in_ctxt);
+
+END:
+
+    ni_aligned_free(p_buffer);
+    ni_log(NI_LOG_DEBUG, "%s(): retval: %d\n", __func__, retval);
+
+    return retval;
+}
+
+/*!*****************************************************************************
+ *  \brief  Query device and return device capability structure
+ *          This function had replaced ni_device_capability_query
+ *          This function can be callback with multi thread
+ *
+ *  \param[in] device_handle  Device handle obtained by calling ni_device_open
+ *  \param[in] p_cap  Pointer to a caller allocated ni_device_capability_t
+ *                    struct
+ *  \param[in] device_in_ctxt If device is in ctx
+ *  \return On success
+ *                     NI_RETCODE_SUCCESS
+ *          On failure
+ *                     NI_RETCODE_INVALID_PARAM
+ *                     NI_RETCODE_ERROR_MEM_ALOC
+ *                     NI_RETCODE_ERROR_NVME_CMD_FAILED
+ ******************************************************************************/
+ni_retcode_t ni_device_capability_query2(ni_device_handle_t device_handle,
+                              ni_device_capability_t *p_cap, bool device_in_ctxt)
+{
+  void * p_buffer = NULL;
+  ni_retcode_t retval = NI_RETCODE_SUCCESS;
+  ni_event_handle_t event_handle = NI_INVALID_EVENT_HANDLE;
+
+  ni_log(NI_LOG_TRACE, "%s(): enter\n", __func__);
+
+  if ( (NI_INVALID_DEVICE_HANDLE == device_handle) || (!p_cap) )
+  {
+      ni_log(NI_LOG_ERROR, "ERROR: %s(): passed parameters are null, return\n",
+             __func__);
+      retval = NI_RETCODE_INVALID_PARAM;
+      LRETURN;
+  }
+
+  if (ni_posix_memalign(&p_buffer, sysconf(_SC_PAGESIZE),
+                        NI_NVME_IDENTITY_CMD_DATA_SZ))
+  {
+      ni_log(NI_LOG_ERROR, "ERROR %d: %s() Cannot allocate buffer.\n",
+             NI_ERRNO, __func__);
+      retval = NI_RETCODE_ERROR_MEM_ALOC;
+      LRETURN;
+  }
+
+  memset(p_buffer, 0, NI_NVME_IDENTITY_CMD_DATA_SZ);
+
+  uint32_t ui32LBA = IDENTIFY_DEVICE_R;
+  if (ni_nvme_send_read_cmd(device_handle, event_handle, p_buffer, NI_NVME_IDENTITY_CMD_DATA_SZ, ui32LBA) < 0)
+  {
+    retval = NI_RETCODE_ERROR_NVME_CMD_FAILED;
+    LRETURN;
+  }
+
+  ni_populate_device_capability_struct(p_cap, p_buffer, device_handle, device_in_ctxt);
 
 END:
 
@@ -1614,10 +1677,11 @@ int ni_device_session_write(ni_session_context_t *p_ctx, ni_session_data_io_t *p
   }
   // Here check if keep alive thread is closed.
 #ifdef _WIN32
-  if (p_ctx->keep_alive_thread.handle &&
+  if (p_ctx->keep_alive_thread.handle && p_ctx->keep_alive_thread_args &&
       p_ctx->keep_alive_thread_args->close_thread)
 #else
-  if (p_ctx->keep_alive_thread && p_ctx->keep_alive_thread_args->close_thread)
+  if (p_ctx->keep_alive_thread && p_ctx->keep_alive_thread_args &&
+      p_ctx->keep_alive_thread_args->close_thread)
 #endif
   {
       ni_log2(p_ctx, NI_LOG_ERROR, 
@@ -1714,10 +1778,11 @@ int ni_device_session_read(ni_session_context_t *p_ctx, ni_session_data_io_t *p_
 
   // Here check if keep alive thread is closed.
 #ifdef _WIN32
-  if (p_ctx->keep_alive_thread.handle &&
+  if (p_ctx->keep_alive_thread.handle && p_ctx->keep_alive_thread_args &&
       p_ctx->keep_alive_thread_args->close_thread)
 #else
-  if (p_ctx->keep_alive_thread && p_ctx->keep_alive_thread_args->close_thread)
+  if (p_ctx->keep_alive_thread && p_ctx->keep_alive_thread_args &&
+      p_ctx->keep_alive_thread_args->close_thread)
 #endif
   {
       ni_log2(p_ctx, NI_LOG_ERROR, 
@@ -2017,8 +2082,10 @@ ni_retcode_t ni_device_config_qos_op(ni_device_handle_t device_handle,
                                      uint32_t over_provision)
 {
   ni_retcode_t retval;
-  ni_log(NI_LOG_DEBUG, "%s device_handle %p target %p over_provision %u\n",
-         __func__, device_handle, device_handle_t, over_provision);
+  float f_over_provision = 0;
+  memcpy(&f_over_provision, &over_provision, sizeof(int32_t));
+  ni_log(NI_LOG_DEBUG, "%s device_handle %p target %p over_provision %f\n",
+         __func__, device_handle, device_handle_t, f_over_provision);
   retval = ni_device_config_ns_qos(device_handle, QOS_OP_CONFIG_REC_OP_CODE,
                                    over_provision);
   if (NI_RETCODE_SUCCESS != retval)
@@ -4321,6 +4388,7 @@ ni_retcode_t ni_encoder_init_default_params(ni_xcoder_params_t *p_param,
   p_enc->HDR10wy = 0;
   p_enc->HDR10maxluma = 0;
   p_enc->HDR10minluma = 0;
+  p_enc->avcc_hvcc = 0;
   p_enc->av1_error_resilient_mode = 0;
   p_enc->temporal_layers_enable = 0;
   p_enc->crop_width = 0;
@@ -4365,6 +4433,11 @@ ni_retcode_t ni_encoder_init_default_params(ni_xcoder_params_t *p_param,
   p_enc->scene_change_detect_level = 0;
   p_enc->encMallocStrategy = 0;
   p_enc->enable_smooth_crf = 0;
+  p_enc->enable_compensate_qp = 0;
+  p_enc->spatial_layers = 1;
+  p_enc->enable_timecode = 0;
+  p_enc->spatial_layers_ref_base_layer = 0;
+  p_enc->vbvBufferReencode = 0;
   
   if (codec_format == NI_CODEC_FORMAT_AV1)
   {
@@ -4548,11 +4621,14 @@ ni_retcode_t ni_decoder_init_default_params(ni_xcoder_params_t *p_param,
 #ifdef XCODER_311
   p_dec->disable_adaptive_buffers = 1;
   p_dec->min_packets_delay = true;
+  p_dec->reduce_dpb_delay = 1;
 #else
   p_dec->disable_adaptive_buffers = 0;
   p_dec->min_packets_delay = false;
+  p_dec->reduce_dpb_delay = 0;
 #endif
   p_dec->survive_stream_err = 0;
+  p_dec->skip_extra_headers = 0;
 
   //-------init unused param start----------
 
@@ -5406,6 +5482,8 @@ ni_retcode_t ni_decoder_params_set_value(ni_xcoder_params_t *p_params,
           p_dec->ec_policy = NI_EC_POLICY_BEST_EFFORT;
       } else if (strncmp(value, "limited_error", sizeof("limited_error")) == 0) {
           p_dec->ec_policy = NI_EC_POLICY_LIMITED_ERROR;
+      } else if (strncmp(value, "best_effort_out_dc", sizeof("best_effort_out_dc")) == 0) {
+          p_dec->ec_policy = NI_EC_POLICY_BEST_EFFORT_OUT_DC;
       } else {
           return NI_RETCODE_PARAM_INVALID_VALUE;
       }
@@ -5509,6 +5587,14 @@ ni_retcode_t ni_decoder_params_set_value(ni_xcoder_params_t *p_params,
           return NI_RETCODE_PARAM_ERROR_OOR;
       }
       p_dec->reduce_dpb_delay = atoi(value);
+  }
+  OPT(NI_DEC_PARAM_SKIP_EXTRA_HEADERS)
+  {
+      if ((atoi(value) != 0) && (atoi(value) != 1))
+      {
+          return NI_RETCODE_PARAM_ERROR_OOR;
+      }
+      p_dec->skip_extra_headers = atoi(value);
   }
   else
   {
@@ -5675,7 +5761,9 @@ ni_retcode_t ni_encoder_params_set_value(ni_xcoder_params_t *p_params,
       {
           return NI_RETCODE_PARAM_ERROR_OOR;
       }
-    p_params->generate_enc_hdrs = atoi(value);
+      p_params->generate_enc_hdrs = atoi(value);
+      // genHdrs is deprecated in favour of libavcodec parameter -gen_global_headers
+      return NI_RETCODE_PARAM_WARNING_DEPRECATED;
   }
   OPT(NI_ENC_PARAM_USE_LOW_DELAY_POC_TYPE)
   {
@@ -6611,6 +6699,14 @@ ni_retcode_t ni_encoder_params_set_value(ni_xcoder_params_t *p_params,
     }
     p_params->interval_of_psnr = atoi(value);
   }
+  OPT(NI_ENC_PARAM_GET_RECONSTRUCTED_MODE)
+  {
+    if (atoi(value) < 0 || atoi(value) > 1)
+    {
+      return NI_RETCODE_PARAM_ERROR_OOR;
+    }
+    p_enc->get_psnr_mode = atoi(value) + 3;
+  }
   OPT(NI_ENC_ENABLE_SSIM)
   {
       if ((atoi(value) != 0) && (atoi(value) != 1))
@@ -6751,6 +6847,14 @@ ni_retcode_t ni_encoder_params_set_value(ni_xcoder_params_t *p_params,
       }
       p_enc->noMbtree = atoi(value);
   }
+  OPT(NI_ENC_PARAM_AVCC_HVCC)
+  {
+      if ((atoi(value) != 0) && (atoi(value) != 1))
+      {
+          return NI_RETCODE_PARAM_ERROR_OOR;
+      }
+      p_enc->avcc_hvcc = atoi(value);
+  }
   OPT(NI_ENC_PARAM_NO_HW_MULTIPASS_SUPPORT)
   {
       if ((atoi(value) != 0) && (atoi(value) != 1))
@@ -6887,6 +6991,14 @@ ni_retcode_t ni_encoder_params_set_value(ni_xcoder_params_t *p_params,
     }
     p_enc->enable_smooth_crf = atoi(value);
   }
+  OPT(NI_ENC_PARAM_ENABLE_COMPENSATE_QP)
+  {
+    if ((atoi(value) != 0) && (atoi(value) != 1))
+    {
+      return NI_RETCODE_PARAM_ERROR_OOR;
+    }
+    p_enc->enable_compensate_qp = atoi(value);
+  }
   OPT(NI_ENC_PARAM_SKIP_FRAME_ENABLE)
   {
     if (atoi(value) < 0 || atoi(value) > 1)
@@ -7013,6 +7125,38 @@ ni_retcode_t ni_encoder_params_set_value(ni_xcoder_params_t *p_params,
       return NI_RETCODE_PARAM_ERROR_OOR;
     }
     p_enc->encMallocStrategy = atoi(value);
+  }
+  OPT(NI_ENC_PARAM_SPATIAL_LAYERS)
+  {
+    if (atoi(value) < 1 || atoi(value) > 4)
+    {
+        return NI_RETCODE_PARAM_ERROR_OOR;
+    }
+    p_enc->spatial_layers = atoi(value);
+  }  
+  OPT(NI_ENC_PARAM_ENABLE_TIMECODE)
+  {
+    if (atoi(value) < 0 || atoi(value) > 1)
+    {
+        return NI_RETCODE_PARAM_ERROR_OOR;
+    }
+    p_enc->enable_timecode = atoi(value);
+  }
+  OPT(NI_ENC_PARAM_SPATIAL_LAYERS_REF_BASE_LAYER)
+  {
+    if ((atoi(value) != 0) && (atoi(value) != 1))
+    {
+        return NI_RETCODE_PARAM_ERROR_OOR;
+    }
+    p_enc->spatial_layers_ref_base_layer = atoi(value);
+  }
+  OPT(NI_ENC_PARAM_VBV_BUFFER_REENCODE)
+  {
+    if ((atoi(value) != 0) && (atoi(value) != 1))
+    {
+        return NI_RETCODE_PARAM_ERROR_OOR;
+    }
+    p_enc->vbvBufferReencode = atoi(value);
   }
   else { return NI_RETCODE_PARAM_INVALID_NAME; }
 
@@ -7909,10 +8053,11 @@ int ni_device_session_read_hwdesc(ni_session_context_t *p_ctx, ni_session_data_i
 
     // Here check if keep alive thread is closed.
 #ifdef _WIN32
-    if (p_ctx->keep_alive_thread.handle &&
+    if (p_ctx->keep_alive_thread.handle && p_ctx->keep_alive_thread_args &&
         p_ctx->keep_alive_thread_args->close_thread)
 #else
-    if (p_ctx->keep_alive_thread && p_ctx->keep_alive_thread_args->close_thread)
+    if (p_ctx->keep_alive_thread && p_ctx->keep_alive_thread_args &&
+        p_ctx->keep_alive_thread_args->close_thread)
 #endif
     {
         ni_log2(p_ctx, NI_LOG_ERROR, 
@@ -11521,16 +11666,28 @@ ni_retcode_t ni_query_extra_info(ni_device_handle_t device_handle,
   if (ni_cmp_fw_api_ver((char*) &fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6rC") >= 0 &&
       ni_cmp_fw_api_ver((char*) &fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6rR") < 0)
   {
-    p_dev_extra_info->power_consumption = 0xFFFFFFFF;
+    p_dev_extra_info->power_consumption = NI_INVALID_POWER;
   }
   else
   {
     p_dev_extra_info->power_consumption = p_dev_extra_info_data->power_consumption;
   }
+  //QUADPV-1210-Remove ADC current measurement decoding from FW
+  if (ni_cmp_fw_api_ver((char*) &fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6s4") >=0)
+  {
+    p_dev_extra_info->current_consumption = p_dev_extra_info_data->current_consumption;
+    ni_device_capability_t device_capability = {0};
+    if (ni_device_capability_query2(device_handle, &device_capability, false) != NI_RETCODE_SUCCESS)
+    {
+        ni_log(NI_LOG_ERROR, "ERROR: unable to query capability\n");
+	return NI_RETCODE_ERROR_NVME_CMD_FAILED;
+    }
+    p_dev_extra_info->power_consumption = ni_decode_power_measurement(p_dev_extra_info->current_consumption, device_capability.serial_number);
+  }
   ni_log(NI_LOG_DEBUG, "%s(): current composite temperature %d on board temperature %d "
-         "on die temperature %d power consumption %d\n", 
+         "on die temperature %d power consumption %d current consumption %d\n", 
          __func__, p_dev_extra_info->composite_temp, p_dev_extra_info->on_board_temp, 
-         p_dev_extra_info->on_die_temp, p_dev_extra_info->power_consumption);
+         p_dev_extra_info->on_die_temp, p_dev_extra_info->power_consumption, p_dev_extra_info->current_consumption);
   ni_aligned_free(p_buffer);
   return NI_RETCODE_SUCCESS;
 }
@@ -12734,5 +12891,104 @@ ni_retcode_t ni_p2p_recv(ni_session_context_t *pSession,
         retval = NI_RETCODE_INVALID_PARAM;
     }
 
+    return retval;
+}
+
+/*!*****************************************************************************
+ *  \brief  Send a restart command after flush command
+ *          Only support Encoder now
+ *
+ *  \param[in] p_ctx        Pointer to a caller allocated
+ *                          ni_session_context_t struct
+ *  \param[in]  width       width, in pixels
+ *  \param[in]  height      height, in pixels
+ *  \param[in] device_type  NI_DEVICE_TYPE_ENCODER
+ *  \return On success
+ *                          NI_RETCODE_SUCCESS
+ *          On failure
+ *                          NI_RETCODE_INVALID_PARAM
+ *                          NI_RETCODE_ERROR_NVME_CMD_FAILED
+ *                          NI_RETCODE_ERROR_INVALID_SESSION
+ ******************************************************************************/
+ni_retcode_t ni_device_session_restart(ni_session_context_t *p_ctx,
+                                       int video_width,
+                                       int video_height,
+                                       ni_device_type_t device_type)
+{
+    ni_retcode_t retval = 0;
+    ni_resolution_t resolution;
+    ni_xcoder_params_t *p_param = NULL;
+
+    if (!p_ctx)
+    {
+        ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR: %s() passed parameters are null, return\n",
+               __func__);
+        return NI_RETCODE_INVALID_PARAM;
+    }
+
+    switch (device_type)
+    {
+      case NI_DEVICE_TYPE_ENCODER:
+        {
+            // requires API version >= 54
+            if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+                                  "54") < 0)
+            {
+                ni_log2(p_ctx, NI_LOG_ERROR,  "Error: %s function not supported on device with FW API version < 5.4\n", __func__);
+                return NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION;
+            }
+
+            /* This function should be called only if flushing is detected */
+            if (p_ctx->session_run_state != SESSION_RUN_STATE_FLUSHING)
+            {
+                ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR: %s() wrong state %d\n",
+                        __func__, p_ctx->session_run_state);
+                return NI_RETCODE_ERROR_INVALID_SESSION;
+            }
+
+            if (video_width < NI_MIN_WIDTH || video_width > NI_MAX_WIDTH ||
+                video_height < NI_MIN_HEIGHT || video_height > NI_MAX_HEIGHT)
+            {
+                ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR: %s() invalid width %d or height %d\n",
+                       __func__, video_width, video_height);
+                return NI_RETCODE_INVALID_PARAM;
+            }
+            resolution.width = video_width;
+            resolution.height = video_height;
+            resolution.bit_depth_factor = p_ctx->bit_depth_factor;
+            resolution.luma_linesize = 0;
+            resolution.chroma_linesize = 0;
+            if (p_ctx->p_session_config)
+            {
+                p_param = (ni_xcoder_params_t *)p_ctx->p_session_config;
+                resolution.luma_linesize = p_param->luma_linesize;
+                resolution.chroma_linesize = p_param->chroma_linesize;
+            }
+            ni_pthread_mutex_lock(&p_ctx->mutex);
+
+            // reconfig the encoder session
+            retval = ni_encoder_session_sequence_change(p_ctx, &resolution);
+            if (NI_RETCODE_SUCCESS != retval)
+            {
+                ni_log(NI_LOG_ERROR, "Failed to reconfig config the encoder session (status = %d)\n", retval);
+                ni_pthread_mutex_unlock(&p_ctx->mutex);
+                return retval;
+            }
+
+            // update session context
+            p_ctx->ready_to_close = 0;
+            p_ctx->frame_num = 0;
+            p_ctx->pkt_num = 0;
+            ni_pthread_mutex_unlock(&p_ctx->mutex);
+            break;
+        }
+        default:
+        {
+            retval = NI_RETCODE_INVALID_PARAM;
+            ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR: %s() Unsupported device type: %d",
+                   __func__, device_type);
+            break;
+        }
+    }
     return retval;
 }

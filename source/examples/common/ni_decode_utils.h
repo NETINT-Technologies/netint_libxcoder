@@ -20,158 +20,49 @@
  ******************************************************************************/
 
 /*!*****************************************************************************
- *  \file   ni_device_test.h
+ *  \file   decode_utils.h
  *
- *  \brief  Application for performing video processing with libxcoder API.
- *          Its code provides examples on how to programatically use libxcoder
- *          API.
+ *  \brief  Video decoding utility functions shared by Libxcoder API examples
  ******************************************************************************/
 
 #pragma once
-
-#include <stdio.h>
-#include <stdlib.h>
-#include "ni_av_codec.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#ifdef _WIN32
-#define open  _open
-#define close _close
-#define read  _read
-#define write _write
-#define lseek _lseek
-#endif
+#include "ni_device_api.h"
+#include "ni_av_codec.h"
+#include "ni_bitstream.h"
+#include "ni_generic_utils.h"
+#include "ni_filter_utils.h"
 
-#define NVME_CMD_SEM_PROTECT 1
-#define FILE_NAME_LEN 	256
-
-#define XCODER_APP_TRANSCODE 0
-#define XCODER_APP_DECODE 1
-#define XCODER_APP_ENCODE 2
-#define XCODER_APP_HWUP_ENCODE 3
-#define XCODER_APP_FILTER 4
-
-#define ENC_CONF_STRUCT_SIZE 0x100
-
-#define MAX_INPUT_FILES 	3
-#define MAX_OUTPUT_FILES 4
-
-#define NI_TEST_RETCODE_FAILURE -1
-#define NI_TEST_RETCODE_SUCCESS 0
-#define NI_TEST_RETCODE_END_OF_STREAM 1
-#define NI_TEST_RETCODE_EAGAIN 2
-#define NI_TEST_RETCODE_NEXT_INPUT 3
-#define NI_TEST_RETCODE_SEQ_CHANGE_DONE 4
-
-#define NI_ALIGN(x, a) (((x)+(a)-1)&~((a)-1))
-
-typedef enum
+typedef struct dec_send_param
 {
-    NI_SW_PIX_FMT_NONE = -1,       /* invalid format       */
-    NI_SW_PIX_FMT_YUV444P,         /* 8-bit YUV444 planar  */
-    NI_SW_PIX_FMT_YUV444P10LE,     /* 10-bit YUV444 planar */
-} ni_sw_pix_fmt_t;
-
-typedef struct _ni_pix_fmt_name
-{
-    const char *name;
-    ni_pix_fmt_t pix_fmt;
-} ni_pix_fmt_name_t;
-
-typedef struct _ni_gc620_pix_fmt
-{
-  ni_pix_fmt_t pix_fmt_ni;
-  int          pix_fmt_gc620;
-} ni_gc620_pix_fmt_t;
-
-typedef struct _device_state
-{
-    int dec_sos_sent;
-    int dec_eos_sent;
-    int dec_eos_received;
-    int enc_resend;
-    int enc_sos_sent;
-    int enc_eos_sent;
-    int enc_eos_received;
-} device_state_t;
-
-// simplistic ref counted HW frame
-typedef struct _ni_hwframe_ref_t
-{
-    int ref_cnt;
-    niFrameSurface1_t surface;
-} ni_hwframe_ref_t;
-
-typedef struct _tx_data
-{
-    char fileName[MAX_INPUT_FILES][FILE_NAME_LEN];
-    uint32_t DataSizeLimit;
-    int device_handle;
-    int mode;
+    ni_demo_context_t *p_ctx;
     ni_session_context_t *p_dec_ctx;
-    ni_session_context_t *p_enc_ctx;
-    ni_session_context_t *p_upl_ctx;
+    int input_width;
+    int input_height;
+    void *p_stream_info;
+    ni_test_frame_list_t *frame_list;
+} dec_send_param_t;
+
+typedef struct dec_recv_param
+{
+    ni_demo_context_t *p_ctx;
+    ni_session_context_t *p_dec_ctx;
     ni_session_context_t *p_sca_ctx;
     ni_session_context_t *p_crop_ctx;
     ni_session_context_t *p_pad_ctx;
     ni_session_context_t *p_ovly_ctx;
     ni_session_context_t *p_fmt_ctx;
-    ni_device_context_t *p_dec_rsrc_ctx;
-    ni_device_context_t *p_enc_rsrc_ctx;
-    ni_device_context_t *p_upl_rsrc_ctx;
-    ni_device_context_t *p_sca_rsrc_ctx;
-    ni_device_context_t *p_crop_rsrc_ctx;
-    ni_device_context_t *p_pad_rsrc_ctx;
-    ni_device_context_t *p_ovly_rsrc_ctx;
-    ni_device_context_t *p_fmt_rsrc_ctx;
-    int arg_width;
-    int arg_height;
-} tx_data_t;
-
-typedef struct RecvDataStruct_
-{
-    char fileName[FILE_NAME_LEN];
-    uint32_t DataSizeLimit;
-    int device_handle;
-    int mode;
-    ni_session_context_t *p_dec_ctx;
-    ni_session_context_t *p_enc_ctx;
-    ni_session_context_t *p_upl_ctx;
-    ni_session_context_t *p_sca_ctx;
-    ni_session_context_t *p_crop_ctx;
-    ni_session_context_t *p_pad_ctx;
-    ni_session_context_t *p_ovly_ctx;
-    ni_session_context_t *p_fmt_ctx;
-    ni_device_context_t *p_dec_rsrc_ctx;
-    ni_device_context_t *p_enc_rsrc_ctx;
-    ni_device_context_t *p_upl_rsrc_ctx;
-    ni_device_context_t *p_sca_rsrc_ctx;
-    ni_device_context_t *p_crop_rsrc_ctx;
-    ni_device_context_t *p_pad_rsrc_ctx;
-    ni_device_context_t *p_ovly_rsrc_ctx;
-    ni_device_context_t *p_fmt_rsrc_ctx;
-
-    int arg_width;
-    int arg_height;
-} rx_data_t;
-
-typedef struct  ni_rate_emu
-{
-    int rate_emu_framerate;         // target framerate to emulate
-    uint64_t rate_emu_start;        // start time in ns for rate emulation
-    uint64_t rate_emu_input_frames; // number of frames processed
-} ni_rate_emu_t;
-
-typedef struct _ni_drawbox_params
-{
-    int box_w;
-    int box_h;
-    int box_x;
-    int box_y;
-} box_params_t;
+    int xcoderGUID;
+    int input_width;
+    int input_height;
+    ni_test_frame_list_t *frame_list;
+    ni_scale_params_t *scale_params;
+    ni_drawbox_params_t *drawbox_params;
+} dec_recv_param_t;
 
 /**
  * Sequence parameter set
@@ -241,13 +132,6 @@ typedef struct _ni_h264_sps_t
     uint8_t data[4096];
     size_t data_size;
 } ni_h264_sps_t;
-
-#define HEVC_MAX_SUB_LAYERS 7
-#define HEVC_MAX_SHORT_TERM_REF_PIC_SETS 64
-#define HEVC_MAX_LONG_TERM_REF_PICS 32
-#define HEVC_MAX_SPS_COUNT 16
-#define HEVC_MAX_REFS 16
-#define HEVC_MAX_LOG2_CTB_SIZE 6
 
 typedef struct _ni_h265_window_t
 {
@@ -466,59 +350,102 @@ typedef struct _ni_vp9_header_info
     uint32_t total_frames;
 } ni_vp9_header_info_t;
 
-int decoder_send_data(ni_session_context_t * p_dec_ctx,
-                      ni_session_data_io_t * p_in_data,
-                      int input_video_width, int input_video_height,
-                      int pfs, unsigned long *sentTotal, int printT,
-                      device_state_t *xState, void *stream_info);
+typedef enum _ni_nalu_type
+{
+    H264_NAL_UNSPECIFIED = 0,
+    H264_NAL_SLICE = 1,
+    H264_NAL_DPA = 2,
+    H264_NAL_DPB = 3,
+    H264_NAL_DPC = 4,
+    H264_NAL_IDR_SLICE = 5,
+    H264_NAL_SEI = 6,
+    H264_NAL_SPS = 7,
+    H264_NAL_PPS = 8,
+    H264_NAL_AUD = 9,
+    H264_NAL_END_SEQUENCE = 10,
+    H264_NAL_END_STREAM = 11,
+    H264_NAL_FILLER_DATA = 12,
+    H264_NAL_SPS_EXT = 13,
+    H264_NAL_PREFIX = 14,
+    H264_NAL_SUB_SPS = 15,
+    H264_NAL_DPS = 16,
+    H264_NAL_AUXILIARY_SLICE = 19,
+} ni_nalu_type_t;
 
-int decoder_receive_data(ni_session_context_t * p_dec_ctx,
-                         ni_session_data_io_t * p_out_data,
-                         int output_video_width, int output_video_height,
-                         FILE *pfr, unsigned long long *recvTotal, int printT,
-                         int writeToFile, device_state_t *xState,
-                         int * p_rx_size);
+typedef enum _ni_hevc_nalu_type
+{
+    HEVC_NAL_TRAIL_N = 0,
+    HEVC_NAL_TRAIL_R = 1,
+    HEVC_NAL_TSA_N = 2,
+    HEVC_NAL_TSA_R = 3,
+    HEVC_NAL_STSA_N = 4,
+    HEVC_NAL_STSA_R = 5,
+    HEVC_NAL_RADL_N = 6,
+    HEVC_NAL_RADL_R = 7,
+    HEVC_NAL_RASL_N = 8,
+    HEVC_NAL_RASL_R = 9,
+    HEVC_NAL_IDR_W_RADL = 19,
+    HEVC_NAL_IDR_N_LP = 20,
+    HEVC_NAL_CRA_NUT = 21,
+    HEVC_NAL_VPS = 32,
+    HEVC_NAL_SPS = 33,
+    HEVC_NAL_PPS = 34,
+    HEVC_NAL_AUD = 35,
+    HEVC_NAL_EOS_NUT = 36,
+    HEVC_NAL_EOB_NUT = 37,
+    HEVC_NAL_FD_NUT = 38,
+    HEVC_NAL_SEI_PREFIX = 39,
+    HEVC_NAL_SEI_SUFFIX = 40,
+} ni_hevc_nalu_type;
 
-int encoder_send_data(ni_session_context_t * p_enc_ctx,
-                      ni_session_data_io_t * p_in_data, void *yuv_buf,
-                      int input_video_width, int input_video_height,
-                      unsigned long *sent_size, device_state_t *xState,
-                      int is_last_input,
-                      ni_rate_emu_t *p_rate_emu, 
-                      ni_session_run_state_t read_yuv_state);
+uint64_t find_h264_next_nalu(ni_demo_context_t *p_ctx, uint8_t *p_dst, int *nal_type);
+int h264_parse_hrd(ni_bitstream_reader_t *br, ni_h264_sps_t *sps);
+int h264_parse_vui(ni_bitstream_reader_t *br, ni_h264_sps_t *sps);
+int h264_parse_scaling_list(ni_bitstream_reader_t *br, uint8_t *factors, int size,
+                       const uint8_t *jvt_list, const uint8_t *fallback_list);
+int h264_parse_scaling_matrices(ni_bitstream_reader_t *br, const ni_h264_sps_t *sps,
+                           uint8_t (*scaling_matrix4)[16], uint8_t (*scaling_matrix8)[64]);
+int h264_parse_sps(uint8_t *buf, int size_bytes, ni_h264_sps_t *sps);
+int h264_parse_sei(uint8_t *buf, int size_bytes, ni_h264_sps_t *sps,
+                   int *sei_type, int *is_interlaced);
+int probe_h264_stream_info(ni_demo_context_t *p_ctx, ni_h264_sps_t *sps);
+int parse_h264_slice_header(uint8_t *buf, int size_bytes, ni_h264_sps_t *sps,
+                            int32_t *frame_num, unsigned int *first_mb_in_slice);
 
-int encoder_send_data2(ni_session_context_t * p_enc_ctx,
-                       ni_session_data_io_t * p_dec_out_data,
-                       ni_session_data_io_t * p_enc_in_data,
-                       int input_video_width, int input_video_height,
-                       unsigned long *sent_size, device_state_t *xState);
+uint64_t find_h265_next_nalu(ni_demo_context_t *p_ctx, uint8_t *p_dst, int *nal_type);
+void h265_decode_sublayer_hrd(ni_bitstream_reader_t *br, unsigned int nb_cpb, 
+                              int subpic_params_present);
+int h265_decode_profile_tier_level(ni_bitstream_reader_t *br, PTLCommon *ptl);
+int h265_parse_ptl(ni_bitstream_reader_t *br, PTL *ptl, int max_num_sub_layers);
+int h265_decode_hrd(ni_bitstream_reader_t *br, int common_inf_present, int max_sublayers);
+void h265_set_default_scaling_list_data(ScalingList *sl);
+int h265_scaling_list_data(ni_bitstream_reader_t *br, ScalingList *sl, ni_h265_sps_t *sps);
+int h265_decode_short_term_rps(ni_bitstream_reader_t *br, ShortTermRPS *rps,
+                               const ni_h265_sps_t *sps, int is_slice_header);
+int h265_decode_vui(ni_bitstream_reader_t *br, int apply_defdispwin, ni_h265_sps_t *sps);
+int h265_parse_sps(ni_h265_sps_t *sps, uint8_t *buf, int size_bytes);
+int probe_h265_stream_info(ni_demo_context_t *p_ctx, ni_h265_sps_t *sps);
 
-int encoder_close_session(ni_session_context_t *p_enc_ctx,
-                          ni_session_data_io_t *p_in_data,
-                          ni_session_data_io_t *p_out_data);
+uint64_t find_vp9_next_packet(ni_demo_context_t *p_ctx, uint8_t *p_dst, ni_vp9_header_info_t *vp9_info);
+int vp9_parse_header(ni_vp9_header_info_t *vp9_info, uint8_t *buf, int size_bytes);
+int probe_vp9_stream_info(ni_demo_context_t *p_ctx, ni_vp9_header_info_t *vp9_info);
 
-int encoder_init_session(ni_session_context_t *p_enc_ctx,
-                         ni_session_data_io_t *p_in_data,
+int decoder_send_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_dec_ctx,
+                               ni_session_data_io_t *p_in_data,
+                               int input_video_width, int input_video_height,
+                               void *stream_info);
+int decoder_receive_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_dec_ctx,
                          ni_session_data_io_t *p_out_data,
-                         int arg_width, int arg_height,
-                         ni_pix_fmt_t pix_fmt);
+                         int output_video_width, int output_video_height,
+                         FILE *p_file, int write_to_file,
+                         int * p_rx_size);
+int decoder_open_session(ni_session_context_t *p_dec_ctx, int iXcoderGUID,
+                         ni_xcoder_params_t *p_dec_params);
+void decoder_stat_report_and_close(ni_demo_context_t *p_ctx, ni_session_context_t *p_dec_ctx);
 
-int encoder_sequence_change(ni_session_context_t *p_enc_ctx,
-                            ni_session_data_io_t *p_in_data,
-                            ni_session_data_io_t *p_out_data,
-                            int width, int height, ni_pix_fmt_t pix_fmt);
+void *decoder_send_thread(void *args);
+void *decoder_receive_thread(void *args);
 
-int scale_filter(ni_session_context_t * p_ctx, ni_frame_t * p_frame_in,
-                 ni_session_data_io_t * p_data_out, int guid, int scale_width,
-                 int scale_height, int in_format, int out_format);
-
-int drawbox_filter(ni_session_context_t * p_crop_ctx,
-                   ni_session_context_t * p_pad_ctx,
-                   ni_session_context_t * p_overlay_ctx,
-                   ni_session_context_t * p_fmt_ctx,
-                   ni_frame_t *p_frame_in, ni_session_data_io_t *p_data_out,
-                   box_params_t *p_box_params, int guid,
-                   int input_format, int output_format);
 #ifdef __cplusplus
 }
 #endif

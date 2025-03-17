@@ -47,6 +47,7 @@ static const ni_rational_t
         {64, 33}, {160, 99}, {4, 3},   {3, 2},   {2, 1},
 };
 
+#define NI_SEI_TYPE_PPU_RECONFIG 206
 typedef enum _ni_h264_sei_type_t
 {
     NI_H264_SEI_TYPE_BUFFERING_PERIOD = 0,   // buffering period (H.264, D.1.1)
@@ -442,6 +443,39 @@ typedef struct _ni_dynamic_hdr_plus
     ni_rational_t mastering_display_actual_peak_luminance[25][25];
 } ni_dynamic_hdr_plus_t;
 
+// All the fields in the following struct follow the same names and definition
+// as set out by the H264/H265 specifications
+typedef struct _ni_timecode
+{
+    uint8_t nuit_field_based_flag;
+    uint8_t counting_type;
+    uint8_t full_timestamp_flag;
+    uint8_t discontinuity_flag;
+    uint8_t cnt_dropped_flag;
+    uint16_t n_frames;
+    uint8_t seconds_flag;  // ignored when full_timestamp_flag is set
+    uint8_t seconds_value;
+    uint8_t minutes_flag;  // ignored when full_timestamp_flag is set
+    uint8_t minutes_value;
+    uint8_t hours_flag;    // ignored when full_timestamp_flag is set
+    uint8_t hours_value;
+    uint8_t time_offset_length;
+    uint32_t time_offset_value;
+} ni_timecode_t;
+
+// This is for decoder to reset the ppu value
+// ppu_set_enable & (0x1 << idx) is which ppu[idx] enabled
+// for examle, ppu_set_enable is 3, so ppu0 amd ppu1 is enabled
+// 0x03 & (0x01 << 0) is not 0 and 0x03 &(0x01 << 1) is not 0
+// 0: all ppu disabled. 1: ppu0 enabled. 2: ppu1 enabled
+// 3: ppu0 ppu1 enabled. 4: ppu2 enabled. 5: ppu0 ppu2 enabled
+// 6: ppu1 ppu enabled. 7: all ppu enabled others: disabled
+typedef struct _ni_ppu_config{
+    uint8_t ppu_set_enable;
+    uint16_t ppu_w[NI_MAX_NUM_OF_DECODER_OUTPUTS];
+    uint16_t ppu_h[NI_MAX_NUM_OF_DECODER_OUTPUTS];
+}ni_ppu_config_t;
+
 /*!*****************************************************************************
  *  \brief  Whether SEI should be sent together with this frame to encoder
  *
@@ -519,6 +553,22 @@ ni_enc_copy_aux_data(ni_session_context_t *p_enc_ctx, ni_frame_t *p_enc_frame,
                      const uint8_t *cc_data, const uint8_t *udu_data,
                      const uint8_t *hdrp_data, int is_hwframe,
                      int is_semiplanar);
+
+/*!*****************************************************************************
+ *  \brief  Insert timecode data into picture timing SEI (H264) or time code SEI (H265)
+ *
+ *  \note   This function must be callled after all other aux data has been processed by
+ *          ni_enc_prep_aux_data and ni_enc_copy_aux_data. Otherwise the timecode SEI data
+ *          might be overwritten
+ *
+ *  \param[in]  p_enc_ctx encoder session context
+ *  \param[out]  p_enc_frame frame to be sent to encoder
+ *  \param[in]   p_timecode the timecode data to be written along with the frame
+ *
+ *  \return NI_RETCODE_SUCCESS on success, NI_RETCODE_FAILURE on failure
+ ******************************************************************************/
+LIB_API int ni_enc_insert_timecode(ni_session_context_t *p_enc_ctx, ni_frame_t *p_enc_frame, 
+                                   ni_timecode_t *p_timecode);
 
 /*!*****************************************************************************
   *  \brief  Send an input data frame to the encoder with YUV data given in 
@@ -606,6 +656,21 @@ LIB_API int ni_dec_packet_parse(ni_session_context_t *p_session_ctx,
  ********************************************************************************/
 LIB_API int ni_expand_frame(ni_frame_t *dst, ni_frame_t *src, int dst_stride[],
                         int raw_width, int raw_height, int ni_fmt, int nb_planes);
+
+/*!******************************************************************************
+ * \brief  Reset decoder ppu resolution
+ *
+ * \param[in] p_session_ctx         Pointer to a caller allocated 
+ *                                          ni_session_context_t struct
+ * \param[in] p_param               Pointer to a caller allocated 
+ *                                          ni_xcoder_params_t struct
+ * \param[in] ppu_config            Pointer to a caller allocated
+ *                                          ni_ppu_config_t struct
+ *
+ * \return - 0 on success, NI_RETCODE_FAILURE on failure
+ ********************************************************************************/
+LIB_API int ni_reconfig_ppu_output(ni_session_context_t *p_session_ctx,
+                    ni_xcoder_params_t *p_param, ni_ppu_config_t *ppu_config);
 #ifdef __cplusplus
 }
 #endif

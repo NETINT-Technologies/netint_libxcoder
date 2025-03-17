@@ -1,12 +1,20 @@
 .PHONY: all default test clean cleanall install uninstall
 WINDOWS ?= FALSE
+OPENHARMONY ?= FALSE
 GDB ?= FALSE
 WARN_AS_ERROR ?= FALSE
 SECURE_COMPILE ?= FALSE
 RPM_DEBUG ?= FALSE
 DONT_WRITE_SONAME ?= FALSE
+SETUP_SYSTEMD ?= FALSE
+
+ifeq ($(OPENHARMONY), TRUE)
+	CC = ${OHOS_SDK_ROOT}/linux/native/llvm/bin/aarch64-unknown-linux-ohos-clang
+	CXX = ${OHOS_SDK_ROOT}/linux/native/llvm/bin/aarch64-unknown-linux-ohos-clang++
+endif
 
 INSTALL = install
+COPY_CMD = cp
 
 ifeq ($(SECURE_COMPILE), TRUE)
 	GLOBALFLAGS = -Wall -Wl,-z,now -Wl,-z,relro -Wl,-z,noexecstack -fstack-protector-strong
@@ -33,8 +41,14 @@ else
 	endif
 endif
 
-CFLAGS = -fPIC ${WERROR_FLAGS} -DLIBXCODER_OBJS_BUILD -std=gnu99
-CXXFLAGS = -fPIC ${WERROR_FLAGS} -DLIBXCODER_OBJS_BUILD -std=c++11
+ifeq ($(OPENHARMONY), TRUE)
+	CFLAGS = -fPIC ${WERROR_FLAGS} -DLIBXCODER_OBJS_BUILD -D__OPENHARMONY__ -std=gnu99
+	CXXFLAGS = -fPIC ${WERROR_FLAGS} -DLIBXCODER_OBJS_BUILD -D__OPENHARMONY__ -std=c++11
+else
+	CFLAGS = -fPIC ${WERROR_FLAGS} -DLIBXCODER_OBJS_BUILD -std=gnu99
+	CXXFLAGS = -fPIC ${WERROR_FLAGS} -DLIBXCODER_OBJS_BUILD -std=c++11
+endif
+
 TARGETNAME = xcoder
 TARGETP2P = xcoderp2p
 TARGETP2PREAD = xcoderp2p_read
@@ -48,9 +62,12 @@ else
 	TARGET_INCS = ni_device_api.h ni_rsrc_api.h ni_defs.h ni_av_codec.h ni_bitstream.h ni_util.h ni_log.h ni_release_info.h
 endif
 TARGET_PC = xcoder.pc
+SERVICE_FILE = nilibxcoder.service
 OBJECTS = ni_nvme.o ni_device_api_priv.o ni_device_api.o ni_util.o ni_lat_meas.o ni_log.o ni_rsrc_priv.o ni_rsrc_api.o ni_av_codec.o ni_bitstream.o
 LINK_OBJECTS = ${OBJS_PATH}/ni_nvme.o ${OBJS_PATH}/ni_device_api_priv.o ${OBJS_PATH}/ni_device_api.o ${OBJS_PATH}/ni_util.o ${OBJS_PATH}/ni_lat_meas.o ${OBJS_PATH}/ni_log.o ${OBJS_PATH}/ni_rsrc_priv.o ${OBJS_PATH}/ni_rsrc_api.o ${OBJS_PATH}/ni_av_codec.o ${OBJS_PATH}/ni_bitstream.o
-ALL_OBJECTS = ni_device_test.o init_rsrc.o test_rsrc_api.o ni_rsrc_mon.o ni_rsrc_update.o ni_rsrc_list.o ni_rsrc_namespace.o ${OBJECTS}
+DEMO_OBJECTS = ni_xcoder_decode.o ni_xcoder_encode.o ni_xcoder_transcode_filter.o ni_xcoder_multithread_transcode.o ni_generic_utils.o ni_decode_utils.o ni_encode_utils.o ni_filter_utils.o
+DEMO_LINK_OBJECTS = ${OBJS_PATH}/ni_generic_utils.o ${OBJS_PATH}/ni_decode_utils.o ${OBJS_PATH}/ni_encode_utils.o ${OBJS_PATH}/ni_filter_utils.o 
+ALL_OBJECTS = init_rsrc.o test_rsrc_api.o ni_rsrc_mon.o ni_rsrc_update.o ni_rsrc_list.o ni_rsrc_namespace.o ${OBJECTS} ${DEMO_OBJECTS}
 ifeq ($(WINDOWS), FALSE)
 	ifneq ($(UNAME), Darwin)
 		ALL_OBJECTS += ni_p2p_test.o ni_p2p_read_test.o ni_libxcoder_dynamic_loading_test.o
@@ -66,6 +83,7 @@ LIBDIR_NO_PREFIX = $(shell sed -n 's/^libdir=\(.*\)/\1/p' $(OBJS_PATH)/$(TARGET_
 BINDIR_NO_PREFIX = $(shell sed -n 's/^bindir=\(.*\)/\1/p' $(OBJS_PATH)/$(TARGET_PC))
 INCLUDEDIR_NO_PREFIX = $(shell sed -n 's/^includedir=\(.*\)/\1/p' $(OBJS_PATH)/$(TARGET_PC))
 SHAREDDIR_NO_PREFIX = $(shell sed -n 's/^shareddir=\(.*\)/\1/p' $(OBJS_PATH)/$(TARGET_PC))
+SYSTEMDIR_NO_PREFIX = $(shell sed -n 's/^systemdir=\(.*\)/\1/p' $(OBJS_PATH)/$(TARGET_PC))
 ifeq ($(WINDOWS), FALSE)
 	ifeq ($(UNAME), Darwin)
 		INCLUDES= -pthread -lm
@@ -80,6 +98,7 @@ LIBDIR = ${LIBDIR_NO_PREFIX}
 BINDIR = ${BINDIR_NO_PREFIX}
 INCLUDEDIR = ${INCLUDEDIR_NO_PREFIX}
 SHAREDDIR = ${SHAREDDIR_NO_PREFIX}
+SYSTEMDIR = ${SYSTEMDIR_NO_PREFIX}
 
 ifdef DESTDIR
 	LIBDIR = ${DESTDIR}${LIBDIR_NO_PREFIX}
@@ -87,6 +106,9 @@ ifdef DESTDIR
 	INCLUDEDIR = ${DESTDIR}${INCLUDEDIR_NO_PREFIX}
 	ifneq (${SHAREDDIR_NO_PREFIX},)
 		SHAREDDIR = ${DESTDIR}${SHAREDDIR_NO_PREFIX}
+	endif
+	ifneq (${SYSTEMDIR_NO_PREFIX},)
+		SYSTEMDIR = ${DESTDIR}${SYSTEMDIR_NO_PREFIX}
 	endif
 endif
 
@@ -102,17 +124,36 @@ else
 	${CC} -shared -Wl,-soname,${TARGET_LIB_SHARED}.${TARGET_VERSION} -o $(OBJS_PATH)/${TARGET_LIB_SHARED}.${TARGET_VERSION} $(LINK_OBJECTS) ${INCLUDES} ${OPTFLAG} ${GLOBALFLAGS}
 endif
 
-	${CC} -o $(OBJS_PATH)/${TARGET} $(OBJS_PATH)/ni_device_test.o $(LINK_OBJECTS) ${INCLUDES} ${OPTFLAG} ${GLOBALFLAGS}
+ifeq ($(OPENHARMONY), TRUE)
+	${CC} -o $(OBJS_PATH)/ni_xcoder_decode $(OBJS_PATH)/ni_xcoder_decode.o $(LINK_OBJECTS) ${DEMO_LINK_OBJECTS} $(OBJS_PATH)/${TARGET_LIB} ${INCLUDES} ${OPTFLAG} ${GLOBALFLAGS}
+	${CC} -o $(OBJS_PATH)/ni_xcoder_encode $(OBJS_PATH)/ni_xcoder_encode.o $(LINK_OBJECTS) ${DEMO_LINK_OBJECTS} $(OBJS_PATH)/${TARGET_LIB} ${INCLUDES} ${OPTFLAG} ${GLOBALFLAGS}
+	${CC} -o $(OBJS_PATH)/ni_xcoder_transcode_filter $(OBJS_PATH)/ni_xcoder_transcode_filter.o $(LINK_OBJECTS) ${DEMO_LINK_OBJECTS} $(OBJS_PATH)/${TARGET_LIB} ${INCLUDES} ${OPTFLAG} ${GLOBALFLAGS}
+	${CC} -o $(OBJS_PATH)/ni_xcoder_multithread_transcode $(OBJS_PATH)/ni_xcoder_multithread_transcode.o $(LINK_OBJECTS) ${DEMO_LINK_OBJECTS} $(OBJS_PATH)/${TARGET_LIB} ${INCLUDES} ${OPTFLAG} ${GLOBALFLAGS}
+else
+	${CC} -o $(OBJS_PATH)/ni_xcoder_decode $(OBJS_PATH)/ni_xcoder_decode.o $(LINK_OBJECTS) ${DEMO_LINK_OBJECTS} ${INCLUDES} ${OPTFLAG} ${GLOBALFLAGS}
+	${CC} -o $(OBJS_PATH)/ni_xcoder_encode $(OBJS_PATH)/ni_xcoder_encode.o $(LINK_OBJECTS) ${DEMO_LINK_OBJECTS} ${INCLUDES} ${OPTFLAG} ${GLOBALFLAGS}
+	${CC} -o $(OBJS_PATH)/ni_xcoder_transcode_filter $(OBJS_PATH)/ni_xcoder_transcode_filter.o $(LINK_OBJECTS) ${DEMO_LINK_OBJECTS} ${INCLUDES} ${OPTFLAG} ${GLOBALFLAGS}
+	${CC} -o $(OBJS_PATH)/ni_xcoder_multithread_transcode $(OBJS_PATH)/ni_xcoder_multithread_transcode.o $(LINK_OBJECTS) ${DEMO_LINK_OBJECTS} ${INCLUDES} ${OPTFLAG} ${GLOBALFLAGS}
+endif
+
 ifeq ($(WINDOWS), FALSE)
+ifeq ($(OPENHARMONY), FALSE)
 ifneq ($(UNAME), Darwin)
 	${CC} -o $(OBJS_PATH)/ni_libxcoder_dynamic_loading_test $(OBJS_PATH)/ni_libxcoder_dynamic_loading_test.o $(LINK_OBJECTS) ${INCLUDES} ${OPTFLAG} ${GLOBALFLAGS}
 	${CC} -o $(OBJS_PATH)/${TARGETP2P} $(OBJS_PATH)/ni_p2p_test.o $(LINK_OBJECTS) ${INCLUDES} ${OPTFLAG} ${GLOBALFLAGS}
 	${CC} -o $(OBJS_PATH)/${TARGETP2PREAD} $(OBJS_PATH)/ni_p2p_read_test.o $(LINK_OBJECTS) ${INCLUDES} ${OPTFLAG} ${GLOBALFLAGS}
 endif
 endif
+endif
+
+ifeq ($(OPENHARMONY), TRUE)
+	${CC} -o $(OBJS_PATH)/ni_rsrc_mon $(OBJS_PATH)/ni_rsrc_mon.o $(LINK_OBJECTS) $(OBJS_PATH)/${TARGET_LIB} ${INCLUDES} ${OPTFLAG} ${GLOBALFLAGS}
+else
+	${CC} -o $(OBJS_PATH)/ni_rsrc_mon $(OBJS_PATH)/ni_rsrc_mon.o $(LINK_OBJECTS) ${INCLUDES} ${OPTFLAG} ${GLOBALFLAGS}
+endif
+
 	${CC} -o $(OBJS_PATH)/test_rsrc_api $(OBJS_PATH)/test_rsrc_api.o $(LINK_OBJECTS) ${INCLUDES} ${OPTFLAG} ${GLOBALFLAGS}
 	${CC} -o $(OBJS_PATH)/ni_rsrc_namespace $(OBJS_PATH)/ni_rsrc_namespace.o $(LINK_OBJECTS) ${INCLUDES} ${OPTFLAG} ${GLOBALFLAGS}
-	${CC} -o $(OBJS_PATH)/ni_rsrc_mon $(OBJS_PATH)/ni_rsrc_mon.o $(LINK_OBJECTS) ${INCLUDES} ${OPTFLAG} ${GLOBALFLAGS}
 	${CC} -o $(OBJS_PATH)/ni_rsrc_update $(OBJS_PATH)/ni_rsrc_update.o $(LINK_OBJECTS) ${INCLUDES} ${OPTFLAG} ${GLOBALFLAGS}
 	${CC} -o $(OBJS_PATH)/ni_rsrc_list $(OBJS_PATH)/ni_rsrc_list.o $(LINK_OBJECTS) ${INCLUDES} ${OPTFLAG} ${GLOBALFLAGS}
 	${CC} -o $(OBJS_PATH)/init_rsrc $(OBJS_PATH)/init_rsrc.o $(LINK_OBJECTS) ${INCLUDES} ${OPTFLAG} ${GLOBALFLAGS}
@@ -148,6 +189,12 @@ endif
 	${INSTALL} -m 755 ${OBJS_PATH}/ni_rsrc_update ${BINDIR}/.
 	${INSTALL} -m 755 ${OBJS_PATH}/ni_rsrc_list ${BINDIR}/.
 	${INSTALL} -m 755 ${OBJS_PATH}/init_rsrc ${BINDIR}/.
+ifeq ($(SETUP_SYSTEMD), TRUE)
+	mkdir -p ${SYSTEMDIR}/
+	$(COPY_CMD) $(SERVICE_FILE) $(SYSTEMDIR)
+	systemctl enable $(SERVICE_FILE)
+	systemctl start $(SERVICE_FILE)
+endif
 
 uninstall:
 	for TARGET_INC in ${TARGET_INCS}; do \
@@ -156,6 +203,12 @@ uninstall:
 	rm -f ${LIBDIR}/${TARGET_LIB} ${LIBDIR}/${TARGET_LIB_SHARED} ${LIBDIR}/${TARGET_LIB_SHARED}.${TARGET_VERSION} ${LIBDIR}/pkgconfig/${TARGET_PC} ${BINDIR}/ni_rsrc_mon ${BINDIR}/ni_rsrc_update ${BINDIR}/ni_rsrc_list ${BINDIR}/init_rsrc ${BINDIR}/ni_rsrc_namespace
 ifneq ($(SHAREDDIR),)
 	rm -f ${SHAREDDIR}/${TARGET_LIB_SHARED}.${TARGET_VERSION} ${SHAREDDIR}/${TARGET_LIB_SHARED} 
+endif
+ifeq ($(shell [ -e $(SYSTEMDIR)/$(SERVICE_FILE) ] && echo yes || echo no), yes)
+	systemctl disable $(SERVICE_FILE)
+	systemctl stop $(SERVICE_FILE)
+	rm $(SYSTEMDIR)/$(SERVICE_FILE)
+	systemctl daemon-reload
 endif
 
 cleanall:clean
@@ -170,3 +223,9 @@ clean:
 
 %.o : ${SRC_PATH}/%.c
 	${CC} ${CFLAGS} ${OPTFLAG} ${GLOBALFLAGS} -c $< -o ${OBJS_PATH}/$@
+
+%.o : ${SRC_PATH}/examples/%.c
+	${CC} ${CFLAGS} -I${SRC_PATH} -I${SRC_PATH}/examples/common ${OPTFLAG} ${GLOBALFLAGS} -c $< -o ${OBJS_PATH}/$@
+
+%.o : ${SRC_PATH}/examples/common/%.c
+	${CC} ${CFLAGS} -I${SRC_PATH} ${OPTFLAG} ${GLOBALFLAGS} -c $< -o ${OBJS_PATH}/$@

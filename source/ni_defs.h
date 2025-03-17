@@ -86,18 +86,22 @@ extern "C"
 // NI_XCODER_REVISION[3]   = compatible FW API semantic major version
 // NI_XCODER_REVISION[4:5] = compatible FW API semantic minor version
 // NI_XCODER_REVISION[6:7] = optional
-// The definition macro in ni_quadra_filter_api.h need to be synchronized with libxcoder
-#define NI_XCODER_REVISION "5116rtr2"
+// You must change the name in the comment of REVISION line to your name when
+// you change the version number. If a merge conflict arises on a REVISION line,
+#define NI_XCODER_REVISION "5206s5r3"
 #define NI_XCODER_REVISION_API_MAJOR_VER_IDX 3
 #define NI_XCODER_REVISION_API_MINOR_VER_IDX 4
 
 // LIBXCODER_API_VERSION can be read to determine libxcoder to linked apps/APIs
 // compatibility. Recommend using ni_get_*_ver() functions in ni_util.h to
-// read correct version numbers if updating libxcoder but not linked apps.
+// read version numbers.
+// You must change the name in the comment of VERSION line to your name when
+// you change the version number. If a merge conflict arises on a VERSION line,
+// If make changes in FFmpeg/Libav that require changes in Libxcoder, update
 #define MACRO_TO_STR(s) #s
 #define MACROS_TO_VER_STR(a, b) MACRO_TO_STR(a.b)
-#define LIBXCODER_API_VERSION_MAJOR 2   // Libxcoder API semantic major version
-#define LIBXCODER_API_VERSION_MINOR 68  // Libxcoder API semantic minor version
+#define LIBXCODER_API_VERSION_MAJOR 2
+#define LIBXCODER_API_VERSION_MINOR 76
 #define LIBXCODER_API_VERSION MACROS_TO_VER_STR(LIBXCODER_API_VERSION_MAJOR, \
                                                 LIBXCODER_API_VERSION_MINOR)
 
@@ -385,7 +389,8 @@ typedef struct _ni_session_statistic_t
     uint8_t  ui8AdditionalFramesDelay;
     uint8_t  ui8Reserved[3];
     uint32_t ui32FramesCorrupted;
-    uint32_t  ui32Reserved[6];
+    uint32_t ui32FramesErrorRatio;
+    uint32_t  ui32Reserved[5];
 } ni_session_statistic_t;
 
 typedef struct _ni_p2p_sgl_t

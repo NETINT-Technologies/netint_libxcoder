@@ -65,6 +65,8 @@ typedef int (LIB_API* PNIENCWRITEFROMYUVBUFFER) (ni_session_context_t *p_ctx, ni
 typedef int (LIB_API* PNIEXTRACTCUSTOMSEI) (uint8_t *pkt_data, int pkt_size, long index, ni_packet_t *p_packet, uint8_t sei_type, int vcl_found);
 typedef int (LIB_API* PNIDECPACKETPARSE) (ni_session_context_t *p_session_ctx, ni_xcoder_params_t *p_param, uint8_t *data, int size, ni_packet_t *p_packet, int low_delay, int codec_format, int pkt_nal_bitmap, int custom_sei_type, int *svct_skip_next_packet, int *is_lone_sei_pkt);
 typedef int (LIB_API* PNIEXPANDFRAME) (ni_frame_t *dst, ni_frame_t *src, int dst_stride[], int raw_width, int raw_height, int ni_fmt, int nb_planes);
+typedef int (LIB_API* PNIRECONFIGPPUOUTPUT) (ni_session_context_t *p_session_ctx, ni_xcoder_params_t *p_param, ni_ppu_config_t *ppu_config);
+typedef int (LIB_API* PNIENCINSERTTIMECODE) (ni_session_context_t *p_enc_ctx, ni_frame_t *p_enc_frame, ni_timecode_t *p_timecode);
 //
 // Function pointers for ni_util.h
 //
@@ -127,6 +129,7 @@ typedef void (LIB_API* PNICLOSEEVENT) (ni_event_handle_t event_handle);
 typedef ni_device_handle_t (LIB_API* PNIDEVICEOPEN) (const char *dev, uint32_t *p_max_io_size_out);
 typedef void (LIB_API* PNIDEVICECLOSE) (ni_device_handle_t dev);
 typedef ni_retcode_t (LIB_API* PNIDEVICECAPABILITYQUERY) (ni_device_handle_t device_handle, ni_device_capability_t *p_cap);
+typedef ni_retcode_t (LIB_API* PNIDEVICECAPABILITYQUERY2) (ni_device_handle_t device_handle, ni_device_capability_t *p_cap, bool device_in_ctxt);
 typedef ni_retcode_t (LIB_API* PNIDEVICESESSIONOPEN) (ni_session_context_t *p_ctx, ni_device_type_t device_type);
 typedef ni_retcode_t (LIB_API* PNIDEVICESESSIONCLOSE) (ni_session_context_t *p_ctx, int eos_received, ni_device_type_t device_type);
 typedef ni_retcode_t (LIB_API* PNIDEVICESESSIONFLUSH) (ni_session_context_t *p_ctx, ni_device_type_t device_type);
@@ -237,6 +240,7 @@ typedef ni_retcode_t (LIB_API* PNIP2PSEND) (ni_session_context_t *pSession, niFr
 typedef int (LIB_API* PNICALCULATETOTALFRAMESIZE) (const ni_session_context_t *p_upl_ctx, const int linesize[]);
 typedef ni_retcode_t (LIB_API* PNIRECONFIGSLICEARG) (ni_session_context_t *p_ctx, int16_t sliceArg);
 typedef ni_retcode_t (LIB_API* PNIP2PRECV) (ni_session_context_t *pSession, const ni_p2p_sgl_t *dmaAddrs, ni_frame_t *pDstFrame);
+typedef ni_retcode_t (LIB_API* PNIDEVICESESSIONRESTART) (ni_session_context_t *p_ctx, int video_width, int video_height, ni_device_type_t device_type);
 
 /* End API function pointers */
  
@@ -258,6 +262,8 @@ typedef struct _NETINT_LIBXCODER_API_FUNCTION_LIST
     PNIEXTRACTCUSTOMSEI                  niExtractCustomSei;                   /** Client should access ::ni_extract_custom_sei API through this pointer */
     PNIDECPACKETPARSE                    niDecPacketParse;                     /** Client should access ::ni_dec_packet_parse API through this pointer */
     PNIEXPANDFRAME                       niExpandFrame;                        /** Client should access ::ni_expand_frame API through this pointer */
+    PNIRECONFIGPPUOUTPUT                 niReconfigPpuOutput;                  /** Client should access ::ni_reconfig_ppu_output API through this pointer */
+    PNIENCINSERTTIMECODE                 niEncInsertTimecode;                  /** Client should access ::ni_enc_insert_timecode API through this pointer */
     //
     // API function list for ni_util.h
     //
@@ -315,6 +321,7 @@ typedef struct _NETINT_LIBXCODER_API_FUNCTION_LIST
     PNIDEVICEOPEN                        niDeviceOpen;                         /** Client should access ::ni_device_open API through this pointer */
     PNIDEVICECLOSE                       niDeviceClose;                        /** Client should access ::ni_device_close API through this pointer */
     PNIDEVICECAPABILITYQUERY             niDeviceCapabilityQuery;              /** Client should access ::ni_device_capability_query API through this pointer */
+    PNIDEVICECAPABILITYQUERY2            niDeviceCapabilityQuery2;             /** Client should access ::ni_device_capability_query2 API through this pointer */
     PNIDEVICESESSIONOPEN                 niDeviceSessionOpen;                  /** Client should access ::ni_device_session_open API through this pointer */
     PNIDEVICESESSIONCLOSE                niDeviceSessionClose;                 /** Client should access ::ni_device_session_close API through this pointer */
     PNIDEVICESESSIONFLUSH                niDeviceSessionFlush;                 /** Client should access ::ni_device_session_flush API through this pointer */
@@ -427,6 +434,7 @@ typedef struct _NETINT_LIBXCODER_API_FUNCTION_LIST
     PNICALCULATETOTALFRAMESIZE           niCalculateTotalFrameSize;            /** Client should access ::ni_calculate_total_frame_size API through this pointer */
     PNIRECONFIGSLICEARG                  niReconfigSliceArg;                   /** Client should access ::ni_reconfig_slice_arg API through this pointer */
     PNIP2PRECV                           niP2PRecv;                            /** Client should access ::ni_p2p_recv API through this pointer */
+    PNIDEVICESESSIONRESTART              niDeviceSessionRestart;               /** Client should access ::ni_device_session_restart API through this pointer */
     PNIDEVICESESSIONQUERYBUFFERAVAIL     niDeviceSessionQueryBufferAvail;      /** Client should access ::ni_device_session_query_buffer_avail API through this pointer */
 } NETINT_LIBXCODER_API_FUNCTION_LIST;
 
@@ -451,6 +459,8 @@ public:
         functionList->niExtractCustomSei = reinterpret_cast<decltype(ni_extract_custom_sei)*>(dlsym(lib,"ni_extract_custom_sei"));
         functionList->niDecPacketParse = reinterpret_cast<decltype(ni_dec_packet_parse)*>(dlsym(lib,"ni_dec_packet_parse"));
         functionList->niExpandFrame = reinterpret_cast<decltype(ni_expand_frame)*>(dlsym(lib,"ni_expand_frame"));
+        functionList->niReconfigPpuOutput = reinterpret_cast<decltype(ni_reconfig_ppu_output)*>(dlsym(lib,"ni_reconfig_ppu_output"));
+        functionList->niEncInsertTimecode = reinterpret_cast<decltype(ni_enc_insert_timecode)*>(dlsym(lib,"ni_enc_insert_timecode"));
         //
         // Function/symbol loading for ni_util.h
         //
@@ -508,6 +518,7 @@ public:
         functionList->niDeviceOpen = reinterpret_cast<decltype(ni_device_open)*>(dlsym(lib,"ni_device_open"));
         functionList->niDeviceClose = reinterpret_cast<decltype(ni_device_close)*>(dlsym(lib,"ni_device_close"));
         functionList->niDeviceCapabilityQuery = reinterpret_cast<decltype(ni_device_capability_query)*>(dlsym(lib,"ni_device_capability_query"));
+        functionList->niDeviceCapabilityQuery2 = reinterpret_cast<decltype(ni_device_capability_query2)*>(dlsym(lib,"ni_device_capability_query2"));
         functionList->niDeviceSessionOpen = reinterpret_cast<decltype(ni_device_session_open)*>(dlsym(lib,"ni_device_session_open"));
         functionList->niDeviceSessionClose = reinterpret_cast<decltype(ni_device_session_close)*>(dlsym(lib,"ni_device_session_close"));
         functionList->niDeviceSessionFlush = reinterpret_cast<decltype(ni_device_session_flush)*>(dlsym(lib,"ni_device_session_flush"));
@@ -621,6 +632,7 @@ public:
         functionList->niCalculateTotalFrameSize = reinterpret_cast<decltype(ni_calculate_total_frame_size)*>(dlsym(lib,"ni_calculate_total_frame_size"));
         functionList->niReconfigSliceArg = reinterpret_cast<decltype(ni_reconfig_slice_arg)*>(dlsym(lib,"ni_reconfig_slice_arg"));
         functionList->niP2PRecv = reinterpret_cast<decltype(ni_p2p_recv)*>(dlsym(lib,"ni_p2p_recv"));
+        functionList->niDeviceSessionRestart = reinterpret_cast<decltype(ni_device_session_restart)*>(dlsym(lib,"ni_device_session_restart"));
     }
 };
 

@@ -2,6 +2,7 @@
 
 target_windows=false;
 target_android=false;
+target_openharmony=false
 include_gdb=false;
 self_kill=false;
 latency_display=false;
@@ -13,6 +14,7 @@ secure_compile=false;
 build_doxygen=false;
 disable_backtrace_print=false;
 info_level_ssim_log=false;
+setup_systemd=false;
 RC=0
 
 while [ "$1" != "" ]; do
@@ -25,6 +27,7 @@ while [ "$1" != "" ]; do
                          echo "-h, --help                   display this help and exit";
                          echo "-w, windows                  compile for Windows";
                          echo "-a, --android                compile for Android";
+                         echo "-o, --openharmony            compile for openharmony";
                          echo "-g, --gdb                    compile with gdb debugging (and without -O3 optimizations)";
                          echo "-k, --with-self-kill         compile with self termination on multiple repeated NVMe errors";
                          echo "-p, --with-latency-display   compile with per frame latency display";
@@ -35,11 +38,14 @@ while [ "$1" != "" ]; do
                          echo "-b, --disable-backtrace-print    complie without print backtrace"
                          echo "-s, --secure-compile         compile with more foritication such as strong stack protection and RELRO";
                          echo "-m, --with-info-level-ssim-log   compile with SSIM logging at info level. Default is at debug level";
-                         echo "--doxygen                        compile Doxygen (does not compile libxcoder)"; exit 0
+                         echo "--doxygen                        compile Doxygen (does not compile libxcoder)";
+                         echo "--setup-systemd                  install systemd service to initialize libxcoder"; exit 0
         ;;
         -w | windows)                   target_windows=true
         ;;
         -a | --android)                 target_android=true
+        ;;
+        -o | --openharmony)             target_openharmony=true
         ;;
         -g | --gdb)                     include_gdb=true
         ;;
@@ -63,6 +69,8 @@ while [ "$1" != "" ]; do
         ;;
         --doxygen)                      build_doxygen=true
         ;;
+        --setup-systemd)                setup_systemd=true
+        ;;
         *)               echo "Usage: ./build.sh [OPTION]..."; echo "Try './build.sh --help' for more information"; exit 1
         ;;
     esac
@@ -78,6 +86,7 @@ if $build_doxygen; then
     `which sed` -i "s/^\(PROJECT_NUMBER\s*=\).*$/\1/" source/doxygen/Doxyfile
     exit $RC
 fi
+
 
 # handle command line options
 extra_make_flags=""
@@ -96,6 +105,14 @@ fi
 if $target_android; then
     extra_make_flags="${extra_make_flags} DONT_WRITE_SONAME=TRUE"
     extra_config_flags="${extra_config_flags} --with-android"
+fi
+
+if $target_openharmony; then
+    if [ -z ${OHOS_SDK_ROOT} ]; then
+        echo "You must set OHOS_SDK_ROOT environment variable"
+        exit -1
+    fi
+    extra_make_flags="${extra_make_flags} OPENHARMONY=TRUE DONT_WRITE_SONAME=TRUE"
 fi
 
 if $self_kill; then
@@ -134,6 +151,11 @@ fi
 
 if $secure_compile; then
     extra_make_flags="${extra_make_flags} SECURE_COMPILE=TRUE"
+fi
+
+if $setup_systemd; then
+    extra_config_flags="${extra_config_flags} --with-setup-systemd"
+    extra_make_flags="${extra_make_flags} SETUP_SYSTEMD=TRUE"
 fi
 
 # configure, build, and install

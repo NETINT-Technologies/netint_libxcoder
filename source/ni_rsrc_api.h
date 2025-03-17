@@ -108,7 +108,7 @@ typedef struct _ni_device_info
   int                    load;       /*! p_load value retrieved from f/w */
   int                    model_load; /*! p_load value modelled internally */
   uint64_t               xcode_load_pixel; /*! xcode p_load in pixels: encoder only */
-  int                    fw_ver_compat_warning; // fw revision is not supported by this libxcoder
+  int                    fw_ver_compat_warning; // fw revision is not fully supported by this libxcoder
   uint8_t fl_ver_nor_flash[8]; // firmware loader version stored in nor flash
   uint8_t fl_ver_last_ran[8];
   uint8_t fw_rev_nor_flash[8]; // fw revision stored in nor flash
@@ -245,7 +245,8 @@ typedef struct _ni_device_extra_info
     int32_t on_board_temp;
     int32_t on_die_temp;
     uint32_t power_consumption;
-    uint32_t reserve[4];
+    uint32_t current_consumption;
+    uint32_t reserve[3];
 } ni_device_extra_info_t;
 
 typedef enum
@@ -293,6 +294,8 @@ LIB_API ni_retcode_t ni_rsrc_refresh(int should_match_rev);
  *  \brief  Scans system for all NVMe devices and returns the system device
  *   names to the user which were identified as NETINT transcoder deivices.
  *   Names are suitable for OpenFile api usage afterwards
+ *          This function had been replaced by ni_rsrc_get_local_device_list2
+ *          This function can't be callback with multi thread
  *
  *
  *  \param[out] ni_devices  List of device names identified as NETINT NVMe transcoders
@@ -302,9 +305,29 @@ LIB_API ni_retcode_t ni_rsrc_refresh(int should_match_rev);
  *              0 if no NETINT NVMe transcoder devices were found
  *              NI_RETCODE_ERROR_MEM_ALOC if memory allocation failed
  *******************************************************************************/
-LIB_API int ni_rsrc_get_local_device_list(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
+LIB_API NI_DEPRECATED int ni_rsrc_get_local_device_list(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
                                           int max_handles);
-    
+
+/*!*****************************************************************************
+ *  \brief  Scans system for all NVMe devices and returns the system device
+ *          names to the user which were identified as NETINT transcoder
+ *          devices. Names are suitable for resource management API usage
+ *          afterwards
+ *          This function had replaced ni_rsrc_get_local_device_list
+ *          This function can be callback with multi thread
+ *
+ *  \param[out]  ni_devices  List of device names identified as NETINT NVMe
+ *                           transcoders
+ *  \param[in]   max_handles Max number of device names to return
+ *  \param[in]   xcoder_refresh_dev_names   Xcoder fresh device name
+ *  \param[in]   xcoder_refresh_dev_count   Xcoder fresh device number count
+ *
+ *  \return  Number of devices found. 0 if unsucessful.
+ ******************************************************************************/
+LIB_API int ni_rsrc_get_local_device_list2(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
+                                          int max_handles, char **xcoder_refresh_dev_names,
+                                          int xcoder_refresh_dev_count);
+
 /*!******************************************************************************
 * \brief      Allocates and returns a pointer to ni_device_context_t struct
 *             based on provided device_type and guid. 

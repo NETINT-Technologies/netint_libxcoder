@@ -159,7 +159,8 @@ int main(int argc, char *argv[])
     char device_namespace[NI_NAMESPACE_SZ] = {'\0'};
     char device_namespace_OP[NI_NAMESPACE_SZ] = {'\0'};
     int namespace_num = 1;
-    int over_provision_percent = -1;
+    float over_provision_percent = -1;
+    int i32_over_provision_percent = 0;
     int sriov_index = 0;
     int qos_mode = -1;
 #ifdef __linux__
@@ -208,7 +209,7 @@ int main(int argc, char *argv[])
                 break;
             case 'p':
                 // set overprovision %
-                over_provision_percent = atoi(optarg);
+                over_provision_percent = (float)atof(optarg);
                 if (over_provision_percent > 100 || over_provision_percent < 0)
                 {
                     fprintf(stderr, "ERROR: Overprovision percent cannot "
@@ -286,11 +287,12 @@ int main(int argc, char *argv[])
                             "namespace and SR-IOV and QOS mode\n");
             exit(-1);
         }
+        memcpy(&i32_over_provision_percent, &over_provision_percent, sizeof(int32_t));
         retval = send_config_qos_op(device_namespace, device_namespace_OP,
-                                    over_provision_percent);
+                                    i32_over_provision_percent);
         if (retval == NI_RETCODE_SUCCESS)
         {
-            printf("Overprovision percent setting succeed with number of %d\n",
+            printf("Overprovision percent setting succeed with number of %f\n",
                    over_provision_percent);
         }
         return retval;

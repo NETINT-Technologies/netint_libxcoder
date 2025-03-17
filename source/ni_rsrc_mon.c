@@ -271,6 +271,46 @@ int compareInt32_t(const void *a, const void *b)
   return 0;
 }
 
+char *get_pixel_format(ni_device_context_t *p_device_context, int index)
+{
+  if (ni_cmp_fw_api_ver((char*) &p_device_context->p_device_info->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+                          "6s3") < 0)
+  {
+    return "UNSUPPORT";
+  }
+  else if ((index >= 0 && index < 4) || (index >= 10 && index < 13))
+  {
+    return "YUV";
+  }
+  else if (index >= 4 && index < 10)
+  {
+    return "RGB";
+  }
+  else if (index >= 13 && index < 15)
+  {
+    return "TILE";
+  }
+  else{
+    return "INVALID";
+  }
+}
+
+static char sid[5] = "0000";
+char *get_session_id(ni_device_context_t *p_device_context, int id)
+{
+  if (ni_cmp_fw_api_ver((char*) &p_device_context->p_device_info->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+                          "6s3") < 0)
+  {
+    snprintf(sid, sizeof(sid), "%04x", 0);
+    return sid;
+  }
+  else
+  {
+    snprintf(sid, sizeof(sid), "%04x", id);
+    return sid;
+  }
+}
+
 unsigned int get_modules(ni_device_type_t device_type,
                          ni_device_queue_t *p_device_queue,
                          char *device_name,
@@ -1163,6 +1203,7 @@ UPLOADER:
                        "\t\t\t\"OutFrame\": %u,\n"
                        "\t\t\t\"Width\": %u,\n"
                        "\t\t\t\"Height\": %u,\n"
+                       "\t\t\t\"SID\": %s,\n"
                        "\t\t\t\"DEVICE\": \"%s\",\n"
                        "\t\t},\n",
                        device_count,
@@ -1174,6 +1215,7 @@ UPLOADER:
                        detail_data_v1->sInstDetailStatus[index].ui32NumOutFrame,
                        detail_data_v1->sInstDetailStatusAppend[index].ui32Width,
                        detail_data_v1->sInstDetailStatusAppend[index].ui32Height,
+                       get_session_id(p_device_context, detail_data_v1->sInstDetailStatusAppend[index].u32InstanceId),
                        p_device_context->p_device_info->dev_name);
               }
               else if (device_type == NI_DEVICE_TYPE_ENCODER)
@@ -1192,6 +1234,8 @@ UPLOADER:
                        "\t\t\t\"AvgBR\": %u,\n"
                        "\t\t\t\"Width\": %u,\n"
                        "\t\t\t\"Height\": %u,\n"
+                       "\t\t\t\"Format\": %s,\n"
+                       "\t\t\t\"SID\": %s,\n"
                        "\t\t\t\"DEVICE\": \"%s\",\n"
                        "\t\t},\n",
                        device_count,
@@ -1206,6 +1250,8 @@ UPLOADER:
                        detail_data_v1->sInstDetailStatus[index].ui32AvgBitRate,
                        detail_data_v1->sInstDetailStatusAppend[index].ui32Width,
                        detail_data_v1->sInstDetailStatusAppend[index].ui32Height,
+                       get_pixel_format(p_device_context, detail_data_v1->sInstDetailStatusAppend[index].u8PixelFormat),
+                       get_session_id(p_device_context, detail_data_v1->sInstDetailStatusAppend[index].u32InstanceId),
                        p_device_context->p_device_info->dev_name);
               }
             }
@@ -2044,16 +2090,16 @@ void print_text(ni_device_queue_t *coders,
         if(checkInterval)
         {
           strcat_dyn_buf(&output_buf,
-                         "%-5s %-7s %-9s %-5s %-7s %-8s %-4s %-5s %-6s %-14s %-20s\n", "INDEX",
+                         "%-5s %-7s %-9s %-5s %-7s %-8s %-4s %-5s %-6s %-5s %-14s %-20s\n", "INDEX",
                          "AvgCost", "FrameRate", "IDR", "InFrame", "OutFrame", "fps", "Width", "Height",
-                         "DEVICE", "NAMESPACE");
+                         "SID", "DEVICE", "NAMESPACE");
         }
         else
         {
           strcat_dyn_buf(&output_buf,
-                         "%-5s %-7s %-9s %-5s %-7s %-8s %-5s %-6s %-14s %-20s\n", "INDEX",
+                         "%-5s %-7s %-9s %-5s %-7s %-8s %-5s %-6s %-5s %-14s %-20s\n", "INDEX",
                          "AvgCost", "FrameRate", "IDR", "InFrame", "OutFrame", "Width", "Height",
-                         "DEVICE", "NAMESPACE");
+                         "SID", "DEVICE", "NAMESPACE");
         }
       }
       else if (module_type == NI_DEVICE_TYPE_ENCODER)
@@ -2061,16 +2107,16 @@ void print_text(ni_device_queue_t *coders,
         if(checkInterval)
         {
           strcat_dyn_buf(&output_buf,
-                         "%-5s %-7s %-9s %-5s %-7s %-7s %-8s %-4s %-10s %-10s %-5s %-6s %-14s %-20s\n", "INDEX",
+                         "%-5s %-7s %-9s %-5s %-7s %-7s %-8s %-4s %-10s %-10s %-5s %-6s %-9s %-5s %-14s %-20s\n", "INDEX",
                          "AvgCost", "FrameRate", "IDR", "UserIDR", "InFrame", "OutFrame", "fps", "BR", "AvgBR", "Width", "Height",
-                         "DEVICE", "NAMESPACE");
+                          "Format", "SID", "DEVICE", "NAMESPACE");
         }
         else
         {
           strcat_dyn_buf(&output_buf,
-                         "%-5s %-7s %-9s %-5s %-7s %-7s %-8s %-10s %-10s %-5s %-6s %-14s %-20s\n", "INDEX",
+                         "%-5s %-7s %-9s %-5s %-7s %-7s %-8s %-10s %-10s %-5s %-6s %-9s %-5s %-14s %-20s\n", "INDEX",
                          "AvgCost", "FrameRate", "IDR", "UserIDR", "InFrame", "OutFrame", "BR", "AvgBR", "Width", "Height",
-                         "DEVICE", "NAMESPACE");
+                          "Format", "SID", "DEVICE", "NAMESPACE");
         }
       }
     }
@@ -2104,7 +2150,7 @@ void print_text(ni_device_queue_t *coders,
                   if(module_type == NI_DEVICE_TYPE_DECODER)
                   {
                     strcat_dyn_buf(&output_buf,
-                           "%-5d %-7d %-9d %-5u %-7d %-8d %-4d %-5d %-6d %-14s %-20s\n",
+                           "%-5d %-7d %-9d %-5u %-7d %-8d %-4d %-5d %-6d %-5s %-14s %-20s\n",
                            instance_count++,
                            detail_data_v1->sInstDetailStatus[index].ui8AvgCost,
                            detail_data_v1->sInstDetailStatus[index].ui16FrameRate,
@@ -2114,13 +2160,14 @@ void print_text(ni_device_queue_t *coders,
                            (detail_data_v1->sInstDetailStatus[index].ui32NumOutFrame - previous_detail_data_p[module_type][i].sInstDetailStatus[index].ui32NumOutFrame) / checkInterval,
                            detail_data_v1->sInstDetailStatusAppend[index].ui32Width,
                            detail_data_v1->sInstDetailStatusAppend[index].ui32Height,
+                           get_session_id(p_device_context, detail_data_v1->sInstDetailStatusAppend[index].u32InstanceId),
                            p_device_context->p_device_info->dev_name,
                            p_device_context->p_device_info->blk_name);
                   }
                   else if (module_type == NI_DEVICE_TYPE_ENCODER)
                   {
                     strcat_dyn_buf(&output_buf,
-                           "%-5d %-7d %-9d %-5u %-7d %-7d %-8d %-4d %-10d %-10d %-5d %-6d %-14s %-20s\n",
+                           "%-5d %-7d %-9d %-5u %-7d %-7d %-8d %-4d %-10d %-10d %-5d %-6d %-9s %-5s %-14s %-20s\n",
                            instance_count++,
                            detail_data_v1->sInstDetailStatus[index].ui8AvgCost,
                            detail_data_v1->sInstDetailStatus[index].ui16FrameRate,
@@ -2133,6 +2180,8 @@ void print_text(ni_device_queue_t *coders,
                            detail_data_v1->sInstDetailStatus[index].ui32AvgBitRate,
                            detail_data_v1->sInstDetailStatusAppend[index].ui32Width,
                            detail_data_v1->sInstDetailStatusAppend[index].ui32Height,
+                           get_pixel_format(p_device_context, detail_data_v1->sInstDetailStatusAppend[index].u8PixelFormat),
+                           get_session_id(p_device_context, detail_data_v1->sInstDetailStatusAppend[index].u32InstanceId),
                            p_device_context->p_device_info->dev_name,
                            p_device_context->p_device_info->blk_name);
                   }
@@ -2143,7 +2192,7 @@ void print_text(ni_device_queue_t *coders,
                 if(module_type == NI_DEVICE_TYPE_DECODER)
                 {
                   strcat_dyn_buf(&output_buf,
-                         "%-5d %-7d %-9d %-5u %-7d %-8d %-5d %-6d %-14s %-20s\n",
+                         "%-5d %-7d %-9d %-5u %-7d %-8d %-5d %-6d %-5s %-14s %-20s\n",
                          instance_count++,
                          detail_data_v1->sInstDetailStatus[index].ui8AvgCost,
                          detail_data_v1->sInstDetailStatus[index].ui16FrameRate,
@@ -2152,13 +2201,14 @@ void print_text(ni_device_queue_t *coders,
                          detail_data_v1->sInstDetailStatus[index].ui32NumOutFrame,
                          detail_data_v1->sInstDetailStatusAppend[index].ui32Width,
                          detail_data_v1->sInstDetailStatusAppend[index].ui32Height,
+                         get_session_id(p_device_context, detail_data_v1->sInstDetailStatusAppend[index].u32InstanceId),
                          p_device_context->p_device_info->dev_name,
                          p_device_context->p_device_info->blk_name);
                 }
                 else if (module_type == NI_DEVICE_TYPE_ENCODER)
                 {
                   strcat_dyn_buf(&output_buf,
-                         "%-5d %-7d %-9d %-5u %-7d %-7d %-8d %-10d %-10d %-5d %-6d %-14s %-20s\n",
+                         "%-5d %-7d %-9d %-5u %-7d %-7d %-8d %-10d %-10d %-5d %-6d %-9s %-5s %-14s %-20s\n",
                          instance_count++,
                          detail_data_v1->sInstDetailStatus[index].ui8AvgCost,
                          detail_data_v1->sInstDetailStatus[index].ui16FrameRate,
@@ -2170,6 +2220,8 @@ void print_text(ni_device_queue_t *coders,
                          detail_data_v1->sInstDetailStatus[index].ui32AvgBitRate,
                          detail_data_v1->sInstDetailStatusAppend[index].ui32Width,
                          detail_data_v1->sInstDetailStatusAppend[index].ui32Height,
+                         get_pixel_format(p_device_context, detail_data_v1->sInstDetailStatusAppend[index].u8PixelFormat),
+                         get_session_id(p_device_context, detail_data_v1->sInstDetailStatusAppend[index].u32InstanceId),
                          p_device_context->p_device_info->dev_name,
                          p_device_context->p_device_info->blk_name);
                 }
@@ -2211,7 +2263,7 @@ void print_text(ni_device_queue_t *coders,
   clear_dyn_str_buf(&output_buf);
 }
 
-void print_extra(ni_device_queue_t *p_device_queue, ni_session_context_t *p_session_context)
+void print_extra(ni_device_queue_t *p_device_queue, ni_session_context_t *p_session_context, int internal_call)
 {
   char device_name[MAX_DEVICE_NAME_SIZE];
   unsigned int index, device_count;
@@ -2221,6 +2273,7 @@ void print_extra(ni_device_queue_t *p_device_queue, ni_session_context_t *p_sess
   ni_device_type_t device_type;
   ni_device_extra_info_t p_dev_extra_info = {0};
   char power_consumption[16];
+  int instance_count = 0;
 
   // ASSUMPTION: Each Quadra has at least and only one decoder.
   device_type = NI_DEVICE_TYPE_DECODER;
@@ -2284,14 +2337,31 @@ void print_extra(ni_device_queue_t *p_device_queue, ni_session_context_t *p_sess
     {
         sprintf(power_consumption, "%umW", p_dev_extra_info.power_consumption);
     }
-    strcat_dyn_buf(&output_buf,
+    if (!internal_call)
+    {
+    	strcat_dyn_buf(&output_buf,
                 "%-4s %-8s %-14s\n", "TEMP", "POWER", "DEVICE");
-    strcat_dyn_buf(&output_buf,
+    	strcat_dyn_buf(&output_buf,
                 "%-4d %-8s %-14s\n",
                 p_dev_extra_info.composite_temp + ABSOLUTE_TEMP_ZERO,
                 (p_dev_extra_info.power_consumption + 1) ? power_consumption : "N/A",
                 p_device_context->p_device_info->dev_name);
+    }
+    else
+    {
+	if (instance_count == 0)
+	{
+                strcat_dyn_buf(&output_buf,
+    	        "%-8s %-8s %-8s %-8.8s %-8.8s \n", "INDEX", "TEMP", "POWER", "FR", "SN");
+	}
+    	strcat_dyn_buf(&output_buf,
+    	         "%-8d %-8d %-8s %-8.8s %-8.*s \n",
+    	         instance_count++ , p_dev_extra_info.composite_temp + ABSOLUTE_TEMP_ZERO,
+    	         (p_dev_extra_info.power_consumption + 1) ? power_consumption : "N/A",
+    	         p_device_context->p_device_info->fw_rev,
+    	         (int)sizeof(p_device_context->p_device_info->serial_number), p_device_context->p_device_info->serial_number);
 
+    }
     ni_rsrc_free_device_context(p_device_context);
   }
 
@@ -2628,6 +2698,7 @@ int main(int argc, char *argv[])
     switch (printFormat)
     {
       case FMT_TEXT:
+        print_extra(coders, p_xCtxt, 1);
         print_text(coders, p_xCtxt, detail, &detail_data_v1, previous_detail_data, checkInterval);
         break;
       case FMT_FULL_TEXT:
@@ -2646,7 +2717,7 @@ int main(int argc, char *argv[])
         print_json1(coders, p_xCtxt, 0, &detail_data_v1, 2);
         break;
       case FMT_EXTRA:
-        print_extra(coders, p_xCtxt);
+        print_extra(coders, p_xCtxt, 0);
         break;
     }
 
@@ -2707,8 +2778,13 @@ int main(int argc, char *argv[])
       }
   }
 
-#ifdef _ANDROID
-  system("chmod -R 777 /dev/shm_netint/");
+#ifdef __OPENHARMONY__
+  system("chmod -R 777 /dev/shm/");
+#ifdef XCODER_LINUX_VIRTIO_DRIVER_ENABLED
+  system("chmod 777 /dev/block/vd* 2>/dev/null");
+#endif
+#elif defined(_ANDROID)
+  system("chmod -R 777 /dev/shm/");
   system("chmod 777 /dev/block/nvme* 2>/dev/null");
   system("chmod 777 /dev/nvme* 2>/dev/null");
   property_set("ni_rsrc_init_completed", "yes");

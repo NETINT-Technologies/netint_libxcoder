@@ -320,6 +320,7 @@ typedef enum
 #define NI_EC_POLICY_SKIP            3
 #define NI_EC_POLICY_BEST_EFFORT     4
 #define NI_EC_POLICY_LIMITED_ERROR   5
+#define NI_EC_POLICY_BEST_EFFORT_OUT_DC     6
 #define NI_EC_POLICY_DEFAULT         NI_EC_POLICY_BEST_EFFORT
 #define NI_EC_ERR_THRESHOLD_DEFAULT  10
 
@@ -446,6 +447,7 @@ typedef enum
 #define NI_CC_SEI_BYTE4         0x41
 #define NI_CC_SEI_BYTE5         0x39
 #define NI_CC_SEI_BYTE6         0x34
+#define NI_CC_SEI_BYTE7         0x03    // cc_data = 0x03
 
 #define NI_HDR10P_SEI_BYTE0  0xB5 // itu_t_t35_country_code =181 (North America
 #define NI_HDR10P_SEI_BYTE1     0x00
@@ -586,6 +588,10 @@ typedef enum _ni_frame_aux_data_type
     // NETINT: sliceArg adjust, which takes int16_t type
     // as payload that indicates the sliceArg value.
     NI_FRAME_AUX_DATA_SLICE_ARG,
+
+    // NETINT: sliceArg adjust, which takes ni_category_classify_t
+    // type as payload that indicates the class and prob.
+    NI_FRAME_AUX_DATA_CATEGORY_CLASSIFY,
 } ni_aux_data_type_t;
 
 // rational number (pair of numerator and denominator)
@@ -635,6 +641,14 @@ typedef struct _ni_region_of_interest
     // (greater quantisation).
     ni_rational_t qoffset;
 } ni_region_of_interest_t;
+
+// struct describing category class and prob
+typedef struct _ni_category_classify
+{
+    int class_type;
+    int category;
+    float prob;
+} ni_category_classify_t;
 
 // struct describing VUI HRD support.
 typedef struct _ni_vui_hrd
@@ -1164,6 +1178,7 @@ typedef enum _ni_session_run_state
   SESSION_RUN_STATE_SEQ_CHANGE_DRAINING = 1,
   SESSION_RUN_STATE_SEQ_CHANGE_OPENING = 2,
   SESSION_RUN_STATE_RESETTING = 3,
+  SESSION_RUN_STATE_FLUSHING = 4,
 } ni_session_run_state_t;
 
 typedef struct _ni_context_query
@@ -1228,7 +1243,10 @@ typedef struct _ni_instance_mgr_detail_status_append{
     uint32_t ui32Width;
     uint32_t ui32Height;
     uint32_t ui32UserIDR;
-    uint32_t reserved[8];
+    uint8_t  u8PixelFormat; // only support for enc
+    uint8_t  u8rsvd[3];
+    uint32_t u32InstanceId;
+    uint32_t reserved[6];
 }ni_instance_mgr_detail_status_append_t;
 
 typedef struct _ni_instance_mgr_detail_status_v1{
@@ -1509,7 +1527,7 @@ typedef struct _ni_session_context
     void *p_dump[2];
     char param_err_msg[512];
 
-    int keyframe_factor;
+    int keyframe_factor; // Unused
     uint64_t frame_num;
     uint64_t pkt_num;
     int rc_error_count; // Unused
@@ -1697,6 +1715,12 @@ typedef struct _ni_session_context
     int hvsplus_level;
 
     int16_t buffered_frame_index;
+
+    // write packet/frame required buf size
+    uint32_t required_buf_size;
+
+    // record the drop num
+    uint32_t decoder_last_drop_frame_num;
 } ni_session_context_t;
 
 typedef struct _ni_split_context_t
@@ -2148,6 +2172,7 @@ NI_DEPRECATE_MACRO(NI_ENC_PARAM_MAX_FRAME_SIZE_LOW_DELAY)
 #define NI_ENC_PARAM_STILL_IMAGE_DETECT_LEVEL "stillImageDetectLevel"
 #define NI_ENC_PARAM_SCENE_CHANG_DETECT_LEVEL "sceneChangeDetectLevel"
 #define NI_ENC_PARAM_ENABLE_SMOOTH_CRF "enableSmoothCRF"
+#define NI_ENC_PARAM_ENABLE_COMPENSATE_QP "enableCompensateQp"
 // stream color info
 #define NI_ENC_PARAM_COLOR_PRIMARY "colorPri"
 #define NI_ENC_PARAM_COLOR_TRANSFER_CHARACTERISTIC "colorTrc"
@@ -2160,6 +2185,7 @@ NI_DEPRECATE_MACRO(NI_ENC_PARAM_MAX_FRAME_SIZE_LOW_DELAY)
 // VFR related
 #define NI_ENC_PARAM_ENABLE_VFR "enableVFR"
 #define NI_ENC_ENABLE_SSIM "enableSSIM"
+#define NI_ENC_PARAM_AVCC_HVCC "avccHvcc"
 #define NI_ENC_PARAM_AV1_ERROR_RESILIENT_MODE "av1ErrorResilientMode"
 // set memory allocation parameters, M_MMAP_THRESHOLD and M_TRIM_THRESHOLD
 #define NI_ENC_PARAM_STATIC_MMAP_THRESHOLD "staticMmapThreshold"
@@ -2203,6 +2229,11 @@ NI_DEPRECATE_MACRO(NI_ENC_PARAM_MAX_FRAME_SIZE_LOW_DELAY)
 #define NI_ENC_PARAM_CUSTOMIZE_ROI_QP_MAP "customizeQpMapFile"
 #define NI_ENC_PARAM_MOTION_CONSTRAINED_MODE "motionConstrainedMode"
 #define NI_ENC_PARAM_ALLOCATE_STRAEGY "encMemAllocateStrategy"
+#define NI_ENC_PARAM_SPATIAL_LAYERS "spatialLayers"
+#define NI_ENC_PARAM_ENABLE_TIMECODE "enableTimecode"
+#define NI_ENC_PARAM_SPATIAL_LAYERS_REF_BASE_LAYER "spatialLayersRefBaseLayer"
+#define NI_ENC_PARAM_GET_RECONSTRUCTED_MODE "getReconstructedMode"
+#define NI_ENC_PARAM_VBV_BUFFER_REENCODE "vbvBufferReencode"
 
     //----- Start supported by all codecs -----
     int frame_rate;
@@ -2403,6 +2434,12 @@ NI_DEPRECATE_MACRO(NI_ENC_PARAM_MAX_FRAME_SIZE_LOW_DELAY)
     int scene_change_detect_level;
     int encMallocStrategy;
     int enable_smooth_crf;
+    int enable_compensate_qp;
+    int spatial_layers;    
+    int enable_timecode;
+    int avcc_hvcc;
+    int spatial_layers_ref_base_layer;
+    int vbvBufferReencode;
 } ni_encoder_cfg_params_t;
 
 typedef struct _ni_decoder_input_params_t
@@ -2457,6 +2494,7 @@ typedef struct _ni_decoder_input_params_t
 #define NI_DEC_PARAM_DISABLE_ADAPTIVE_BUFFERS "disableAdaptiveBuffers"
 #define NI_DEC_PARAM_SURVIVE_STREAM_ERR "surviveStreamErr"
 #define NI_DEC_PARAM_REDUCE_DPB_DELAY "reduceDpbDelay"
+#define NI_DEC_PARAM_SKIP_EXTRA_HEADERS "skipExtraHeaders"
 
     int hwframes;
     int enable_out1;
@@ -2500,6 +2538,7 @@ typedef struct _ni_decoder_input_params_t
     int error_ratio_threshold;
     int survive_stream_err;
     int reduce_dpb_delay;
+    int skip_extra_headers;
 } ni_decoder_input_params_t;
 
 typedef struct _ni_scaler_input_params_t
@@ -2528,6 +2567,9 @@ typedef struct _ni_scaler_params_t
 {
     int filterblit;
     int nb_inputs;
+    double scaler_param_b;
+    double scaler_param_c;
+    bool enable_scaler_params;
 } ni_scaler_params_t;
 
 typedef struct _ni_scaler_drawbox_params_t
@@ -2665,6 +2707,7 @@ typedef struct _ni_frame
     uint8_t separate_start;
     uint8_t inconsecutive_transfer;
     long long orignal_pts;
+    uint32_t error_ratio;
 } ni_frame_t;
 
 typedef struct _ni_xcoder_params
@@ -2689,7 +2732,7 @@ typedef struct _ni_xcoder_params
     int force_pic_qp_demo_mode;   // for force pic qp mode testing
     int low_delay_mode;           // encoder low latency mode
     int padding;                 // encoder input padding setting
-    int generate_enc_hdrs;   // generate encoder headers in advance of encoding
+    NI_DEPRECATED int generate_enc_hdrs;   // in libavcodec, open a dummy session to generate codec headers during init
     int use_low_delay_poc_type;   // specifies the encoder to set
                                   // picture_order_count_type=2 in the H.264 SPS
 
@@ -2928,6 +2971,8 @@ LIB_API void ni_device_close(ni_device_handle_t dev);
 
 /*!*****************************************************************************
  *  \brief  Query device and return device capability structure
+ *          This function had been replaced by ni_device_capability_query2
+ *          This function can't be callback in multi thread
  *
  *  \param[in] device_handle  Device handle obtained by calling ni_device_open
  *  \param[in] p_cap  Pointer to a caller allocated ni_device_capability_t
@@ -2941,6 +2986,25 @@ LIB_API void ni_device_close(ni_device_handle_t dev);
  ******************************************************************************/
 LIB_API ni_retcode_t ni_device_capability_query(
     ni_device_handle_t device_handle, ni_device_capability_t *p_cap);
+
+/*!*****************************************************************************
+ *  \brief  Query device and return device capability structure
+ *          This function had replaced ni_device_capability_query
+ *          This function can be callback with multi thread
+ *
+ *  \param[in] device_handle  Device handle obtained by calling ni_device_open
+ *  \param[in] p_cap  Pointer to a caller allocated ni_device_capability_t
+ *                    struct
+ *  \param[in] device_in_ctxt If device is in ctx
+ *  \return On success
+ *                     NI_RETCODE_SUCCESS
+ *          On failure
+ *                     NI_RETCODE_INVALID_PARAM
+ *                     NI_RETCODE_ERROR_MEM_ALOC
+ *                     NI_RETCODE_ERROR_NVME_CMD_FAILED
+ ******************************************************************************/
+LIB_API ni_retcode_t ni_device_capability_query2(ni_device_handle_t device_handle,
+                              ni_device_capability_t *p_cap, bool device_in_ctxt);
 
 /*!*****************************************************************************
  *  \brief  Open a new device session depending on the device_type parameter
@@ -4811,6 +4875,26 @@ LIB_API ni_retcode_t ni_p2p_recv(ni_session_context_t *pSession,
                                  const ni_p2p_sgl_t *dmaAddrs,
                                  ni_frame_t *pDstFrame);
 
+/*!*****************************************************************************
+ *  \brief  Send a restart command after flush command
+ *          Only support Encoder now
+ *
+ *  \param[in] p_ctx        Pointer to a caller allocated
+ *                          ni_session_context_t struct
+ *  \param[in]  width       width, in pixels
+ *  \param[in]  height      height, in pixels
+ *  \param[in] device_type  NI_DEVICE_TYPE_ENCODER
+ *  \return On success
+ *                          NI_RETCODE_SUCCESS
+ *          On failure
+ *                          NI_RETCODE_INVALID_PARAM
+ *                          NI_RETCODE_ERROR_NVME_CMD_FAILED
+ *                          NI_RETCODE_ERROR_INVALID_SESSION
+ ******************************************************************************/
+LIB_API ni_retcode_t ni_device_session_restart(ni_session_context_t *p_ctx,
+                                               int video_width,
+                                               int video_height,
+                                               ni_device_type_t device_type);
 
 #ifdef __cplusplus
 }

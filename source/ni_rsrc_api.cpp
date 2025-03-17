@@ -57,10 +57,10 @@ static const char *ni_dec_name_str[] = {"h264_ni_quadra_dec", "h265_ni_quadra_de
 static const char *ni_enc_name_str[] = {"h264_ni_quadra_enc", "h265_ni_quadra_enc", "empty",
                                         "jpeg_ni_quadra_enc", "av1_ni_quadra_enc"};
 
-char **g_xcoder_refresh_dev_names = NULL;
-int g_xcoder_refresh_dev_count = 0;
-bool g_device_in_ctxt = false;
-ni_device_handle_t g_dev_handle = NI_INVALID_DEVICE_HANDLE;
+NI_DEPRECATED char **g_xcoder_refresh_dev_names = NULL;
+NI_DEPRECATED int g_xcoder_refresh_dev_count = 0;
+NI_DEPRECATED bool g_device_in_ctxt = false;
+NI_DEPRECATED ni_device_handle_t g_dev_handle = NI_INVALID_DEVICE_HANDLE;
 
 // return true if string key is found in array of strings, false otherwise
 static bool is_str_in_str_array(const char key[],
@@ -164,6 +164,8 @@ ni_retcode_t ni_rsrc_refresh(int should_match_rev)
     int curr_dev_count = 0;
     int i = 0;
     ni_device_t *saved_coders = NULL;
+    char **xcoder_refresh_dev_names = NULL;
+    int xcoder_refresh_dev_count = 0;
     saved_coders = (ni_device_t *)malloc(sizeof(ni_device_t));
     if (!saved_coders)
     {
@@ -206,18 +208,18 @@ ni_retcode_t ni_rsrc_refresh(int should_match_rev)
 
     if (xcoder_dev_count > 0)
     {
-        g_xcoder_refresh_dev_names = (char **)malloc(xcoder_dev_count *
+        xcoder_refresh_dev_names = (char **)malloc(xcoder_dev_count *
                                              sizeof(char *));
         for (i = 0; i < xcoder_dev_count; i++)
         {
-            g_xcoder_refresh_dev_names[i] = (char *)malloc(NI_MAX_DEVICE_NAME_LEN);
-            strcpy(g_xcoder_refresh_dev_names[i], xcoder_dev_names[i]);
+            xcoder_refresh_dev_names[i] = (char *)malloc(NI_MAX_DEVICE_NAME_LEN);
+            strcpy(xcoder_refresh_dev_names[i], xcoder_dev_names[i]);
         }
-        g_xcoder_refresh_dev_count = xcoder_dev_count;
+        xcoder_refresh_dev_count = xcoder_dev_count;
     }
-
     curr_dev_count =
-        ni_rsrc_get_local_device_list(curr_dev_names, NI_MAX_DEVICE_CNT);
+    ni_rsrc_get_local_device_list2(curr_dev_names, NI_MAX_DEVICE_CNT,
+                                xcoder_refresh_dev_names, xcoder_refresh_dev_count);
     if (0 == curr_dev_count)
     {
         ni_log(NI_LOG_ERROR, "No devices found on the host\n");   
@@ -280,12 +282,11 @@ ni_retcode_t ni_rsrc_refresh(int should_match_rev)
             ni_log(NI_LOG_ERROR, "Current device %s\n", curr_dev_names[i]);
         }
     }
-    if (g_xcoder_refresh_dev_names) {
-        for (i = 0; i < g_xcoder_refresh_dev_count; i++)
-            free(g_xcoder_refresh_dev_names[i]);
-        free(g_xcoder_refresh_dev_names);
-        g_xcoder_refresh_dev_names = NULL;
-        g_xcoder_refresh_dev_count = 0;
+    if (xcoder_refresh_dev_names) {
+        for (i = 0; i < xcoder_refresh_dev_count; i++)
+            free(xcoder_refresh_dev_names[i]);
+        free(xcoder_refresh_dev_names);
+        xcoder_refresh_dev_names = NULL;
     }
     return NI_RETCODE_SUCCESS;
 }
@@ -326,6 +327,8 @@ int ni_rsrc_android_init()
  *  \brief  Scans system for all NVMe devices and returns the system device
  *   names to the user which were identified as NETINT transcoder deivices.
  *   Names are suitable for OpenFile api usage afterwards
+ *          This function had been replaced by ni_rsrc_get_local_device_list2
+ *          This function can't be callback with multi thread
  *
  *
  *  \param[out] ni_devices  List of device names identified as NETINT NVMe transcoders
@@ -335,7 +338,7 @@ int ni_rsrc_android_init()
  *              0 if no NETINT NVMe transcoder devices were found
  *              NI_RETCODE_ERROR_MEM_ALOC if memory allocation failed
  *******************************************************************************/
-int ni_rsrc_get_local_device_list(
+NI_DEPRECATED int ni_rsrc_get_local_device_list(
   char   ni_devices[][NI_MAX_DEVICE_NAME_LEN],
   int    max_handles
 )
@@ -346,6 +349,34 @@ int ni_rsrc_get_local_device_list(
     return 0;
   }
   return ni_rsrc_enumerate_devices(ni_devices, max_handles);
+}
+
+/*!*****************************************************************************
+ *  \brief  Scans system for all NVMe devices and returns the system device
+ *          names to the user which were identified as NETINT transcoder
+ *          devices. Names are suitable for resource management API usage
+ *          afterwards
+ *          This function had replaced ni_rsrc_get_local_device_list
+ *          This function can be callback with multi thread
+ *
+ *  \param[out]  ni_devices  List of device names identified as NETINT NVMe
+ *                           transcoders
+ *  \param[in]   max_handles Max number of device names to return
+ *  \param[in]   xcoder_refresh_dev_names   Xcoder fresh device name
+ *  \param[in]   xcoder_refresh_dev_count   Xcoder fresh device number count
+ *
+ *  \return  Number of devices found. 0 if unsucessful.
+ ******************************************************************************/
+int ni_rsrc_get_local_device_list2(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
+                                   int max_handles, char **xcoder_refresh_dev_names,
+                                   int xcoder_refresh_dev_count)
+{
+    if ((ni_devices == NULL)||(max_handles == 0))
+    {
+        ni_log(NI_LOG_ERROR, "Error with input parameters\n");
+        return 0;
+    }
+    return ni_rsrc_enumerate_devices(ni_devices, max_handles);
 }
 
 /*!******************************************************************************
@@ -453,7 +484,8 @@ int ni_rsrc_init(int should_match_rev, int timeout_seconds)
     uint32_t runtime = 0;
     while (0 == number_of_devices)
     {
-        number_of_devices = ni_rsrc_get_local_device_list(device_names, NI_MAX_DEVICE_CNT);
+        number_of_devices = ni_rsrc_get_local_device_list2(device_names, NI_MAX_DEVICE_CNT,
+                                                            NULL, 0);
 
         if (NI_RETCODE_ERROR_MEM_ALOC == number_of_devices)
         {
@@ -622,6 +654,8 @@ END:
  *          names to the user which were identified as NETINT transcoder
  *          devices. Names are suitable for resource management API usage
  *          afterwards
+ *          This function had been replaced by ni_rsrc_get_local_device_list2
+ *          This function can't be callback with multi thread
  *
  *  \param[out]  ni_devices  List of device names identified as NETINT NVMe
  *                           transcoders
@@ -629,11 +663,11 @@ END:
  *
  *  \return  Number of devices found. 0 if unsucessful.
  ******************************************************************************/
-int ni_rsrc_get_local_device_list(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
+NI_DEPRECATED int ni_rsrc_get_local_device_list(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
                                   int max_handles)
 {
   /* list all XCoder devices under /dev/.. */
-#ifdef _ANDROID
+#if defined(_ANDROID) || defined(__OPENHARMONY__)
 #define ANDROID_MAX_DIR_NUM 2
   int android_dir_num = 0;
   const char* dir_name_array[ANDROID_MAX_DIR_NUM];
@@ -676,7 +710,7 @@ int ni_rsrc_get_local_device_list(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
     return 0;
   }
 
-#ifdef _ANDROID
+#if defined(_ANDROID) || defined(__OPENHARMONY__)
  //find XCoder devices in folders of dir_name_array until find in one folder
  //or not find in any folders
  while(xcoder_device_cnt == 0 && android_dir_num < ANDROID_MAX_DIR_NUM)
@@ -699,7 +733,7 @@ int ni_rsrc_get_local_device_list(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
   if (NULL == (FD = opendir(dir_name)))
   {
     
-#ifdef _ANDROID
+#if defined(_ANDROID) || defined(__OPENHARMONY__)
     ni_log(NI_LOG_INFO, "Failed to open directory %s\n", dir_name);
     if(android_dir_num < ANDROID_MAX_DIR_NUM)
     {
@@ -774,6 +808,10 @@ int ni_rsrc_get_local_device_list(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
               { 
                   continue;
               }
+              if(ni_quadra_card_identify_precheck(device_info.dev_name) != NI_RETCODE_SUCCESS)
+              {
+                continue;
+              }
               dev_handle = ni_device_open(device_info.dev_name, &tmp_io_size);
 
               if (NI_INVALID_DEVICE_HANDLE != dev_handle)
@@ -810,7 +848,7 @@ int ni_rsrc_get_local_device_list(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
   }
   closedir(FD);
 
-#ifdef _ANDROID
+#if defined(_ANDROID) || defined(__OPENHARMONY__)
  }//while brace
 #endif
 
@@ -833,6 +871,226 @@ int ni_rsrc_get_local_device_list(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
 }
 
 /*!*****************************************************************************
+ *  \brief  Scans system for all NVMe devices and returns the system device
+ *          names to the user which were identified as NETINT transcoder
+ *          devices. Names are suitable for resource management API usage
+ *          afterwards
+ *          This function had replaced ni_rsrc_get_local_device_list
+ *          This function can be callback with multi thread
+ *
+ *  \param[out]  ni_devices  List of device names identified as NETINT NVMe
+ *                           transcoders
+ *  \param[in]   max_handles Max number of device names to return
+ *  \param[in]   xcoder_refresh_dev_names   Xcoder fresh device name
+ *  \param[in]   xcoder_refresh_dev_count   Xcoder fresh device number count
+ *
+ *  \return  Number of devices found. 0 if unsucessful.
+ ******************************************************************************/
+int ni_rsrc_get_local_device_list2(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
+                                  int max_handles, char **xcoder_refresh_dev_names,
+                                  int xcoder_refresh_dev_count)
+{
+  /* list all XCoder devices under /dev/.. */
+#ifdef _ANDROID
+#define ANDROID_MAX_DIR_NUM 2
+  int android_dir_num = 0;
+  const char* dir_name_array[ANDROID_MAX_DIR_NUM];
+  dir_name_array[0] = "/dev";
+  dir_name_array[1] = "/dev/block";
+#else
+  const char* dir_name = "/dev";
+#endif
+  int i, xcoder_device_cnt = 0;
+  DIR* FD;
+  struct dirent* in_file;
+  ni_device_info_t device_info;
+  ni_device_capability_t device_capabilites;
+  ni_device_handle_t dev_handle = NI_INVALID_DEVICE_HANDLE;
+  ni_retcode_t rc;
+  uint32_t tmp_io_size;
+  bool device_in_ctxt = false;
+
+  if ((ni_devices == NULL)||(max_handles == 0))
+  {
+    ni_log(NI_LOG_ERROR, "ERROR: bad input parameters\n");
+    return 0;
+  }
+
+  int nvme_dev_cnt = 0;
+  char nvme_devices[200][NI_MAX_DEVICE_NAME_LEN];
+
+  regex_t regex;
+  // GNU ERE not support /d, use [0-9] or [[:digit:]] instead
+#if __APPLE__
+  const char *pattern = "^rdisk[0-9]+$";
+#elif defined(XCODER_LINUX_VIRTIO_DRIVER_ENABLED)
+  const char *pattern = "^vd[a-z]$";
+#else
+  const char *pattern = "^nvme[0-9]+(c[0-9]+)?n[0-9]+$";
+#endif
+  // Compile the regular expression
+  if(regcomp(&regex, pattern, REG_EXTENDED | REG_NOSUB)) {
+    ni_log(NI_LOG_ERROR, "Could not compile regex\n");
+    return 0;
+  }
+
+#ifdef _ANDROID
+ //find XCoder devices in folders of dir_name_array until find in one folder
+ //or not find in any folders
+ while(xcoder_device_cnt == 0 && android_dir_num < ANDROID_MAX_DIR_NUM)
+ {
+  const char *dir_name = dir_name_array[android_dir_num];
+  ++android_dir_num;
+
+  nvme_dev_cnt = 0;
+  device_in_ctxt = false;
+  dev_handle = NI_INVALID_DEVICE_HANDLE;
+  // g_dev_handle = NI_INVALID_DEVICE_HANDLE;
+  size_t size_of_nvme_devices_x = sizeof(nvme_devices)/sizeof(nvme_devices[0]);
+  for(size_t dimx = 0; dimx < size_of_nvme_devices_x; ++dimx)
+  {
+    memset(nvme_devices[dimx], 0, sizeof(nvme_devices[0]));
+  }
+ //}//while brace below will end this
+#endif
+
+  if (NULL == (FD = opendir(dir_name)))
+  {
+    
+#ifdef _ANDROID
+    ni_log(NI_LOG_INFO, "Failed to open directory %s\n", dir_name);
+    if(android_dir_num < ANDROID_MAX_DIR_NUM)
+    {
+        continue;
+    }
+    regfree(&regex);
+    return 0;
+#else
+    ni_log(NI_LOG_ERROR, "ERROR: failed to open directory %s\n", dir_name);
+    regfree(&regex);
+    return 0;
+#endif
+  }
+
+  /* collect all the available NVMe devices and sort */
+  while ((in_file = readdir(FD)))
+  {
+      /*! skip current and parent directory */
+      if (!strcmp(in_file->d_name, ".") || !strcmp(in_file->d_name, ".."))
+      {
+          continue;
+      }
+
+      /* pick only those files with name nvmeX where X consists of 1-n
+        digits */
+      if (!strncmp(in_file->d_name, DEV_NAME_PREFIX, strlen(DEV_NAME_PREFIX)))
+      {
+        if (nvme_dev_cnt < 200)
+        {
+            int write_len = snprintf(nvme_devices[nvme_dev_cnt],
+                                        NI_MAX_DEVICE_NAME_LEN - 6, "%s/%s",
+                                        dir_name, in_file->d_name);
+            if (write_len < 0 || write_len >= (NI_MAX_DEVICE_NAME_LEN - 6))
+            {
+                ni_log(NI_LOG_ERROR,
+                        "ERROR: failed to copy device %d name %s\n",
+                        nvme_dev_cnt, in_file->d_name);
+            }
+            nvme_dev_cnt++;
+        }
+          int skip_this = 0;
+          skip_this = regexec(&regex, in_file->d_name, 0, NULL, 0);
+          ni_log(NI_LOG_TRACE, "name: %s skip %d\n", in_file->d_name, skip_this);
+
+          if (!skip_this)
+          {
+              memset(&device_info, 0, sizeof(ni_device_info_t));
+              if (snprintf(device_info.dev_name, NI_MAX_DEVICE_NAME_LEN - 6,
+                           "%s/%s", dir_name, in_file->d_name) < 0)
+              {
+                  ni_log(NI_LOG_ERROR,
+                         "ERROR: failed an snprintf() in "
+                         "ni_rsrc_get_local_device_list2()\n");
+                  continue;
+              }
+              strncpy(device_info.blk_name, device_info.dev_name,
+                      NI_MAX_DEVICE_NAME_LEN);
+              memset(&device_capabilites, 0, sizeof(ni_device_capability_t));
+
+              device_in_ctxt = false; 
+              for (int j = 0; j < xcoder_refresh_dev_count; j++)
+              {
+                  if (0 ==
+                      strcmp(device_info.dev_name,
+                             xcoder_refresh_dev_names[j]))
+                  {
+                      device_in_ctxt = true;
+                      break;
+                  }
+              }
+              if (NI_RETCODE_SUCCESS != ni_check_dev_name(device_info.dev_name))
+              { 
+                  continue;
+              }
+              if (ni_quadra_card_identify_precheck(device_info.dev_name) != NI_RETCODE_SUCCESS)
+              {
+                  continue;
+              }
+              dev_handle = ni_device_open(device_info.dev_name, &tmp_io_size);
+
+              if (NI_INVALID_DEVICE_HANDLE != dev_handle)
+              {
+                rc = ni_device_capability_query2(dev_handle,
+                                                &device_capabilites, device_in_ctxt);
+                if (NI_RETCODE_SUCCESS == rc)
+                {
+                    if (is_supported_xcoder(
+                            device_capabilites.device_is_xcoder))
+                    {
+                        ni_devices[xcoder_device_cnt][0] = '\0';
+                        strcat(ni_devices[xcoder_device_cnt],
+                                device_info.dev_name);
+                        xcoder_device_cnt++;
+                    }
+                }
+
+                ni_device_close(dev_handle);
+              }
+          }
+      }
+      if ((NI_MAX_DEVICE_CNT <= xcoder_device_cnt) ||
+          (max_handles <= xcoder_device_cnt))
+      {
+          ni_log(NI_LOG_ERROR,
+                 "Disregarding some Netint devices on system over "
+                 "limit of NI_MAX_DEVICE_CNT(%d) or max_handles(%d)\n",
+                 NI_MAX_DEVICE_CNT, max_handles);
+          break;
+      }
+  }
+  closedir(FD);
+
+#ifdef _ANDROID
+ }//while brace
+#endif
+
+  regfree(&regex);
+
+  qsort(ni_devices, xcoder_device_cnt, (size_t)NI_MAX_DEVICE_NAME_LEN,
+        ni_rsrc_strcmp);
+  if (0 == xcoder_device_cnt)
+  {
+      ni_log(NI_LOG_INFO, "Found %d NVMe devices on system, none of them xcoder\n", nvme_dev_cnt);
+      for (i = 0; i < nvme_dev_cnt; i++)
+      {
+          ni_log(NI_LOG_INFO, "NVMe device %d: %s\n", i, nvme_devices[i]);
+      }
+  }
+
+  return xcoder_device_cnt;
+}
+
+/*!*****************************************************************************
  *  \brief  Create and return the allocated ni_device_pool_t struct
  *
  *  \param  None
@@ -842,122 +1100,41 @@ int ni_rsrc_get_local_device_list(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
 ni_device_pool_t* ni_rsrc_get_device_pool(void)
 {
   int shm_fd = -1;
+  ni_rsrc_shm_state state = NI_RSRC_SHM_IS_INVALID;
+  int flags = O_RDWR | O_CLOEXEC;
+  mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP;
   ni_device_queue_t* p_device_queue = NULL;
   ni_lock_handle_t lock;
   ni_device_pool_t* p_device_pool = NULL;
 
-#ifdef _ANDROID
-  if (0 != access(LOCK_DIR, 0))
-  {
-      if (0 != mkdir(LOCK_DIR, 777))
-      {
-          ni_log(NI_LOG_ERROR, "ERROR: Could not create the %s directory",
-                 LOCK_DIR);
-          return NULL;
-      }
-  }
-#endif
-
-  lock = open(CODERS_LCK_NAME, O_RDWR | O_CREAT | O_CLOEXEC,
-              S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
-
-  if (lock < 0)
-  {
-      ni_log(NI_LOG_ERROR, "ERROR %s() open() CODERS_LCK_NAME: %s\n", __func__,
-             strerror(NI_ERRNO));
-      return NULL;
+  if (ni_rsrc_try_get_shm_lock(CODERS_LCK_NAME,
+      flags, mode, (int *)&lock) < 0) {
+    ni_log(NI_LOG_ERROR, "%s: Failed to get lock\n", __func__);
+    return NULL;
   }
 
-  int retry_cnt = 0;
-  //use non blocking F_TLOCK in case broken instance has indefinitely locked it
-  while (lockf(lock, F_TLOCK, 0) != 0) 
-  {
-      retry_cnt++;
-      ni_usleep(LOCK_WAIT);   //10ms
-      if (retry_cnt >= 900) //9s
-      {
-          ni_log(NI_LOG_ERROR, "ERROR %s() lockf() CODERS_LCK_NAME: %s\n",
-                  __func__, strerror(NI_ERRNO));
-          ni_log(NI_LOG_ERROR, "ERROR %s() If persists, stop traffic and run rm /dev/shm/NI_*\n",
-                 __func__);
-          close(lock);
-          return NULL;
-      }
+  if (ni_rsrc_open_shm(CODERS_SHM_NAME,
+                       sizeof(ni_device_queue_t),
+                       &state,
+                       (int *)&shm_fd) < 0) {
+    ni_log(NI_LOG_ERROR, "%s: Failed to ni_rsrc_open_shm\n", __func__);
+    LRETURN;
   }
 
-
-#ifdef _ANDROID
-  /*! return if init has already been done */
-  int ret = ni_rsrc_android_init();
-  if (service == NULL)
-  {
-      ni_log(NI_LOG_ERROR, "ni_rsrc_get_device_pool Error service ..\n");
-      return NULL;
-  }
-
-  string param = CODERS_SHM_NAME;
-  Return<void> retvalue =
-      service->GetAppFlag(param, [&](int32_t ret, hidl_handle handle) {
-          ni_log(NI_LOG_INFO, "GetAppFlag: ret %d\n", ret);
-          if (ret > 0)
-          {
-              shm_fd = dup(handle->data[0]);
-              ni_log(NI_LOG_INFO, "vendor:GetAppFlag shm_fd:%d\n", shm_fd);
-
-          } else
-          {
-              ni_log(NI_LOG_ERROR, "Error %d: shm_get shm_fd ..\n",
-                     NI_ERRNO);
-          }
-      });
-  if (!retvalue.isOk())
-  {
-      ni_log(NI_LOG_ERROR, "service->GetAppFlag ret failed ..\n");
-      LRETURN;
-  }
-  if (shm_fd < 0)
-  {
-      int fd = ashmem_create_region(CODERS_SHM_NAME, sizeof(ni_device_queue_t));
-      if (fd >= 0)
-      {
-          native_handle_t *handle = native_handle_create(1, 0);
-          handle->data[0] = fd;
-          service->SetAppFlag(param, handle);
-          shm_fd = dup(fd);
-          ni_log(NI_LOG_ERROR, "Create shm fd %d\n", shm_fd);
-      }
-  }
-#else
-  shm_fd =
-      shm_open(CODERS_SHM_NAME, O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
-#endif
-  if (shm_fd < 0)
-  {
-      ni_log(NI_LOG_ERROR, "ERROR %s() shm_open() CODERS_SHM_NAME: %s\n",
-             __func__, strerror(NI_ERRNO));
-      LRETURN;
-  }
-
-  p_device_queue = (ni_device_queue_t*)mmap(0, sizeof(ni_device_queue_t), PROT_READ | PROT_WRITE,
-    MAP_SHARED, shm_fd, 0);
-  if (MAP_FAILED == p_device_queue)
-  {
-      ni_log(NI_LOG_ERROR, "ERROR %s() mmap() ni_device_queue_t: %s\n",
-             __func__, strerror(NI_ERRNO));
-      LRETURN;
-  } else {
-      ni_log(NI_LOG_DEBUG, "in %s do mmap for %s\n", __func__, CODERS_SHM_NAME);
+  if ((ni_rsrc_mmap_shm(CODERS_SHM_NAME,
+                        shm_fd,
+                        sizeof(ni_device_queue_t),
+                        (void **)&p_device_queue)) < 0) {
+    ni_log(NI_LOG_ERROR, "%s(): Failed to ni_rsrc_mmap_shm\n", __func__);
+    LRETURN;
   }
 
   p_device_pool = (ni_device_pool_t *)malloc(sizeof(ni_device_pool_t));
-  if (NULL == p_device_pool)
-  {
-      ni_log(NI_LOG_ERROR, "ERROR %s() malloc() ni_device_pool_t: %s\n",
-             __func__, strerror(NI_ERRNO));
-      munmap(p_device_queue, sizeof(ni_device_queue_t));
-  }
-  else
-  {
+  if (! p_device_pool) {
+    ni_log(NI_LOG_ERROR, "ERROR %s() malloc() ni_device_pool_t: %s\n",
+          __func__, strerror(NI_ERRNO));
+    ni_rsrc_munmap_shm((void *)p_device_queue, sizeof(ni_device_queue_t));
+  } else {
     p_device_pool->lock = lock;
     p_device_pool->p_device_queue = p_device_queue;
   }
@@ -965,15 +1142,15 @@ ni_device_pool_t* ni_rsrc_get_device_pool(void)
 END:
   lockf(lock, F_ULOCK, 0);
 
-  if (NULL == p_device_pool)
-  {
+  if (NULL == p_device_pool) {
     close(lock);
   }
 
-  if (shm_fd >= 0)
-  {
+#ifndef __OPENHARMONY__
+  if (shm_fd >= 0) {
     close(shm_fd);
   }
+#endif
 
   return p_device_pool;
 }
@@ -1007,8 +1184,9 @@ int ni_rsrc_init(int should_match_rev, int timeout_seconds)
     runtime = 0;
     while (1)
     {
-        number_of_devices = ni_rsrc_get_local_device_list(device_names,
-                                                          NI_MAX_DEVICE_CNT);
+        number_of_devices = ni_rsrc_get_local_device_list2(device_names,
+                                                          NI_MAX_DEVICE_CNT,
+                                                          NULL, 0);
         if (number_of_devices > 0)
         {
             break;
@@ -1064,7 +1242,10 @@ ni_device_context_t* ni_rsrc_get_device_context(ni_device_type_t device_type, in
 {
     /*! get names of shared mem and lock by GUID */
   int shm_fd = -1;
+  ni_rsrc_shm_state state = NI_RSRC_SHM_IS_INVALID;
   int lock;
+  int flags = O_RDWR | O_CLOEXEC;
+  mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP;
   char shm_name[32] = { 0 };
   char lck_name[32] = { 0 };
   ni_device_context_t *p_device_context = NULL;
@@ -1073,107 +1254,32 @@ ni_device_context_t* ni_rsrc_get_device_context(ni_device_type_t device_type, in
   ni_rsrc_get_shm_name(device_type, guid, shm_name, sizeof(shm_name));
   ni_rsrc_get_lock_name(device_type, guid, lck_name, sizeof(lck_name));
 
-#ifdef _ANDROID
-  lock =
-      open(lck_name, O_CREAT | O_RDWR | O_CLOEXEC, S_IRWXU | S_IRWXG | S_IRWXO);
-#else
-  lock =
-      open(lck_name, O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
-#endif
-  if (lock < 1)
-  {
-    ni_log(NI_LOG_ERROR, "ERROR: %s() open() %s: %s\n", __func__, lck_name,
-           strerror(NI_ERRNO));
+  if (ni_rsrc_try_get_shm_lock(lck_name, flags, mode, &lock) < 0) {
+    ni_log(NI_LOG_ERROR, "%s: Failed to get lock\n", __func__);
     return NULL;
   }
 
-  int retry_cnt = 0;
-  //use non blocking F_TLOCK in case broken instance has indefinitely locked it
-  while (lockf(lock, F_TLOCK, 0) != 0)
-  {
-    retry_cnt++;
-    ni_usleep(LOCK_WAIT);    //10ms
-    if (retry_cnt >= 900)   //10s
-    {
-          ni_log(NI_LOG_ERROR, "ERROR %s() lockf() %s: %s\n", __func__,
-                 lck_name, strerror(NI_ERRNO));
-          ni_log(
-              NI_LOG_ERROR,
-              "ERROR %s() If persists, stop traffic and run rm /dev/shm/NI_*\n",
-              __func__);
-          close(lock);
-          return NULL;
-    }
-  }
-
-#ifdef _ANDROID
-  int ret = ni_rsrc_android_init();
-  if (service == NULL)
-  {
-      ni_log(NI_LOG_ERROR, "ni_rsrc_get_device_context Error service ..\n");
-      return NULL;
-  }
-
-  string param = shm_name;
-  Return<void> retvalue =
-      service->GetAppFlag(param, [&](int32_t ret, hidl_handle handle) {
-          ni_log(NI_LOG_INFO, "GetAppFlag: ret %d\n", ret);
-          if (ret > 0)
-          {
-              shm_fd = dup(handle->data[0]);
-              ni_log(NI_LOG_INFO, "vendor:GetAppFlag shm_fd:%d\n", shm_fd);
-          } else
-          {
-              ni_log(NI_LOG_ERROR, "Error %d: shm_get shm_fd ..\n",
-                     NI_ERRNO);
-          }
-      });
-
-  if (!retvalue.isOk())
-  {
-      ni_log(NI_LOG_ERROR, "service->GetAppFlag ret failed ..\n");
-      LRETURN;
-  }
-
-  if (shm_fd < 0)
-  {
-      int fd = ashmem_create_region(shm_name, sizeof(ni_device_info_t));
-      if (fd >= 0)
-      {
-          native_handle_t *handle = native_handle_create(1, 0);
-          handle->data[0] = fd;
-          service->SetAppFlag(param, handle);
-          shm_fd = dup(fd);
-          ni_log(NI_LOG_ERROR, "Create shm fd %d\n", shm_fd);
-      }
-  }
-#else
-  shm_fd = shm_open(shm_name, O_CREAT | O_RDWR,
-                    S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
-#endif
-  if (shm_fd < 0)
-  {
-    ni_log(NI_LOG_ERROR, "ERROR %s() shm_open() %s: %s\n", __func__, shm_name,
-           strerror(NI_ERRNO));
+  if (ni_rsrc_open_shm(shm_name,
+                       sizeof(ni_device_info_t),
+                       &state,
+                       (int *)&shm_fd) < 0) {
+    ni_log(NI_LOG_ERROR, "%s: Failed to ni_rsrc_open_shm\n", __func__);
     LRETURN;
   }
 
-  p_device_queue = (ni_device_info_t *)mmap(0, sizeof(ni_device_info_t), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
-  if (MAP_FAILED == p_device_queue)
-  {
-    ni_log(NI_LOG_ERROR, "ERROR %s() mmap() ni_device_info_t: %s\n", __func__,
-           strerror(NI_ERRNO));
+  if ((ni_rsrc_mmap_shm(shm_name,
+                        shm_fd,
+                        sizeof(ni_device_info_t),
+                        (void **)&p_device_queue)) < 0) {
+    ni_log(NI_LOG_ERROR, "%s(): Failed to ni_rsrc_mmap_shm\n", __func__);
     LRETURN;
-  } else {
-    ni_log(NI_LOG_DEBUG, "in %s do mmap for %s\n", __func__, shm_name);
   }
 
   p_device_context = (ni_device_context_t *)malloc(sizeof(ni_device_context_t));
-  if (!p_device_context)
-  {
+  if (!p_device_context) {
     ni_log(NI_LOG_ERROR, "ERROR %s() malloc() ni_device_context_t: %s\n",
            __func__, strerror(NI_ERRNO));
-    munmap((void *)p_device_queue, sizeof(ni_device_info_t));
+    ni_rsrc_munmap_shm((void *)p_device_queue, sizeof(ni_device_info_t));
     LRETURN;
   }
 
@@ -1184,10 +1290,11 @@ ni_device_context_t* ni_rsrc_get_device_context(ni_device_type_t device_type, in
 END:
   lockf(lock, F_ULOCK, 0);
 
-  if (shm_fd >= 0)
-  {
+#ifndef __OPENHARMONY__
+  if (shm_fd >= 0) {
     close(shm_fd);
   }
+#endif
 
   return p_device_context;
 }
@@ -1209,7 +1316,7 @@ void ni_rsrc_free_device_context(ni_device_context_t *p_device_context)
     ReleaseMutex(p_device_context->lock);
 #elif __linux__ || __APPLE__
     close(p_device_context->lock);
-    munmap((void *)p_device_context->p_device_info, sizeof(ni_device_info_t));
+    ni_rsrc_munmap_shm((void *)p_device_context->p_device_info, sizeof(ni_device_info_t));
     ni_log(NI_LOG_DEBUG, "in %s do munmap for %s\n", __func__, p_device_context->shm_name);
 #endif
     free(p_device_context);
@@ -1419,7 +1526,8 @@ ni_retcode_t ni_rsrc_list_all_devices2(ni_device_t* p_device, bool list_uninitia
     /* Retrieve uninitialized devices. */
 
     char dev_names[NI_MAX_DEVICE_CNT][NI_MAX_DEVICE_NAME_LEN] = {0};
-    int dev_count = ni_rsrc_get_local_device_list(dev_names, NI_MAX_DEVICE_CNT);
+    int dev_count = ni_rsrc_get_local_device_list2(dev_names, NI_MAX_DEVICE_CNT,
+                                                    NULL, 0);
 
     uint32_t tmp_io_size;
     ni_device_capability_t capability;
@@ -1441,7 +1549,7 @@ ni_retcode_t ni_rsrc_list_all_devices2(ni_device_t* p_device, bool list_uninitia
             return NI_RETCODE_FAILURE;
         }
 
-        retval = ni_device_capability_query(fd, &capability);
+        retval = ni_device_capability_query2(fd, &capability, false);
         if (NI_RETCODE_SUCCESS != retval)
         {
             ni_device_close(fd);
@@ -1461,10 +1569,7 @@ ni_retcode_t ni_rsrc_list_all_devices2(ni_device_t* p_device, bool list_uninitia
                    sizeof(capability.model_number));
             memcpy(p_dev_info->fw_rev, capability.fw_rev,
                    sizeof(capability.fw_rev));
-            if (ni_is_fw_compatible(capability.fw_rev) == 2)
-            {
-                p_dev_info->fw_ver_compat_warning = 1;
-            }
+            p_dev_info->fw_ver_compat_warning = ni_rsrc_is_fw_compat(capability.fw_rev) >= 2 ? 1 : 0;
             memcpy(p_dev_info->fw_branch_name, capability.fw_branch_name,
                    sizeof(capability.fw_branch_name));
             memcpy(p_dev_info->fw_commit_time, capability.fw_commit_time,
@@ -2098,9 +2203,7 @@ END:
 int ni_rsrc_remove_device(const char* dev)
 {
 #if __linux__ || __APPLE__
-#ifndef _ANDROID
     char lck_name[32];
-#endif
 #endif
     int return_value = NI_RETCODE_SUCCESS;
     int32_t guid;
@@ -2162,6 +2265,7 @@ int ni_rsrc_remove_device(const char* dev)
                 ni_log(NI_LOG_ERROR,
                        "ERROR: %s() Failed to obtain device context for "
                        "%s with GUID %u! Undefined behavior!\n",
+                       __func__,
                        GET_XCODER_DEVICE_TYPE_STR(device_type),
                        guid);
                 return_value = NI_RETCODE_FAILURE;
@@ -2178,8 +2282,7 @@ int ni_rsrc_remove_device(const char* dev)
 #ifdef _WIN32
             CloseHandle(p_device_context->lock);
 #elif __linux__ || __APPLE__
-#ifndef _ANDROID
-            if (!shm_unlink(p_device_context->shm_name))
+            if (!ni_rsrc_remove_shm(p_device_context->shm_name, sizeof(ni_device_info_t)))
             {
                 ni_log(NI_LOG_INFO,
                        "%s %s %s deleted\n",
@@ -2199,12 +2302,10 @@ int ni_rsrc_remove_device(const char* dev)
                 return_value = NI_RETCODE_FAILURE;
             }
 #endif
-#endif
 
             ni_rsrc_free_device_context(p_device_context);
 
 #if __linux__ || __APPLE__
-#ifndef _ANDROID
             ni_rsrc_get_lock_name(device_type, guid, lck_name, 32);
             if (!unlink(lck_name))
             {
@@ -2225,7 +2326,6 @@ int ni_rsrc_remove_device(const char* dev)
                        strerror(NI_ERRNO));
                 return_value = NI_RETCODE_FAILURE;
             }
-#endif
 #endif
 
             if (return_value != NI_RETCODE_SUCCESS)
@@ -2371,8 +2471,7 @@ int ni_rsrc_remove_all_devices(void)
     }
 
 #if __linux__ || __APPLE__
-#ifndef _ANDROID
-    if (0 == shm_unlink(CODERS_SHM_NAME))
+    if (!ni_rsrc_remove_shm(CODERS_SHM_NAME, sizeof(ni_device_queue_t)))
     {
         ni_log(NI_LOG_INFO, "%s deleted.\n", CODERS_SHM_NAME);
     }
@@ -2403,7 +2502,6 @@ int ni_rsrc_remove_all_devices(void)
     {
         ni_log(NI_LOG_ERROR, "%s failed to delete !\n", CODERS_LCK_NAME);
     }
-#endif
 #endif
 
     return NI_RETCODE_SUCCESS;
@@ -2509,6 +2607,7 @@ end:
 #elif __linux__ || __APPLE__
     lockf(device_pool->lock, F_ULOCK, 0);
 #endif
+    ni_rsrc_free_device_pool(device_pool);
     return retcode;
 }
 
@@ -2534,7 +2633,7 @@ void ni_rsrc_free_device_pool(ni_device_pool_t* p_device_pool)
 #ifdef _WIN32
     UnmapViewOfFile(p_device_pool->p_device_queue);
 #else
-    munmap(p_device_pool->p_device_queue, sizeof(ni_device_queue_t));
+    ni_rsrc_munmap_shm((void *)p_device_pool->p_device_queue, sizeof(ni_device_queue_t));
     ni_log(NI_LOG_DEBUG, "in %s do munmap for %s\n", __func__, CODERS_SHM_NAME);
 #endif
 
@@ -2684,7 +2783,13 @@ int ni_rsrc_unlock(int device_type, ni_lock_handle_t lock)
 *******************************************************************************/
 int ni_rsrc_is_fw_compat(uint8_t fw_rev[8])
 {
-    return ni_is_fw_compatible(fw_rev);
+    if ((uint8_t)fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX] ==
+        (uint8_t)NI_XCODER_REVISION[NI_XCODER_REVISION_API_MAJOR_VER_IDX]) {
+        return ni_cmp_fw_api_ver((char*) &fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+                                 &NI_XCODER_REVISION[NI_XCODER_REVISION_API_MAJOR_VER_IDX]) ? 2 : 1;
+    } else {
+        return 0;
+    }
 }
 
 static int int_cmp(const void *a, const void *b)

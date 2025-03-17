@@ -2438,6 +2438,166 @@ void ni_enc_copy_aux_data(ni_session_context_t *p_enc_ctx,
 }
 
 /*!*****************************************************************************
+ *  \brief  Insert timecode data into picture timing SEI (H264) or time code SEI (H265)
+ *          
+ *  \note   This function must be callled after all other aux data has been processed by
+ *          ni_enc_prep_aux_data and ni_enc_copy_aux_data. Otherwise the timecode SEI data
+ *          might be overwritten
+ *
+ *  \param[in]  p_enc_ctx encoder session context
+ *  \param[out]  p_enc_frame frame to be sent to encoder
+ *  \param[in]   p_timecode the timecode data to be written along with the frame
+ *
+ *  \return NI_RETCODE_SUCCESS on success, NI_RETCODE_FAILURE on failure
+ ******************************************************************************/
+LIB_API int ni_enc_insert_timecode(ni_session_context_t *p_enc_ctx, ni_frame_t *p_enc_frame, 
+                                   ni_timecode_t *p_timecode)
+{
+    uint8_t timecode_data[NI_MAX_SEI_DATA];
+    uint8_t *dst = timecode_data;
+    ni_bitstream_writer_t pb;
+    uint32_t header_len, payload_len, total_len;
+    int emu_bytes_inserted, is_hwframe, is_semiplanar;
+
+    if (!p_enc_ctx || !p_enc_frame || !p_timecode) {
+        ni_log2(p_enc_ctx, NI_LOG_ERROR, "ERROR: %s received NULL parameter\n", __func__);
+        return NI_RETCODE_FAILURE;
+    }
+
+    if (p_enc_ctx->codec_format != NI_CODEC_FORMAT_H264 && p_enc_ctx->codec_format != NI_CODEC_FORMAT_H265) {
+        ni_log2(p_enc_ctx, NI_LOG_ERROR, "ERROR: %s insertion of timecode in SEI is only supported on H264 and H265 encoder\n", __func__);
+        return NI_RETCODE_FAILURE;
+    }
+
+    ni_bitstream_writer_init(&pb);
+
+    // NAL start code
+    ni_bs_writer_put(&pb, 0x00, 8);
+    ni_bs_writer_put(&pb, 0x00, 8);
+    ni_bs_writer_put(&pb, 0x00, 8);
+    ni_bs_writer_put(&pb, 0x01, 8);
+    
+    // NAL type: SEI
+    if (p_enc_ctx->codec_format == NI_CODEC_FORMAT_H264) {
+        ni_bs_writer_put(&pb, 0x06, 8);
+    } else {
+        ni_bs_writer_put(&pb, 0x4e, 8);
+        ni_bs_writer_put(&pb, 0x01, 8);
+    }
+
+    // SEI type: picture timing (1) for H264, time code (136) for H265
+    if (p_enc_ctx->codec_format == NI_CODEC_FORMAT_H264) {
+        ni_bs_writer_put(&pb, 0x01, 8);
+        header_len = 7;
+    } else {
+        ni_bs_writer_put(&pb, 0x88, 8);
+        header_len = 8;
+    }
+
+    // SEI payload size, to be set later
+    ni_bs_writer_put(&pb, 0x00, 8);
+
+    if (p_enc_ctx->codec_format == NI_CODEC_FORMAT_H264) {
+        ni_bs_writer_put(&pb, 0x0, 4); // pic_struct, always 0 (progressive)
+    } else {
+        ni_bs_writer_put(&pb, 0x1, 2); // num_clock_ts, only support inserting 1
+    }
+
+    // actual timestamp data below, retrieve the values from ni_timecode_t passed in
+    ni_bs_writer_put(&pb, 0x1, 1); // clock_timestamp_flag = 1
+    if (p_enc_ctx->codec_format == NI_CODEC_FORMAT_H264) {
+        ni_bs_writer_put(&pb, 0x0, 2); // ct_type, always 0 (progressive)
+    }
+    ni_bs_writer_put(&pb, p_timecode->nuit_field_based_flag, 1);
+    ni_bs_writer_put(&pb, p_timecode->counting_type, 5);
+    ni_bs_writer_put(&pb, p_timecode->full_timestamp_flag, 1);
+    ni_bs_writer_put(&pb, p_timecode->discontinuity_flag, 1);
+    ni_bs_writer_put(&pb, p_timecode->cnt_dropped_flag, 1);
+    if (p_enc_ctx->codec_format == NI_CODEC_FORMAT_H264) {
+        ni_bs_writer_put(&pb, p_timecode->n_frames, 8);
+    } else {
+        ni_bs_writer_put(&pb, p_timecode->n_frames, 9);
+    }
+    if (p_timecode->full_timestamp_flag) {
+        ni_bs_writer_put(&pb, p_timecode->seconds_value, 6);
+        ni_bs_writer_put(&pb, p_timecode->minutes_value, 6);
+        ni_bs_writer_put(&pb, p_timecode->hours_value, 5);
+    } else {
+        ni_bs_writer_put(&pb, p_timecode->seconds_flag, 1);
+        if (p_timecode->seconds_flag) {
+            ni_bs_writer_put(&pb, p_timecode->seconds_value, 6);
+            ni_bs_writer_put(&pb, p_timecode->minutes_flag, 1);
+            if (p_timecode->minutes_flag) {
+                ni_bs_writer_put(&pb, p_timecode->minutes_value, 6);
+                ni_bs_writer_put(&pb, p_timecode->hours_flag, 1);
+                if (p_timecode->hours_flag) {
+                    ni_bs_writer_put(&pb, p_timecode->hours_value, 5);
+                }
+            }
+        }
+    }
+    if (p_enc_ctx->codec_format == NI_CODEC_FORMAT_H265) {
+        ni_bs_writer_put(&pb, p_timecode->time_offset_length, 5);
+        if (p_timecode->time_offset_length) {
+            ni_bs_writer_put(&pb, p_timecode->time_offset_value, p_timecode->time_offset_length);
+        }
+    } else {
+        // for H264, time_offset_length is stored in HRD parameters in VUI, which can only be set 
+        // in the FW when HRD is enabled, so we assume that it is not present, in which case it 
+        // should be intepreted as 24 by default
+        ni_bs_writer_put(&pb, p_timecode->time_offset_value, 24);
+    }
+
+    ni_bs_writer_put(&pb, 1, 1);
+    ni_bs_writer_align_zero(&pb);
+    payload_len = ((ni_bs_writer_tell(&pb) + 7) / 8) - header_len;
+    ni_bs_writer_copy(dst, &pb);
+    ni_bs_writer_clear(&pb);
+
+    // set the SEI payload size
+    if (p_enc_ctx->codec_format == NI_CODEC_FORMAT_H264) {
+        dst[6] = payload_len;
+    } else {
+        dst[7] = payload_len;
+    }
+    dst += header_len;
+
+    // insert emulation prevention bytes to the SEI payload data and write trailing bits
+    emu_bytes_inserted = ni_insert_emulation_prevent_bytes(dst, (int)payload_len);
+    dst += payload_len + emu_bytes_inserted;
+    *dst = 0x80;
+
+    // total size of the timecode_data buffer to be copied
+    total_len = header_len + payload_len + emu_bytes_inserted + 1;
+
+    is_hwframe = p_enc_ctx->hw_action != NI_CODEC_HW_NONE;
+    is_semiplanar = p_enc_ctx->pixel_format == NI_PIX_FMT_NV12 || 
+                    p_enc_ctx->pixel_format == NI_PIX_FMT_P010LE;
+    dst = (uint8_t *)p_enc_frame->p_data[2 + is_hwframe] +
+        p_enc_frame->data_len[2 + is_hwframe] + p_enc_frame->extra_data_len;
+    if (!is_hwframe)
+    {
+        dst = (uint8_t *)p_enc_frame->p_data[2 - is_semiplanar] +
+            p_enc_frame->data_len[2 - is_semiplanar] + p_enc_frame->extra_data_len;
+    }
+
+    // separate metadata buffer (not contiguous with YUV buffer)
+    if (p_enc_frame->separate_metadata)
+    {
+        dst = p_enc_frame->p_metadata_buffer + p_enc_frame->extra_data_len;  
+    }
+
+    // copy formatted SEI NAL unit data to the proper buffer
+    memcpy(dst, timecode_data, total_len);
+
+    // finally, update the relevant data size counters in ni_frame_t
+    p_enc_frame->sei_total_len += total_len;
+    p_enc_frame->extra_data_len += total_len;
+
+    return NI_RETCODE_SUCCESS;
+}
+
+/*!*****************************************************************************
   *  \brief  Send an input data frame to the encoder with YUV data given in 
   *   the inputs.
   * 
@@ -2613,6 +2773,7 @@ int ni_enc_write_from_yuv_buffer(ni_session_context_t *p_ctx,
 
     alignment_2pass_wa = (
                                (p_param->cfg_enc_params.lookAheadDepth || 
+                                p_param->cfg_enc_params.crf >= 0 ||
                                 p_param->cfg_enc_params.crfFloat >= 0) &&
                                (p_ctx->codec_format == NI_CODEC_FORMAT_H265 ||
                                 p_ctx->codec_format == NI_CODEC_FORMAT_AV1));
@@ -3307,4 +3468,166 @@ int ni_expand_frame(ni_frame_t *dst, ni_frame_t *src, int dst_stride[],
     }
 
     return 0;
+}
+
+/*!******************************************************************************
+ * \brief  Reset decoder ppu resolution
+ *
+ * \param[in] p_session_ctx         Pointer to a caller allocated 
+ *                                          ni_session_context_t struct
+ * \param[in] p_param               Pointer to a caller allocated 
+ *                                          ni_xcoder_params_t struct
+ * \param[in] ppu_config            Pointer to a caller allocated
+ *                                          ni_ppu_config_t struct
+ *
+ * \return - 0 on success, NI_RETCODE_FAILURE on failure
+ ********************************************************************************/
+int ni_reconfig_ppu_output(ni_session_context_t *p_session_ctx,
+                    ni_xcoder_params_t *p_param, ni_ppu_config_t *ppu_config)
+{
+    int sei_size, size, len;
+    int ret = 0, i = 0, j = 0;
+    uint8_t *p_src_sei_data, *p_dst_sei_data;
+    ni_custom_sei_t *p_dst_custom_sei;
+
+    if (!p_session_ctx || !p_param || !ppu_config)
+    {
+        ret = NI_RETCODE_PARAM_INVALID_VALUE;
+        return ret;
+    }
+
+    // check fw revision
+    if (ni_cmp_fw_api_ver(
+            (char*) &p_session_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+            "6rx") < 0)
+    {
+        ni_log2(p_session_ctx, NI_LOG_ERROR,  "%s: not supported on device with FW API version < 6rx\n", __func__);
+        return NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION;
+    }
+
+    if (NI_CODEC_FORMAT_H264 != p_session_ctx->codec_format &&
+        NI_CODEC_FORMAT_H265 != p_session_ctx->codec_format)
+    {
+        ni_log2(p_session_ctx, NI_LOG_ERROR, "%s(): Ppu reconfig only support "
+                    "h264 and h265 decoder\n", __func__);
+        return NI_RETCODE_PARAM_INVALID_VALUE;
+    }
+
+    ni_decoder_input_params_t *p_dec_input_param = &(p_param->dec_input_params);
+    if (p_dec_input_param->hwframes != 1)
+    {
+        ni_log2(p_session_ctx, NI_LOG_ERROR, "%s(): Not hw mode, "
+                        "So can't reconfig ppu\n", __func__);
+        return NI_RETCODE_PARAM_INVALID_VALUE;
+    }
+    if (p_dec_input_param->enable_out1 == 0 && 
+            ppu_config->ppu_set_enable & (0x01 << 1))
+    {
+        ni_log2(p_session_ctx, NI_LOG_ERROR, "%s(): Warning Not enable ppu1, "
+                        "So can't reconfig ppu1\n", __func__);
+        return NI_RETCODE_PARAM_INVALID_VALUE;
+    }
+    if (p_dec_input_param->enable_out2 == 0 && 
+            ppu_config->ppu_set_enable & (0x01 << 2))
+    {
+        ni_log2(p_session_ctx, NI_LOG_ERROR, "%s(): Warning Not enable ppu2, "
+                        "So can't reconfig ppu2\n", __func__);
+        return NI_RETCODE_PARAM_INVALID_VALUE;
+    }
+    for (i = 0; i < NI_MAX_NUM_OF_DECODER_OUTPUTS; i++)
+    {
+        if (ppu_config->ppu_set_enable & (0x01 << i))
+        {
+            if (ppu_config->ppu_w[i] > NI_MAX_RESOLUTION_WIDTH ||
+                ppu_config->ppu_h[i] > NI_MAX_RESOLUTION_HEIGHT ||
+                ppu_config->ppu_w[i] < NI_MIN_RESOLUTION_WIDTH_SCALER ||
+                ppu_config->ppu_h[i] < NI_MIN_RESOLUTION_WIDTH_SCALER)
+            {
+                ni_log2(p_session_ctx, NI_LOG_ERROR, "%s(): ppu width x height %dx%d "
+                        "out of range\n", __func__, ppu_config->ppu_w[i], ppu_config->ppu_h[i]);
+                ret = NI_RETCODE_PARAM_INVALID_VALUE;
+                return ret;
+            }
+            if ((ppu_config->ppu_w[i] & 1) || (ppu_config->ppu_h[i] & 1))
+            {
+                ni_log2(p_session_ctx, NI_LOG_ERROR, "%s(): ppu wxh %dx%d not align to 2!\n",
+                            __func__, ppu_config->ppu_w[i], ppu_config->ppu_h[i]);
+                ret = NI_RETCODE_PARAM_INVALID_VALUE;
+                return ret;
+            }
+        }
+    }
+    p_dst_custom_sei = malloc(sizeof(ni_custom_sei_t));
+    if (p_dst_custom_sei == NULL)
+    {
+        ni_log2(p_session_ctx, NI_LOG_ERROR, "%s(): failed "
+                    "to allocate memory for custom sei data\n", __func__);
+        ret = NI_RETCODE_ERROR_MEM_ALOC;
+        return ret;
+    }
+    memset(p_dst_custom_sei, 0, sizeof(ni_custom_sei_t));
+    
+
+    sei_size = sizeof(ni_ppu_config_t);
+    
+    p_src_sei_data = (uint8_t *)ppu_config;
+    p_dst_sei_data = &p_dst_custom_sei->data[0];
+    size = 0;
+
+    // long start code
+    p_dst_sei_data[size++] = 0x00;
+    p_dst_sei_data[size++] = 0x00;
+    p_dst_sei_data[size++] = 0x00;
+    p_dst_sei_data[size++] = 0x01;
+
+    if (NI_CODEC_FORMAT_H264 == p_session_ctx->codec_format)
+    {
+        p_dst_sei_data[size++] = 0x06;   //nal type: SEI
+    }
+    else
+    {
+        p_dst_sei_data[size++] = 0x4e;   //nal type: SEI
+        p_dst_sei_data[size++] = 0x01;
+    }
+
+    // SEI type
+    p_dst_sei_data[size++] = NI_SEI_TYPE_PPU_RECONFIG;
+
+    // original payload size
+    len = sei_size;
+    while (len >= 0)
+    {
+        p_dst_sei_data[size++] = len > 0xff ? 0xff : len;
+        len -= 0xff;
+    }
+
+    // payload data
+    for (j = 0; j < sei_size && size < NI_MAX_CUSTOM_SEI_DATA - 1; j++)
+    {
+        if (j >= 2 && !p_dst_sei_data[size - 2] && !p_dst_sei_data[size - 1] && p_src_sei_data[j] <= 0x03)
+        {
+            /* insert 0x3 as emulation_prevention_three_byte */
+            p_dst_sei_data[size++] = 0x03;
+        }
+        p_dst_sei_data[size++] = p_src_sei_data[j];
+    }
+
+    if (j != sei_size)
+    {
+        ni_log2(p_session_ctx, NI_LOG_ERROR, "%s(): sei RBSP size out of limit(%d), "
+                "idx=%u, size=%d\n", __func__,
+                NI_MAX_CUSTOM_SEI_DATA, i, sei_size);
+        free(p_dst_custom_sei);
+        return NI_RETCODE_FAILURE;
+    }
+
+    // trailing byte
+    p_dst_sei_data[size++] = 0x80;
+
+    memcpy(p_session_ctx->p_leftover + p_session_ctx->prev_size,
+            p_dst_sei_data, size);
+    p_session_ctx->prev_size += size;
+    free(p_dst_custom_sei);
+
+    return ret;
 }

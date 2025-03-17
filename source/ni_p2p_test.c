@@ -616,7 +616,8 @@ int encoder_receive_data(ni_session_context_t *p_enc_ctx,
                 fprintf(stderr, "Error: ferror rc = %d\n", ferror(p_file));
             }
 
-            *total_bytes_received += (rx_size - meta_size);
+            rx_size = rc;
+            *total_bytes_received += rx_size;
             number_of_packets++;
             received_stream_header = 1;
         } else if (rc != 0)
@@ -1192,12 +1193,6 @@ int main(int argc, char *argv[])
         print_time = ((current_time.tv_sec - previous_time.tv_sec) > 1);
         encode_index = render_index;
 
-#ifndef _WIN32
-        // Lock the hardware frame prior to encoding. This call will
-        // block until the frame is ready then lock the frame for use.
-        ni_uploader_frame_buffer_lock(&upl_ctx, &p2p_frame[encode_index]);
-#endif
-
         // Encode the frame
         send_fin_flag = encoder_encode_frame(&enc_ctx, &p2p_frame[encode_index],
                                              input_exhausted, &need_to_resend);
@@ -1243,18 +1238,6 @@ int main(int argc, char *argv[])
         // Receive encoded packet data from the encoder
         receive_fin_flag = encoder_receive_data(
             &enc_ctx, &out_packet, p_file, &total_bytes_received, print_time);
-
-#ifndef _WIN32
-        // Unlock the encoded frame now that the compressed packet data has
-        // been received. This frame can be re-used.
-        ret =
-            ni_uploader_frame_buffer_unlock(&upl_ctx, &p2p_frame[encode_index]);
-        if (ret < 0)
-        {
-            fprintf(stderr, "Failed to unlock frame\n");
-            goto end;
-        }
-#endif
 
         if (print_time)
         {

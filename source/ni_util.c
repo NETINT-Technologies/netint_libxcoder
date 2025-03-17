@@ -247,8 +247,13 @@ uint32_t ni_get_kernel_max_io_size(const char * p_dev)
     // Get Max number of segments from /sys
     memset(file_name, 0, sizeof(file_name));
     strcpy(file_name, SYS_PARAMS_PREFIX_PATH);
+#if defined(_ANDROID) || defined(__OPENHARMONY__)
+    //start from 11 chars ahead to not copy the "/dev/block/" since we only need whats after it
+    strncat(file_name, (char *)(p_dev + 11), sizeof(file_name) - SYS_PREFIX_SZ);
+#else
     //start from 5 chars ahead to not copy the "/dev/" since we only need whats after it
     strncat(file_name, (char *)(p_dev + 5), sizeof(file_name) - SYS_PREFIX_SZ);
+#endif
     strncat(file_name, KERNEL_NVME_MAX_SEG_PATH,
             sizeof(file_name) - SYS_PREFIX_SZ - len);
     ni_log(NI_LOG_DEBUG, "file_name  is %s\n", file_name);
@@ -271,7 +276,13 @@ uint32_t ni_get_kernel_max_io_size(const char * p_dev)
     // Get Max segment size from /sys
     memset(file_name, 0, sizeof(file_name));
     strcpy(file_name, SYS_PARAMS_PREFIX_PATH);
+#if defined(_ANDROID) || defined(__OPENHARMONY__)
+    //start from 11 chars ahead to not copy the "/dev/block/" since we only need whats after it
+    strncat(file_name, (char *)(p_dev + 11), sizeof(file_name) - SYS_PREFIX_SZ);
+#else
+    //start from 5 chars ahead to not copy the "/dev/" since we only need whats after it
     strncat(file_name, (char *)(p_dev + 5), sizeof(file_name) - SYS_PREFIX_SZ);
+#endif
     strncat(file_name, KERNEL_NVME_MIN_IO_SZ_PATH,
             sizeof(file_name) - SYS_PREFIX_SZ - len);
     ni_log(NI_LOG_DEBUG, "file_name  is %s\n", file_name);
@@ -294,7 +305,13 @@ uint32_t ni_get_kernel_max_io_size(const char * p_dev)
     //Now get max_hw_sectors_kb
     memset(file_name, 0, sizeof(file_name));
     strcpy(file_name, SYS_PARAMS_PREFIX_PATH);
+#if defined(_ANDROID) || defined(__OPENHARMONY__)
+    //start from 11 chars ahead to not copy the "/dev/block/" since we only need whats after it
+    strncat(file_name, (char *)(p_dev + 11), sizeof(file_name) - SYS_PREFIX_SZ);
+#else
+    //start from 5 chars ahead to not copy the "/dev/" since we only need whats after it
     strncat(file_name, (char *)(p_dev + 5), sizeof(file_name) - SYS_PREFIX_SZ);
+#endif
     strncat(file_name, KERNEL_NVME_MAX_HW_SEC_KB_PATH,
             sizeof(file_name) - SYS_PREFIX_SZ - len);
     ni_log(NI_LOG_DEBUG, "file_name  is %s\n", file_name);
@@ -4354,4 +4371,571 @@ const char *ni_ai_errno_to_str(int rc)
         default:
             return "Other Error";
     }
+}
+/*!******************************************************************************
+ *  \brief  decode the raw current obtained and determine power
+ *
+ *  \param[in] current_value     current value
+ *  \param[in] serial_number     board SN
+ *
+ *  \return On success returns power
+ *          On failure returns -1
+ ********************************************************************************/
+uint32_t ni_decode_power_measurement(uint32_t current_data, const uint8_t *serial_number)
+{
+    uint32_t power_mw;
+    float current_ma,voltage_mv;
+
+    if ((!serial_number) || (current_data == NI_INVALID_POWER))
+    {
+        return NI_INVALID_POWER;
+    }
+    char pcb_config[3];
+    snprintf(pcb_config, sizeof(pcb_config), "%.2s", &serial_number[2]);
+
+    float current_value = (float)current_data;
+    voltage_mv = 12000.0f;
+    if (strncmp(pcb_config, "A1", 2) == 0) 
+    {
+        current_ma = (((current_value * 1000) / TPS25940_R_IMON) - TPS25940_IMON_OS) / TPS25940_GAIN_IMON;
+    }
+    else if ((strncmp(pcb_config, "A2", 2) == 0) || (strncmp(pcb_config, "A3", 2) == 0))
+    {
+        current_ma = ((current_value * MAX15162AAWE_C_IRATIO) / MAX15162AAWE_R_IMON);
+    }
+    else if ((strncmp(pcb_config, "AA", 2) == 0) || (strncmp(pcb_config, "AB", 2) == 0))
+    {
+        current_ma = (((current_value * 1000) / (TPS25946_R_IMON_T2A * TPS25946_GAIN_IMON)) * 1000);
+    }
+    else if (strncmp(pcb_config, "U0", 2) == 0) 
+    {
+        current_ma = ((((current_value) * MAX17613B_R_ISET_TOTAL / MAX17613B_R_ISET_R2) *
+                           MAX17613B_C_IRATIO) / MAX17613B_R_ISET_TOTAL);
+    }
+    else if ((strncmp(pcb_config, "U1", 2) == 0) || (strncmp(pcb_config, "U2", 2) == 0) || (strncmp(pcb_config, "U3", 2) == 0))
+    {
+        current_ma = ((1 * current_value * MAX15162AAWE_C_IRATIO) / MAX15162AAWE_R_IMON);
+    }
+    else if (strncmp(pcb_config, "UA", 2) == 0)
+    {
+        current_ma = (((current_value * 1000) / (TPS25946_R_IMON_T1U_UA * TPS25946_GAIN_IMON)) * 1000);
+    }
+    else if (strncmp(pcb_config, "S0", 2) == 0)
+    {
+        current_ma = (((current_value * 1000) / (TPS25946_R_IMON_T1S * TPS25946_GAIN_IMON)) * 1000);
+    }
+    else if (strncmp(pcb_config, "M0", 2) == 0)
+    {
+        current_ma = ((((current_value * 1000) / (TPS25946_R_IMON_T1M * TPS25946_GAIN_IMON_T1M)) * 1000) * MCU_REF_VOLTAGE) / MCU_FSR_ADC;
+        voltage_mv = 3300.0f;
+    }
+    else
+    {
+        return NI_INVALID_POWER;
+    }
+    power_mw = (uint32_t)((voltage_mv * current_ma) / 1000.0);
+    return power_mw;
+}
+
+
+
+/*!******************************************************************************
+ *  \brief   Check a device can be read by ni_device_capability_query()
+ *           by checking the size of the device using blockdev
+ * 
+ *           INFO OR ERROR logs will not be printed in this function
+ *
+ *  \param[in]   p_dev device path string. eg: "/dev/nvme1n2"
+ *  \param[in]   size_needed The minimum required size
+ *
+ *  \return
+ *           returns -1
+ *           when the device can not be read by ni_device_capability_query()
+ *           
+ *           returns 1
+ *           when the device can be read by ni_device_capability_query()
+ *
+ *           returns 0 when the result can not be determined 
+ *
+ *******************************************************************************/
+static int ni_device_size_precheck_blockdev(const char *p_dev, const uint64_t size_needed )
+{
+#ifndef __linux__
+    (void) p_dev;
+    (void) size_needed;
+    return 0;
+#else
+
+    int ret = 0;
+
+    const char blockdev_command_dev[] = "blockdev --getsize64 %s 2>/dev/null";
+    FILE *blockdev_file = NULL;
+    char *blockdev_command = NULL;
+    char blockdev_result [70] = {0};
+
+    if (!p_dev)
+    {
+        return -1;
+    }
+
+    const size_t path_len = strlen(p_dev);
+
+    blockdev_command = (char *)calloc(1, sizeof(blockdev_command_dev) + path_len);
+    if (!blockdev_command)
+    {
+        LRETURN;
+    }
+
+    snprintf(blockdev_command, sizeof(blockdev_command_dev) + path_len, blockdev_command_dev, p_dev);
+
+    ni_log2(NULL, NI_LOG_DEBUG, "%s() blockdev command %s\n", __func__, blockdev_command);
+
+    blockdev_file = popen(blockdev_command, "r");
+
+    if (!blockdev_file)
+    {
+        LRETURN;
+    }
+    
+    if (fgets(blockdev_result, sizeof(blockdev_result), blockdev_file) == NULL)
+    {
+        LRETURN;
+    }
+
+    int status = pclose(blockdev_file);
+    blockdev_file = NULL;
+
+    if (status == 0) // no errors
+    {
+        if (*blockdev_result != '\0')
+        {
+            char *endptr = NULL;
+            errno = 0;
+            unsigned long long this_size = strtoull(blockdev_result, &endptr, 10);
+
+            if (errno != 0 || endptr == blockdev_result)
+            {
+                ret = 0;
+            }
+            else if (this_size < size_needed)
+            {
+                ni_log2(NULL, NI_LOG_DEBUG, "%s() blockdev size check failed. size: %" PRIu64 "\n", __func__, this_size);
+                ret = -1;
+            }
+            else
+            {
+                ret = 1;
+            }
+        }
+    }
+
+END:
+    if (blockdev_command)
+    {
+        free(blockdev_command);
+    }
+
+    if (blockdev_file)
+    {
+        fclose(blockdev_file);
+    }
+
+    return ret;
+
+#endif
+}
+
+/*!******************************************************************************
+ *  \brief   Check a device can be read by ni_device_capability_query()
+ *           by checking the size of the device using lsblk
+ * 
+ *           INFO OR ERROR logs will not be printed in this function
+ *
+ *  \param[in]   p_dev Device path string. eg: "/dev/nvme1n2"
+ *  \param[in]   size_needed The minimum required size
+ * 
+ *  \return
+ *           returns -1
+ *           when the device can not be read by ni_device_capability_query()
+ *           
+ *           returns 1
+ *           when the device can be read by ni_device_capability_query()
+ *
+ *           returns 0 when the result can not be determined 
+ *
+ *******************************************************************************/
+static int ni_device_size_precheck_lsblk(const char *p_dev, const uint64_t size_needed)
+{
+#ifndef __linux__
+    (void) p_dev;
+    (void) size_needed;
+    return 0;
+#else
+
+    int ret = 0;
+    const char lsblk_command_dev[] = "lsblk -b -o SIZE %s 2>/dev/null";
+    char *lsblk_command = NULL;
+    FILE *lsblk_file = NULL;
+    char lsblk_result [70] = {0};
+    char *fgets_result = NULL;
+
+    if (!p_dev)
+    {
+        return -1;
+    }
+
+    const size_t path_len = strlen(p_dev);
+
+    lsblk_command = (char *)calloc(1, sizeof(lsblk_command_dev) + path_len);
+    if (!lsblk_command)
+    {
+        LRETURN;
+    }
+
+    snprintf(lsblk_command, sizeof(lsblk_command_dev) + path_len, lsblk_command_dev, p_dev);
+
+    ni_log2(NULL, NI_LOG_DEBUG, "%s() lsblk command %s\n", __func__, lsblk_command);
+
+    lsblk_file = popen(lsblk_command, "r");
+    if (!lsblk_file)
+    {
+        LRETURN;
+    }
+
+    fgets_result = fgets(lsblk_result, sizeof(lsblk_result), lsblk_file);//get the first line
+    if (!fgets_result)
+    {
+        LRETURN;
+    }
+
+    memset(lsblk_result, 0, sizeof(lsblk_result));
+
+    fgets_result = fgets(lsblk_result, sizeof(lsblk_result), lsblk_file);//get the next line
+    if (fgets_result)
+    {
+        LRETURN;
+    }
+
+    int status = pclose(lsblk_file);
+    lsblk_file = NULL;
+
+    if (status == 0) // no errors
+    {
+        if (*lsblk_result != '\0')
+        {
+            char *endptr = NULL;
+            errno = 0;
+            unsigned long long this_size = strtoull(lsblk_result, &endptr, 10);
+
+            if (errno != 0 || endptr == lsblk_result)
+            {
+                ret = 0;
+            }
+            else if (this_size < size_needed)
+            {
+                ni_log2(NULL, NI_LOG_DEBUG, "%s() lsblk size check failed. size: %" PRIu64 "\n", __func__, this_size);
+                ret = -1;
+            }
+            else
+            {
+                ret = 1;
+            }
+        }
+    }
+
+END:
+    if (lsblk_command)
+    {
+        free(lsblk_command);
+    }
+
+    if (lsblk_file)
+    {
+        pclose(lsblk_file);
+    }
+
+    return ret;
+
+#endif
+}
+
+/*!******************************************************************************
+ *  \brief   Check a device can be read by ni_device_capability_query()
+ *           by checking the vendor id
+ * 
+ *           INFO OR ERROR logs will not be printed in this function
+ *
+ *  \param[in]   p_dev device path string. eg: "/dev/nvme1n2"
+ *
+ *  \return
+ *           returns -1
+ *           when the device can not be read by ni_device_capability_query()
+ *           
+ *           returns 1
+ *           when the device can be read by ni_device_capability_query()
+ *
+ *           returns 0 when the result can not be determined 
+ *
+ *******************************************************************************/
+static int ni_device_vendor_id_precheck(const char *p_dev)
+{
+#ifndef __linux__
+    (void) p_dev;
+    return 0;
+#else
+
+    int ret = 0;
+
+    if (!p_dev)
+    {
+        return -1;
+    }
+
+    const char *vendor_path_devs[] = {"/sys/class/block/%s/device/vendor", "/sys/class/block/%s/device/device/vendor"};
+
+    const char *last_slash = strrchr(p_dev, '/'); 
+    const char *device_name = (last_slash ? (last_slash + 1) : p_dev);
+
+    const size_t path_len = strlen(p_dev);
+
+    for (size_t i = 0; i < sizeof(vendor_path_devs)/sizeof(vendor_path_devs[0]) && ret == 0; ++i)
+    {
+        size_t template_len = strlen(vendor_path_devs[i]);
+        char *vendor_path = (char *)calloc(1, template_len + path_len);
+        if (!vendor_path)
+        {
+            continue;
+        }
+        snprintf(vendor_path, template_len + path_len, vendor_path_devs[i], device_name);
+
+        int fd = open(vendor_path, O_RDONLY);
+        if (fd >= 0)
+        {
+            char vendor_id[10] = {0};
+            int read_size = read(fd, vendor_id, sizeof(vendor_id));
+            if (read_size >= 4 && (size_t)read_size < sizeof(vendor_id))
+            {
+                char *find_1d82 = strstr(vendor_id, "1d82");
+                if (find_1d82)
+                {
+                    ret = 1;
+                }
+                else
+                {
+                    ni_log2(NULL, NI_LOG_DEBUG, "%s() vendor check failed. vendor id: %s", vendor_id);
+                    ret = -1;
+                }
+            }
+
+            close(fd);
+        }
+
+        free(vendor_path);
+    }
+
+    return ret;
+
+#endif
+}
+
+
+/*!******************************************************************************
+ *  \brief   Check a device can be read by ni_device_capability_query()
+ *           by reading size from /sys/class/block/<devname>/size and 
+ *           /sys/class/block/<devname>/queue/logical_block_size
+ * 
+ *           INFO OR ERROR logs will not be printed in this function
+ *
+ *  \param[in]   p_dev device path string. eg: "/dev/nvme1n2"
+ *  \param[in]   size_needed The minimum required size
+ *
+ *  \return
+ *           returns -1
+ *           when the device can not be read by ni_device_capability_query()
+ *           
+ *           returns 1
+ *           when the device can be read by ni_device_capability_query()
+ *
+ *           returns 0 when the result can not be determined 
+ *
+ *******************************************************************************/
+static int ni_device_size_precheck_system_information(const char *p_dev, const uint64_t size_needed)
+{
+#ifndef __linux__
+    (void) p_dev;
+    (void) size_needed;
+    return 0;
+#else
+
+    int ret = 0;
+
+    if (!p_dev)
+    {
+        return -1;
+    }
+
+    const char block_path_dev[] = "/sys/class/block/%s/size";
+    const char logical_block_size_path_dev[] = "/sys/class/block/%s/queue/logical_block_size";
+
+    const char *last_slash = strrchr(p_dev, '/'); 
+    const char *device_name = (last_slash ? (last_slash + 1) : p_dev);
+
+    const size_t path_len = strlen(p_dev);
+
+    int size_fd = -1;
+    int logical_block_fd = -1;
+
+    char *block_path = (char *)calloc(1, sizeof(block_path_dev) + path_len);
+    char *logical_block_size_path = (char *)calloc(1, sizeof(logical_block_size_path_dev) + path_len);
+
+    if (!block_path || !logical_block_size_path)
+    {
+        LRETURN;
+    }
+
+    snprintf(block_path, sizeof(block_path_dev) + path_len, block_path_dev, device_name);
+    snprintf(logical_block_size_path, sizeof(logical_block_size_path_dev) + path_len, logical_block_size_path_dev, device_name);
+
+    size_fd = open(block_path, O_RDONLY);
+    logical_block_fd = open(logical_block_size_path, O_RDONLY);
+
+    if (size_fd < 0 || logical_block_fd < 0)
+    {
+        LRETURN;
+    }
+
+    char this_size_str [20] = {0};
+    char this_block_size_str [20] = {0};
+    
+    if (read(size_fd, this_size_str, sizeof(this_size_str)) <= 0 || read(logical_block_fd, this_block_size_str, sizeof(this_block_size_str)) <= 0)
+    {
+        ret = 0;
+    }
+    else
+    {
+        char *endptr1 = NULL;
+        char *endptr2 = NULL;
+        errno = 0;
+        unsigned long long this_size = strtoull(this_size_str, &endptr1, 10);
+        unsigned long long this_block_size = strtoull(this_block_size_str, &endptr2, 10);
+
+        if (errno == 0 && endptr1 != this_size_str && endptr2 != this_block_size_str)
+        {
+            if (this_size * this_block_size >= size_needed)
+            {
+                ret = 1;
+            }
+            else
+            {
+                ni_log2(NULL, NI_LOG_DEBUG, "%s() read size check failed. size: %" PRIu64 "\n", __func__, this_size * this_block_size);
+                ret = -1;
+            }
+        }
+    }
+
+END:
+    if (block_path)
+    {
+        free(block_path);
+    }
+    if (logical_block_size_path)
+    {
+        free(logical_block_size_path);
+    }
+
+    if (size_fd >= 0)
+    {
+        close(size_fd);
+    }
+    if (logical_block_fd >= 0)
+    {
+        close(logical_block_fd);
+    }
+
+    return ret;
+
+#endif
+}
+
+/*!******************************************************************************
+ *  \brief   precheck a device can be read by ni_device_capability_query()
+ *           INFO OR ERROR logs will not be printed in this function
+ *  \param[in]   p_dev device path string. eg: "/dev/nvme1n2"
+ *
+ *  \return
+ *           returns NI_RETCODE_FAILURE
+ *           when the device can not be read by ni_device_capability_query()
+ *
+ *           returns NI_RETCODE_SUCCESS when
+ *           1. the device can not be read by ni_device_capability_query()
+ *           2. the result can not be determined to prevent query failures due to 
+ *           some reasons such as missing commands on the system
+ *******************************************************************************/
+ni_retcode_t ni_quadra_card_identify_precheck(const char *p_dev)
+{
+#ifndef __linux__
+    (void) p_dev;
+    return 0;
+#else
+    int ret = 0;
+
+    const uint64_t SIZE_NEEDED = ((IDENTIFY_DEVICE_R) << (LBA_BIT_OFFSET)) + (NI_NVME_IDENTITY_CMD_DATA_SZ);
+
+    if (!p_dev)
+    {
+        return NI_RETCODE_FAILURE;
+    }
+
+    const size_t path_len = strlen(p_dev);
+
+    if (path_len > NI_MAX_DEVICE_NAME_LEN)
+    {
+        return NI_RETCODE_FAILURE;
+    }
+
+    ret = ni_device_size_precheck_blockdev(p_dev, SIZE_NEEDED);
+    if (ret > 0)
+    {
+        return NI_RETCODE_SUCCESS;
+    }
+    if (ret < 0)
+    {
+        return NI_RETCODE_FAILURE;
+    }
+
+    ret = ni_device_size_precheck_lsblk(p_dev, SIZE_NEEDED);
+    if (ret > 0)
+    {
+        return NI_RETCODE_SUCCESS;
+    }
+    if (ret < 0)
+    {
+        return NI_RETCODE_FAILURE;
+    }
+
+    ret = ni_device_vendor_id_precheck(p_dev);
+    if (ret > 0)
+    {
+        return NI_RETCODE_SUCCESS;
+    }
+    if (ret < 0)
+    {
+        return NI_RETCODE_FAILURE;
+    }
+
+    ret = ni_device_size_precheck_system_information(p_dev, SIZE_NEEDED);
+    if (ret > 0)
+    {
+        return NI_RETCODE_SUCCESS;
+    }
+    if (ret < 0)
+    {
+        return NI_RETCODE_FAILURE;
+    }
+
+    // Even if all previous prechecks cannot determine the result, still return SUCCESS
+    // This is to prevent query failures due to some reasons such as missing commands on the system
+    return (ret >= 0) ? NI_RETCODE_SUCCESS : NI_RETCODE_FAILURE;
+
+#endif
 }

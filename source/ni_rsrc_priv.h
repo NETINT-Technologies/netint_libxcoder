@@ -36,21 +36,22 @@ extern "C" {
 
 // The macro definition in libxcoder_FFmpeg3.1.1only/source/ni_rsrc_priv.h need to be synchronized with libxcoder
 // If you change this,you should also change LOCK_DIR in libxcoder_FFmpeg3.1.1only/source/ni_rsrc_priv.h
-#ifdef _ANDROID
-#define LOCK_DIR 		"/dev/shm_netint"
-#elif __APPLE__
+#ifdef __APPLE__
 #define LOCK_DIR        "/tmp"
 #else
 #define LOCK_DIR        "/dev/shm"
 #endif
 
 #define CODERS_LCK_NAME LOCK_DIR "/NI_LCK_CODERS"
+#define CODERS_SHM_NAME "NI_SHM_CODERS"
+
+#ifdef __OPENHARMONY__
+#define PROJ_ID         818565  //the ascii value for "QUA": 81 85 65
+#endif
 
 NI_UNUSED static const char *XCODERS_RETRY_LCK_NAME[] = {
     LOCK_DIR "/NI_RETRY_LCK_DECODERS", LOCK_DIR "/NI_RETRY_LCK_ENCODERS",
     LOCK_DIR "/NI_RETRY_LCK_SCALERS", LOCK_DIR "/NI_RETRY_LCK_AI"};
-
-#define CODERS_SHM_NAME "NI_SHM_CODERS"
 
 // The macro definition in libxcoder_FFmpeg3.1.1only/source/ni_rsrc_priv.h need to be synchronized with libxcoder
 // If you change this,you should also change MAX_LOCK_RETRY LOCK_WAIT in libxcoder_FFmpeg3.1.1only/source/ni_rsrc_priv.h
@@ -85,12 +86,42 @@ bool add_to_shared_memory(const char device_name[NI_MAX_DEVICE_NAME_LEN],
 
 int ni_rsrc_strcmp(const void* p_str, const void* p_str1);
 
-// return 1 if fw_rev is compatible with NI_XCODER_REVISION, 0 otherwise
-int ni_is_fw_compatible(uint8_t fw_rev[8]);
-
 void get_dev_pcie_addr(char *device_name,
                        char *pcie, 
                        char *domain, char *slot, char *dev, char *func);
+
+#if __linux__ || __APPLE__
+typedef enum _ni_rsrc_shm_state
+{
+  NI_RSRC_SHM_IS_INVALID = -1,
+  NI_RSRC_SHM_IS_CREATED = 0,
+  NI_RSRC_SHM_IS_EXISTED = 1,
+} ni_rsrc_shm_state;
+
+//a set of API for shared memory
+ni_retcode_t ni_rsrc_try_get_shm_lock(const char *lck_name,
+                                      int flags,
+                                      const mode_t mode,
+                                      int *lck_fd);
+
+ni_retcode_t ni_rsrc_open_shm(const char *shm_name,
+                              int shm_size,
+                              ni_rsrc_shm_state *state,
+                              int *shm_fd);
+
+ni_retcode_t ni_rsrc_mmap_shm(const char *shm_name,
+                              int shm_fd,
+                              int shm_size,
+                              void **shm_addr);
+
+ni_retcode_t ni_rsrc_munmap_shm(void *shm_addr,
+                                int shm_size);
+
+ni_retcode_t ni_rsrc_remove_shm(const char *shm_name,
+                                int shm_size);
+
+ni_retcode_t ni_rsrc_remove_all_shm();
+#endif
 
 #ifdef __cplusplus
 }
