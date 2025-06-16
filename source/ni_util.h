@@ -165,12 +165,12 @@ uint32_t ni_decode_power_measurement(uint32_t power_value, const uint8_t *serial
  *  \param[in]   p_dev device path string. eg: "/dev/nvme1n2"
  *
  *  \return
- *           returns NI_RETCODE_FAILURE 
+ *           returns NI_RETCODE_FAILURE
  *           when the device can not be read by ni_device_capability_query()
  *
- *           returns NI_RETCODE_SUCCESS 
+ *           returns NI_RETCODE_SUCCESS
  *           when the device can not be read by ni_device_capability_query() or
- *           the result can not be determined to prevent query failures due to 
+ *           the result can not be determined to prevent query failures due to
  *           some reasons such as missing commands on the system
  *******************************************************************************/
 ni_retcode_t ni_quadra_card_identify_precheck(const char *p_dev);
@@ -203,7 +203,7 @@ LIB_API void ni_get_hw_yuv420p_dim(int width, int height, int bit_depth_factor,
  *          to encoder for encoding. Caller usually retrieves this info and
  *          uses it in the call to ni_encoder_frame_buffer_alloc for buffer
  *          allocation.
- *          The returned stride and height info will take alignment 
+ *          The returned stride and height info will take alignment
  *          requirements into account.
  *
  *  \param[in]  width   source frame width
@@ -540,10 +540,10 @@ LIB_API int ni_pthread_mutex_unlock(ni_pthread_mutex_t *mutex);
 /*!*****************************************************************************
  *  \brief  create a new thread
  *
- *  \param[in] thread          thread id 
- *  \param[in] attr            attributes to the new thread 
- *  \param[in] start_routine   entry of the thread routine 
- *  \param[in] arg             sole argument of the routine 
+ *  \param[in] thread          thread id
+ *  \param[in] attr            attributes to the new thread
+ *  \param[in] start_routine   entry of the thread routine
+ *  \param[in] arg             sole argument of the routine
  *
  *  \return On success returns 0
  *          On failure returns <0
@@ -555,8 +555,8 @@ LIB_API int ni_pthread_create(ni_pthread_t *thread,
 /*!*****************************************************************************
  *  \brief  join with a terminated thread
  *
- *  \param[in]  thread     thread id 
- *  \param[out] value_ptr  return status 
+ *  \param[in]  thread     thread id
+ *  \param[out] value_ptr  return status
  *
  *  \return On success returns 0
  *          On failure returns <0
@@ -566,8 +566,8 @@ LIB_API int ni_pthread_join(ni_pthread_t thread, void **value_ptr);
 /*!*****************************************************************************
  *  \brief  initialize condition variables
  *
- *  \param[in] cond  condition variable 
- *  \param[in] attr  attribute to the condvar 
+ *  \param[in] cond  condition variable
+ *  \param[in] attr  attribute to the condvar
  *
  *  \return On success returns 0
  *          On failure returns <0
@@ -635,10 +635,10 @@ LIB_API int ni_pthread_cond_timedwait(ni_pthread_cond_t *cond,
  *  \brief  examine and change mask of blocked signals
  *
  *  \param[in] how     behavior of this call, can be value of SIG_BLOCK,
- *                     SIG_UNBLOCK and  SIG_SETMASK 
+ *                     SIG_UNBLOCK and  SIG_SETMASK
  *  \param[in] set     current value of the signal mask. If NULL, the mask keeps
- *                     unchanged. 
- *  \param[in] old_set previous value of the signal mask, can be NULL. 
+ *                     unchanged.
+ *  \param[in] old_set previous value of the signal mask, can be NULL.
  *
  *  \return On success returns 0
  *          On failure returns <0
@@ -657,7 +657,7 @@ LIB_API const char *ni_get_rc_txt(ni_retcode_t rc);
  *  \brief  Retrieve key and value from 'key=value' pair
  *
  *  \param[in]   p_str    pointer to string to extract pair from
- *  \param[out]  key      pointer to key 
+ *  \param[out]  key      pointer to key
  *  \param[out]  value    pointer to value
  *
  *  \return return 0 if successful, otherwise 1
@@ -669,7 +669,7 @@ LIB_API int ni_param_get_key_value(char *p_str, char *key, char *value);
  *  \brief  Retrieve encoder config parameter values from --xcoder-params
  *
  *  \param[in]   xcoderParams    pointer to string containing xcoder params
- *  \param[out]  params          pointer to xcoder params to fill out 
+ *  \param[out]  params          pointer to xcoder params to fill out
  *  \param[out]  ctx             pointer to session context
  *
  *  \return return 0 if successful, -1 otherwise
@@ -697,7 +697,7 @@ LIB_API int ni_retrieve_xcoder_gop(char xcoderGop[],
  *  \brief  Retrieve decoder config parameter values from --decoder-params
  *
  *  \param[in]   xcoderParams    pointer to string containing xcoder params
- *  \param[out]  params          pointer to xcoder params to fill out 
+ *  \param[out]  params          pointer to xcoder params to fill out
  *  \param[out]  ctx             pointer to session context
  *
  *  \return return 0 if successful, -1 otherwise

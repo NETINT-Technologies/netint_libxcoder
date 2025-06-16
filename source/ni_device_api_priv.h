@@ -67,13 +67,13 @@ typedef enum _ni_xcoder_mgr_retcode
 
 typedef struct _ni_session_config_rw
 {
-	uint8_t ui8Enable;
-	uint8_t ui8HWAccess;
-	union
-	{
-		uint16_t ui16ReadFrameId;
-		uint16_t ui16WriteFrameId;
-	} uHWAccessField;
+    uint8_t ui8Enable;
+    uint8_t ui8HWAccess;
+    union
+    {
+        uint16_t ui16ReadFrameId;
+        uint16_t ui16WriteFrameId;
+    } uHWAccessField;
 } ni_session_config_rw_t;
 
 typedef struct _ni_instance_mgr_general_status
@@ -546,13 +546,13 @@ typedef struct _ni_encoder_config_t
   uint8_t  ui8EnableRdoQuant;        /*Enables RDO quant*/
   uint8_t  ui8repeatHeaders;         /*Repeat the headers every Iframe*/
   uint8_t  ui8ctbRcMode;             /*CTB QP adjustment mode for Rate Control and Subjective Quality*/
-  uint8_t  ui8gopSize;               /*Specifies GOP size, 0 is adaptive*/  
+  uint8_t  ui8gopSize;               /*Specifies GOP size, 0 is adaptive*/
   uint8_t  ui8useLowDelayPocType;    /*picture_order_count_type in the H.264 SPS */
   uint8_t  ui8gopLowdelay;               /*Use low delay GOP configuration*/
   uint16_t ui16gdrDuration;          /*intra Refresh period*/
   uint8_t  ui8hrdEnable;             /*Enables hypothetical Reference Decoder compliance*/
-  uint8_t  ui8colorDescPresent; 
-  uint8_t  ui8colorPrimaries;       
+  uint8_t  ui8colorDescPresent;
+  uint8_t  ui8colorPrimaries;
   uint8_t  ui8colorTrc;
   uint8_t  ui8colorSpace;
   uint16_t ui16aspectRatioWidth;
@@ -652,6 +652,13 @@ typedef struct _ni_encoder_config_t
   uint8_t ui8avccHvcc;
   uint8_t ui8spatialLayersRefBaseLayer;
   uint8_t ui8vbvBufferReencode;
+  uint8_t    ui8totalCuTreeDepth;
+  uint8_t    ui8adaptiveCuTree;
+  uint8_t    ui8preIntraHandling;
+  uint8_t    ui8baseLayerOnly;
+  uint8_t    ui8pastFrameMaxIntraRatio;
+  uint8_t    ui8linkFrameMaxIntraRatio;
+  int32_t i32spatialLayerBitrate[NI_MAX_SPATIAL_LAYERS];
 } ni_encoder_config_t;
 
 typedef struct _ni_uploader_config_t
@@ -747,16 +754,31 @@ typedef struct _ni_ai_config_t
     uint8_t ui8Sha256[32];
 } ni_ai_config_t;
 
-typedef struct _ni_network_buffer
+typedef struct _ni_segment {
+    uint32_t ui32RelLba;
+    uint32_t ui32Size;
+} ni_segment_t;
+
+typedef struct _ni_network_buffer_info
 {
     uint16_t ui16FrameScale;
     uint16_t ui16Width;
     uint16_t ui16Height;
     uint16_t ui16Option;
-    uint8_t ui8PoolSize;
-    uint8_t ui8MultiIn;
-    uint16_t ui16FrameIdx[4];
-} ni_network_buffer_t;
+    union {
+        struct {
+            uint8_t ui8PoolSize;
+            uint8_t ui8MultiIn;
+            uint16_t ui16FrameIdx[4];
+        };
+        struct {
+#define NI_MAX_SEGMENT_NUM 4 //at lease 2 inputs once
+            uint32_t ui32IovecNum;
+            uint32_t ui32RelOffset;
+            ni_segment_t segment[NI_MAX_SEGMENT_NUM];
+        };
+    };
+} ni_network_buffer_info_t;
 
 typedef struct _ni_scaler_config
 {
@@ -1219,7 +1241,7 @@ ni_retcode_t ni_device_get_ddr_configuration(ni_session_context_t *p_ctx);
  *
  *  \param[in] p_ctx  pointer to a session context with valid file handle
  *  \param[in] ddr_priority_mode  ddr priority mode
- * 
+ *
  *  \return On success    NI_RETCODE_SUCCESS
  *          On failure    NI_RETCODE_INVALID_PARAM
  *                        NI_RETCODE_ERROR_MEM_ALOC
@@ -1279,7 +1301,7 @@ ni_retcode_t ni_ai_session_query_metrics(ni_session_context_t *p_ctx,
 
 
 /*!*****************************************************************************
- *  \brief  Send namespace num / Opmode and SRIOv index/value to the device with 
+ *  \brief  Send namespace num / Opmode and SRIOv index/value to the device with
  *          specified logic block address.
  *
  *  \param[in] device_handle  Device handle obtained by calling ni_device_open

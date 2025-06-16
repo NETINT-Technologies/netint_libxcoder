@@ -43,39 +43,39 @@ using namespace std;
 class ISharedBuffer : public IInterface {
   public:
     DECLARE_META_INTERFACE(SharedBuffer);
-    /*!*****************************************************************************
- *  \brief   Get file descripter by using android net.int.SharedBuffer service.
- *
- *   \param[in] name    The name of the share mem
- *
- *	 \return      Get fd (> 0) , < 0 otherwise
- *
- ******************************************************************************/
+    /*!*************************************************************************
+     *  \brief   Get file descripter by using android net.int.SharedBuffer service.
+     *
+     *  \param[in] name    The name of the share mem
+     *
+     *  \return      Get fd (> 0) , < 0 otherwise
+     *
+     **************************************************************************/
     virtual int getFd(String8 &name) = 0;
-    /*!*****************************************************************************
- *  \brief   Set file descripter with the name of the share mem by using android net.int.SharedBuffer service.
- *
- *   \param[in] name    The name of the share mem
- *
- *	 \return      Get fd (> 0) , < 0 otherwise
- *
- ******************************************************************************/
+    /*!*************************************************************************
+     *  \brief  Set file descripter with the name of the share mem by using android net.int.SharedBuffer service.
+     *
+     *  \param[in] name    The name of the share mem
+     *
+     *  \return Get fd (> 0) , < 0 otherwise
+     *
+     **************************************************************************/
     virtual int setFd(String8 &param, int32_t fd) = 0;
 };
 
 class BnSharedBuffer : public BnInterface<ISharedBuffer> {
   public:
-    /*!*****************************************************************************
- *  \brief   transmit the data between binder clint and server.
- *
- *   \param[in] code    The funtion identify
- *   \param[in] data    The parcel take the data of the shm
- *   \param[in] reply    The parcel take the return data of the shm
- *   \param[in] flags    always 0
- *
- *	 \return      success status_t (> 0) , < 0 otherwise
- *
- ******************************************************************************/
+    /*!*************************************************************************
+     *  \brief  transmit the data between binder clint and server.
+     *
+     *  \param[in] code    The funtion identify
+     *  \param[in] data    The parcel take the data of the shm
+     *  \param[in] reply   The parcel take the return data of the shm
+     *  \param[in] flags   always 0
+     *
+     *  \return success status_t (> 0) , < 0 otherwise
+     *
+     **************************************************************************/
     virtual status_t onTransact(uint32_t code, const Parcel &data,
                                 Parcel *reply, uint32_t flags = 0);
 };

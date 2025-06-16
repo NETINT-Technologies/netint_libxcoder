@@ -44,10 +44,6 @@ static const ni_pix_fmt_name_t g_ni_pix_fmt_name_list[] = {
     {"argb",        NI_PIX_FMT_ARGB},        /* 32-bit ARGB packed        */
     {"abgr",        NI_PIX_FMT_ABGR},        /* 32-bit ABGR packed        */
     {"bgr0",        NI_PIX_FMT_BGR0},        /* 32-bit RGB packed         */
-    {"bgrp",        NI_PIX_FMT_BGRP},        /* 24bit RGB packed          */
-    {"nv16",        NI_PIX_FMT_NV16},        /* 8-bit YUV422 semi-planar  */
-    {"yuyv422",     NI_PIX_FMT_YUYV422},     /* 8-bit YUV422              */
-    {"uyvy422",     NI_PIX_FMT_UYVY422},     /* 8-bit YUV422              */
     {"null",        NI_PIX_FMT_NONE},        /* invalid format            */
 };
 
@@ -81,7 +77,9 @@ void print_version(void)
 int is_ni_enc_pix_fmt(ni_pix_fmt_t pix_fmt)
 {
     return pix_fmt == NI_PIX_FMT_YUV420P || pix_fmt == NI_PIX_FMT_NV12 ||
-           pix_fmt == NI_PIX_FMT_YUV420P10LE || pix_fmt == NI_PIX_FMT_P010LE;
+           pix_fmt == NI_PIX_FMT_YUV420P10LE || pix_fmt == NI_PIX_FMT_P010LE ||
+           pix_fmt == NI_PIX_FMT_RGBA || pix_fmt == NI_PIX_FMT_BGRA ||
+           pix_fmt == NI_PIX_FMT_ARGB || pix_fmt == NI_PIX_FMT_ABGR;
 }
 
 ni_pix_fmt_t ni_pixel_format_search(const char *name)
@@ -163,6 +161,7 @@ ni_pixel_planar_format get_pixel_planar(ni_pix_fmt_t pix_fmt)
         case NI_PIX_FMT_ARGB:
         case NI_PIX_FMT_RGBA:
         case NI_PIX_FMT_BGRA:
+        case NI_PIX_FMT_BGR0:
             ret = NI_PIXEL_PLANAR_FORMAT_PLANAR;
             break;
         default:
@@ -273,7 +272,7 @@ int read_and_cache_file(ni_demo_context_t *ctx, char *filename)
     total_file_size = get_total_file_size(fp);
     ctx->total_file_size = total_file_size;
     file_size_left = total_file_size;
-    
+
     //try to allocate memory for input file buffer, quit if failure
     if (total_file_size > 0 && !(ctx->file_cache = malloc(total_file_size)))
     {
@@ -306,7 +305,7 @@ int read_and_cache_file(ni_demo_context_t *ctx, char *filename)
             ctx->curr_file_offset += read_chunk;
         }
     }
-    
+
     ctx->curr_file_offset = 0;
     fclose(fp);
     return 0;
@@ -372,7 +371,7 @@ int frame_read_buffer_size(int w, int h, ni_pix_fmt_t pix_fmt,
 }
 
 // return actual bytes read from file, in requested size
-uint32_t read_next_chunk_from_file(ni_demo_context_t *p_ctx, FILE *fp, 
+uint32_t read_next_chunk_from_file(ni_demo_context_t *p_ctx, FILE *fp,
                                    uint8_t *p_dst, uint32_t to_read)
 {
     uint64_t data_left_size = p_ctx->total_file_size - p_ctx->curr_file_offset;
@@ -503,22 +502,22 @@ int convert_yuv_444p_to_420p(ni_session_data_io_t *p_frame,
 /*!*****************************************************************************
  *  \brief  Write hwdl data to files.
  *
- *  \param  
+ *  \param
  *
  *  \return 0 if successful, < 0 otherwise
  ******************************************************************************/
-int write_rawvideo_data(FILE *p_file, int input_aligned_width, int input_aligned_height, 
+int write_rawvideo_data(FILE *p_file, int input_aligned_width, int input_aligned_height,
                         int output_width, int output_height, int format, ni_frame_t *p_out_frame)
 {
     int i, j;
     uint8_t *src;
     int plane_width, plane_height, write_width, write_height, bit_depth_factor;
-    
+
     if (p_file && p_out_frame)
-    {   
-        switch (format) 
+    {
+        switch (format)
         {
-        case NI_PIX_FMT_YUV420P: 
+        case NI_PIX_FMT_YUV420P:
         case NI_PIX_FMT_YUV420P10LE:
         case NI_PIX_FMT_NV12:
         case NI_PIX_FMT_P010LE:
@@ -702,7 +701,7 @@ void ni_hw_frame_unref(uint16_t hwframe_index)
 /*!*****************************************************************************
  *  \brief  Download hw frames by HwDesc.
  *
- *  \param  
+ *  \param
  *
  *  \return number of bytes downloaded if successful, <= 0 if failed
  ******************************************************************************/
@@ -735,7 +734,7 @@ int hwdl_frame(ni_session_context_t *p_ctx,
 /*!*****************************************************************************
  *  \brief Read from input file, upload to encoder, retrieve HW descriptor
  *
- *  \param  
+ *  \param
  *
  *  \return
  ******************************************************************************/
@@ -887,7 +886,7 @@ hwupload:
 /*!*****************************************************************************
  *  \brief  Uploader session open
  *
- *  \param  
+ *  \param
  *
  *  \return 0 if successful, < 0 otherwise
  ******************************************************************************/

@@ -102,7 +102,7 @@ void arg_error_exit(char *arg_name, char *param)
 int read_next_chunk_from_file(int fd, uint8_t *p_dst, uint32_t to_read)
 {
     uint8_t *tmp_dst = p_dst;
-    ni_log(NI_LOG_DEBUG, 
+    ni_log(NI_LOG_DEBUG,
         "read_next_chunk_from_file:p_dst %p len %u totalSize %llu left %llu\n",
         tmp_dst, to_read, (unsigned long long)total_file_size, (unsigned long long)data_left_size);
     int to_copy = to_read;

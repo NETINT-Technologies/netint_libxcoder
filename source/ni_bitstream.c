@@ -192,6 +192,12 @@ void ni_bs_writer_put(ni_bitstream_writer_t *stream, uint32_t data,
 
     while (bits--)
     {
+        if (bits >= 32)
+        {
+            ni_log(NI_LOG_ERROR, "%s error: invalid bits to write: %u\n", __func__,
+                   bits);
+            return;
+        }
         stream->data <<= 1;
 
         if (data & ni_bit_set_mask[bits])
@@ -219,7 +225,11 @@ void ni_bs_writer_put(ni_bitstream_writer_t *stream, uint32_t data,
 void ni_bs_writer_put_ue(ni_bitstream_writer_t *stream, uint32_t data)
 {
     unsigned data_log2 = ni_math_floor_log2(data + 1);
-    unsigned prefix = 1 << data_log2;
+    unsigned prefix = 0;
+    if (data_log2 < 32)
+    {
+        prefix = 1U << data_log2;
+    }
     unsigned suffix = data + 1 - prefix;
     unsigned num_bits = data_log2 * 2 + 1;
     unsigned value = prefix | suffix;

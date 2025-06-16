@@ -287,12 +287,12 @@ typedef ni_nvme_passthrough_cmd_t ni_nvme_admin_cmd_t;
 #ifdef _WIN32
 typedef struct _ni_nvme_completion_result
 {
-	uint32_t    ui32Result;    /*! Used by admin commands to return data */
-	uint32_t    ui32Rsvd;
-	uint16_t    ui16SqHead;    /*! how much of this queue may be reclaimed */
-	uint16_t    ui16SqId;      /*! submission queue that generated this entry */
-	uint16_t    ui16CommandId; /*! of the command which completed */
-	uint16_t    ui16Status;    /*! did the command fail, and if so, why? */
+    uint32_t    ui32Result;    /*! Used by admin commands to return data */
+    uint32_t    ui32Rsvd;
+    uint16_t    ui16SqHead;    /*! how much of this queue may be reclaimed */
+    uint16_t    ui16SqId;      /*! submission queue that generated this entry */
+    uint16_t    ui16CommandId; /*! of the command which completed */
+    uint16_t    ui16Status;    /*! did the command fail, and if so, why? */
 }ni_nvme_completion_result_t, *p_ni_nvme_completion_result_t;
 #endif
 
@@ -450,11 +450,9 @@ typedef enum _nvme_xcoder_general_subtype
 
 typedef struct _ni_nvme_write_complete_dw0_t
 {
-
-	uint32_t available_space : 24;
-	uint32_t frame_index : 4;
-	uint32_t reserved : 4;
-
+    uint32_t available_space : 24;
+    uint32_t frame_index : 4;
+    uint32_t reserved : 4;
 } ni_nvme_write_complete_dw0_t;
 
 
@@ -875,7 +873,7 @@ int32_t ni_nvme_send_io_pass_through_command(ni_device_handle_t fd, ni_nvme_pass
 #define CONFIG_SESSION_Write_W(sid)                 HIGH_OFFSET_IN_4K(sid,0) + CTL_OFFSET_IN_4K(GAP(nvme_admin_cmd_xcoder_config),  \
                                                             nvme_config_xcoder_config_session,nvme_config_xcoder_config_session_write)
 
-#define CLEAR_INSTANCE_BUF_W(frame_id)		    CTL_OFFSET_IN_4K(GAP(nvme_admin_cmd_xcoder_recycle_buffer), 0, (frame_id & 0x00FF)) + (((frame_id & 0xFF00)>>8)<<NI_INSTANCE_TYPE_OFFSET)
+#define CLEAR_INSTANCE_BUF_W(frame_id)          CTL_OFFSET_IN_4K(GAP(nvme_admin_cmd_xcoder_recycle_buffer), 0, (frame_id & 0x00FF)) + (((frame_id & 0xFF00)>>8)<<NI_INSTANCE_TYPE_OFFSET)
 
 #define SEND_P2P_BUF_W                          CTL_OFFSET_IN_4K(GAP(nvme_admin_cmd_xcoder_p2p_send), 0, 0)
 
@@ -900,7 +898,7 @@ int32_t ni_nvme_send_io_pass_through_command(ni_device_handle_t fd, ni_nvme_pass
     HIGH_OFFSET_IN_4K(sid, 0) +                                                \
         CTL_OFFSET_IN_4K(GAP(nvme_admin_cmd_xcoder_config),                    \
                          nvme_config_xcoder_config_session,                    \
-                         nvme_config_xcoder_config_ddr_priority)                      
+                         nvme_config_xcoder_config_ddr_priority)
 
 #define CONFIG_SESSION_FRAME_COPY_W(sid)                                       \
     HIGH_OFFSET_IN_4K(sid, 0) +                                                \
@@ -916,6 +914,34 @@ int32_t ni_nvme_send_io_pass_through_command(ni_device_handle_t fd, ni_nvme_pass
 
 int32_t ni_nvme_send_read_cmd(ni_device_handle_t handle, ni_event_handle_t event_handle, void *p_data, uint32_t data_len, uint32_t lba);
 int32_t ni_nvme_send_write_cmd(ni_device_handle_t handle, ni_event_handle_t event_handle, void *p_data, uint32_t data_len, uint32_t lba);
+
+#ifdef __linux__
+static inline int32_t ni_aio_setup(unsigned nr, aio_context_t *ctxp)
+{
+    return syscall(__NR_io_setup, nr, ctxp);
+}
+
+static inline int32_t ni_aio_destroy(aio_context_t ctx)
+{
+    return syscall(__NR_io_destroy, ctx);
+}
+
+static inline int32_t ni_aio_submit(aio_context_t ctx, long nr, struct iocb **iocbpp)
+{
+    return syscall(__NR_io_submit, ctx, nr, iocbpp);
+}
+
+static inline int32_t ni_aio_getevents(aio_context_t ctx, long min_nr, long max_nr, struct io_event *events, struct timespec *timeout)
+{
+    return syscall(__NR_io_getevents, ctx, min_nr, max_nr, events, timeout);
+}
+
+void ni_nvme_setup_aio_iocb(ni_device_handle_t handle, ni_iocb_t *iocb,
+                               void *p_data, uint32_t data_len, uint32_t lba,
+                               int write);
+int32_t ni_nvme_batch_cmd_aio(aio_context_t ctx, ni_iocb_t **iocbs,
+        ni_io_event_t *events, int iocb_num);
+#endif
 
 #ifdef __cplusplus
 }

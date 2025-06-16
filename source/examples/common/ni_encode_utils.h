@@ -78,22 +78,23 @@ int encoder_reinit_session(ni_session_context_t *p_enc_ctx,
                          ni_session_data_io_t *p_in_data,
                          ni_session_data_io_t *p_out_data);
 
-void write_av1_ivf_header(ni_demo_context_t *p_ctx, uint32_t width, uint32_t height, uint32_t frame_num, 
+void write_av1_ivf_header(ni_demo_context_t *p_ctx, uint32_t width, uint32_t height, uint32_t frame_num,
                           uint32_t frame_denom, FILE *p_file);
 void write_av1_ivf_packet(ni_demo_context_t *p_ctx, ni_packet_t *p_out_pkt, uint32_t meta_size, FILE *p_file);
 int write_av1_ivf_trailer(ni_demo_context_t *p_ctx, ni_packet_t *p_out_pkt, uint32_t meta_size, FILE *p_file);
-int encoder_receive_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc_ctx, 
-                         ni_session_data_io_t *p_out_data, int output_video_width, 
+int encoder_receive_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc_ctx,
+                         ni_session_data_io_t *p_out_data, int output_video_width,
                          int output_video_height, FILE *p_file, ni_session_data_io_t * p_in_data);
 int encoder_close_session(ni_session_context_t *p_enc_ctx,
                          ni_session_data_io_t *p_in_data,
                          ni_session_data_io_t *p_out_data);
 int encoder_sequence_change(ni_session_context_t *p_enc_ctx,
-                         ni_session_data_io_t *p_in_data,    
+                         ni_session_data_io_t *p_in_data,
                          ni_session_data_io_t *p_out_data,
                          int width, int height, ni_pix_fmt_t pix_fmt);
 
-int encoder_open(ni_session_context_t *enc_ctx_list,
+int encoder_open(ni_demo_context_t *p_ctx,
+                 ni_session_context_t *enc_ctx_list,
                  ni_xcoder_params_t *p_api_param_list,
                  int output_total, char p_enc_conf_params[][2048],
                  char p_enc_conf_gop[][2048],
@@ -113,6 +114,13 @@ void encoder_stat_report_and_close(ni_demo_context_t *p_ctx, ni_session_context_
 
 void *encoder_send_thread(void *args);
 void *encoder_receive_thread(void *args);
+
+void ni_init_pts_queue(ni_pts_queue *q);
+int ni_pts_queue_empty(ni_pts_queue *q);
+int ni_pts_queue_full(ni_pts_queue *q);
+int ni_pts_enqueue(ni_pts_queue *q, int value);
+int ni_pts_dequeue(ni_pts_queue *q, int *value);
+void ni_prepare_pts_queue(ni_pts_queue *q, ni_xcoder_params_t *enc_param, int pts_start);
 
 #ifdef __cplusplus
 }

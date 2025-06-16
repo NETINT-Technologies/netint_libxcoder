@@ -567,24 +567,24 @@ ni_enc_copy_aux_data(ni_session_context_t *p_enc_ctx, ni_frame_t *p_enc_frame,
  *
  *  \return NI_RETCODE_SUCCESS on success, NI_RETCODE_FAILURE on failure
  ******************************************************************************/
-LIB_API int ni_enc_insert_timecode(ni_session_context_t *p_enc_ctx, ni_frame_t *p_enc_frame, 
+LIB_API int ni_enc_insert_timecode(ni_session_context_t *p_enc_ctx, ni_frame_t *p_enc_frame,
                                    ni_timecode_t *p_timecode);
 
 /*!*****************************************************************************
-  *  \brief  Send an input data frame to the encoder with YUV data given in 
+  *  \brief  Send an input data frame to the encoder with YUV data given in
   *   the inputs.
-  * 
+  *
   *   For ideal performance memory should be 4k aligned. If it is not 4K aligned
   *   then a temporary 4k aligned memory will be used to copy data to and from
   *   when writing and reading. This will negatively impact performance.
-  * 
+  *
   *   Any metadata to be sent with the frame should be attached to p_enc_frame
   *   as aux data (e.g. using ni_frame_new_aux_data()).
   *
   *  \param[in] p_ctx                         Encoder session context
-  *  \param[in] p_enc_frame                   Struct holding information about the frame 
+  *  \param[in] p_enc_frame                   Struct holding information about the frame
   *                                           to be sent to the encoder
-  *  \param[in] p_yuv_buffer                  Caller allocated buffer holding YUV data 
+  *  \param[in] p_yuv_buffer                  Caller allocated buffer holding YUV data
   *                                           for the frame
   *
   *  \return On success
@@ -618,7 +618,7 @@ LIB_API int ni_extract_custom_sei(uint8_t *pkt_data, int pkt_size, long index,
 /*!******************************************************************************
  * \brief  Decode parse packet
  *
- * \param[in] p_session_ctx             Pointer to a caller allocated 
+ * \param[in] p_session_ctx             Pointer to a caller allocated
  *                                      ni_session_context_t struct
  * \param[in] p_param                   Pointer to a caller allocated
  *                                      ni_xcoder_params_t struct
@@ -660,9 +660,9 @@ LIB_API int ni_expand_frame(ni_frame_t *dst, ni_frame_t *src, int dst_stride[],
 /*!******************************************************************************
  * \brief  Reset decoder ppu resolution
  *
- * \param[in] p_session_ctx         Pointer to a caller allocated 
+ * \param[in] p_session_ctx         Pointer to a caller allocated
  *                                          ni_session_context_t struct
- * \param[in] p_param               Pointer to a caller allocated 
+ * \param[in] p_param               Pointer to a caller allocated
  *                                          ni_xcoder_params_t struct
  * \param[in] ppu_config            Pointer to a caller allocated
  *                                          ni_ppu_config_t struct

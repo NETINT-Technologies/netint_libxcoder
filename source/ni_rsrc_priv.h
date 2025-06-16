@@ -87,8 +87,10 @@ bool add_to_shared_memory(const char device_name[NI_MAX_DEVICE_NAME_LEN],
 int ni_rsrc_strcmp(const void* p_str, const void* p_str1);
 
 void get_dev_pcie_addr(char *device_name,
-                       char *pcie, 
+                       char *pcie,
                        char *domain, char *slot, char *dev, char *func);
+
+ni_retcode_t ni_rsrc_create_retry_lck();
 
 #if __linux__ || __APPLE__
 typedef enum _ni_rsrc_shm_state

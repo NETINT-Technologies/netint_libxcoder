@@ -22,7 +22,7 @@
 /*!*****************************************************************************
  *  \file   client.cpp
  *
- *  \brief  client test for NETINT video processing Android service 
+ *  \brief  client test for NETINT video processing Android service
  *
  ******************************************************************************/
 

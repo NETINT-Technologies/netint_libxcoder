@@ -189,13 +189,11 @@ int getopt_long(int argc, char* argv[], const char* optstring,
                 {
                     optarg = NULL;
                 }
-                else
+                else if (optind < argc)
                 {
-                    if (*nextchar == '\0' && optind < argc)
-                    {
-                        optarg = argv[optind];
-                    }
+                    optarg = argv[optind];
                 }
+
                 optind++;
                 return longopts[i].flag == NULL ? longopts[i].val : 0;
             default:

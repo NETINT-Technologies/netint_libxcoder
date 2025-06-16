@@ -34,7 +34,7 @@
 /*!*****************************************************************************
  *  \brief  Set up hard coded demo ROI map
  *
- *  \param  
+ *  \param
  *
  *  \return none
  ******************************************************************************/
@@ -76,7 +76,7 @@ void set_demo_roi_map(ni_session_context_t *p_enc_ctx)
       width = (width / 8) * 8;
       height = (height / 8) * 8;
     }
-    
+
     mbWidth =
         ((width + max_cu_size - 1) & (~(max_cu_size - 1))) /
         roiMapBlockUnitSize;
@@ -137,7 +137,7 @@ void prep_reconf_demo_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc
                     frame, NI_FRAME_AUX_DATA_BITRATE, sizeof(int32_t));
                 if (!aux_data)
                 {
-                    ni_log(NI_LOG_ERROR, 
+                    ni_log(NI_LOG_ERROR,
                         "Error %s(): no mem for reconf BR aux_data\n",
                         __func__);
                     return;
@@ -209,7 +209,7 @@ void prep_reconf_demo_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc
                     sizeof(ni_long_term_ref_t));
                 if (!aux_data)
                 {
-                    ni_log(NI_LOG_ERROR, 
+                    ni_log(NI_LOG_ERROR,
                         "Error %s(): no mem for reconf LTR aux_data\n",
                         __func__);
                     return;
@@ -220,7 +220,7 @@ void prep_reconf_demo_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc
                 ltr->use_long_term_ref =
                     (uint8_t)api_param->reconf_hash[p_ctx->reconfig_count][2];
 
-                ni_log(NI_LOG_DEBUG, 
+                ni_log(NI_LOG_DEBUG,
                     "%s(): frame #%lu reconf LTR "
                     "use_cur_src_as_long_term_pic %u use_long_term_ref "
                     "%u\n",
@@ -238,7 +238,7 @@ void prep_reconf_demo_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc
                 aux_data = ni_frame_new_aux_data(
                     frame, NI_FRAME_AUX_DATA_MAX_MIN_QP, sizeof(ni_rc_min_max_qp));
                 if (!aux_data) {
-                    ni_log(NI_LOG_ERROR, 
+                    ni_log(NI_LOG_ERROR,
                         "Error %s(): no mem for reconf max&min QP aux_data\n",
                         __func__);
                     return;
@@ -306,7 +306,7 @@ void prep_reconf_demo_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc
                     frame, NI_FRAME_AUX_DATA_FRAMERATE, sizeof(ni_framerate_t));
                 if (!aux_data)
                 {
-                    ni_log(NI_LOG_ERROR, 
+                    ni_log(NI_LOG_ERROR,
                         "Error %s(): no mem for reconf framerate aux_data\n",
                         __func__);
                     return;
@@ -317,7 +317,7 @@ void prep_reconf_demo_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc
                 framerate->framerate_denom =
                     (int32_t)api_param->reconf_hash[p_ctx->reconfig_count][2];
 
-                ni_log(NI_LOG_DEBUG, 
+                ni_log(NI_LOG_DEBUG,
                     "%s(): frame #%lu reconfig framerate (%d/%d) by frame aux data\n",
                     __func__, p_enc_ctx->frame_num, framerate->framerate_num,
                     framerate->framerate_denom);
@@ -333,7 +333,7 @@ void prep_reconf_demo_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc
                     frame, NI_FRAME_AUX_DATA_MAX_FRAME_SIZE, sizeof(int32_t));
                 if (!aux_data)
                 {
-                    ni_log(NI_LOG_ERROR, 
+                    ni_log(NI_LOG_ERROR,
                         "Error %s(): no mem for reconf maxFrameSize aux_data\n",
                         __func__);
                     return;
@@ -354,7 +354,7 @@ void prep_reconf_demo_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc
                 aux_data = ni_frame_new_aux_data(
                     frame, NI_FRAME_AUX_DATA_CRF, sizeof(int32_t));
                 if (!aux_data) {
-                    ni_log(NI_LOG_ERROR, 
+                    ni_log(NI_LOG_ERROR,
                         "Error %s(): no mem for reconf crf aux_data\n",
                         __func__);
                     return;
@@ -364,7 +364,7 @@ void prep_reconf_demo_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc
                 ni_log(NI_LOG_DEBUG, "%s(): frame #%lu reconfig crf %d by frame aux data\n",
                                __func__, p_enc_ctx->frame_num,
                                api_param->reconf_hash[p_ctx->reconfig_count][1]);
-                
+
                 p_ctx->reconfig_count++;
             }
             break;
@@ -397,7 +397,7 @@ void prep_reconf_demo_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc
                 aux_data = ni_frame_new_aux_data(
                     frame, NI_FRAME_AUX_DATA_VBV_MAX_RATE, sizeof(int32_t));
                 if (!aux_data) {
-                    ni_log(NI_LOG_ERROR, 
+                    ni_log(NI_LOG_ERROR,
                         "Error %s(): no mem for reconf vbfMaxRate aux_data\n",
                         __func__);
                     return;
@@ -407,7 +407,7 @@ void prep_reconf_demo_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc
                 aux_data = ni_frame_new_aux_data(
                     frame, NI_FRAME_AUX_DATA_VBV_BUFFER_SIZE, sizeof(int32_t));
                 if (!aux_data) {
-                    ni_log(NI_LOG_ERROR, 
+                    ni_log(NI_LOG_ERROR,
                         "Error %s(): no mem for reconf vbvBufferSize aux_data\n",
                         __func__);
                     return;
@@ -420,7 +420,7 @@ void prep_reconf_demo_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc
                        __func__, p_enc_ctx->frame_num,
                        api_param->reconf_hash[p_ctx->reconfig_count][1],
                        api_param->reconf_hash[p_ctx->reconfig_count][2]);
-                
+
                 p_ctx->reconfig_count++;
             }
             break;
@@ -436,7 +436,7 @@ void prep_reconf_demo_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc
                 aux_data = ni_frame_new_aux_data(
                     frame, NI_FRAME_AUX_DATA_MAX_FRAME_SIZE, sizeof(int32_t));
                 if (!aux_data) {
-                    ni_log(NI_LOG_ERROR, 
+                    ni_log(NI_LOG_ERROR,
                         "Error %s(): no mem for reconf maxFrameSizeRatio aux_data\n",
                         __func__);
                     return;
@@ -444,7 +444,7 @@ void prep_reconf_demo_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc
 
                 int32_t bitrate, framerate_num, framerate_denom;
                 uint32_t min_maxFrameSize, maxFrameSize;
-                bitrate = (p_enc_ctx->target_bitrate > 0) ?  p_enc_ctx->target_bitrate : api_param->bitrate;      
+                bitrate = (p_enc_ctx->target_bitrate > 0) ?  p_enc_ctx->target_bitrate : api_param->bitrate;
 
                 if ((p_enc_ctx->framerate.framerate_num > 0) && (p_enc_ctx->framerate.framerate_denom > 0))
                 {
@@ -475,14 +475,14 @@ void prep_reconf_demo_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc
                 aux_data = ni_frame_new_aux_data(
                     frame, NI_FRAME_AUX_DATA_SLICE_ARG, sizeof(int16_t));
                 if (!aux_data) {
-                    ni_log(NI_LOG_ERROR, 
+                    ni_log(NI_LOG_ERROR,
                         "Error %s(): no mem for reconf sliceArg aux_data\n",
                         __func__);
                     return;
                 }
                 *((int16_t *)aux_data->data) =
                     api_param->reconf_hash[p_ctx->reconfig_count][1];
-                ni_log2(p_enc_ctx, NI_LOG_TRACE, 
+                ni_log2(p_enc_ctx, NI_LOG_TRACE,
                         "xcoder_send_frame: frame #%lu reconf "
                         "sliceArg %d\n",
                         p_enc_ctx->frame_num,
@@ -517,7 +517,7 @@ void prep_reconf_demo_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc
         case XCODER_TEST_RECONF_INTRAPRD_API:
             if (p_enc_ctx->frame_num ==
                 api_param->reconf_hash[p_ctx->reconfig_count][0]) {
-                int32_t intraprd = 
+                int32_t intraprd =
                     api_param->reconf_hash[p_ctx->reconfig_count][1];
                 ni_reconfig_intraprd(p_enc_ctx, intraprd);
                 ni_log(NI_LOG_TRACE,
@@ -634,7 +634,7 @@ void prep_reconf_demo_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc
                 framerate.framerate_denom =
                     (int32_t)api_param->reconf_hash[p_ctx->reconfig_count][2];
                 ni_reconfig_framerate(p_enc_ctx, &framerate);
-                ni_log(NI_LOG_DEBUG, 
+                ni_log(NI_LOG_DEBUG,
                     "%s(): frame #%lu API reconfig framerate (%d/%d)\n",
                     __func__, p_enc_ctx->frame_num,
                     api_param->reconf_hash[p_ctx->reconfig_count][1],
@@ -653,7 +653,7 @@ void prep_reconf_demo_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc
                                api_param->reconf_hash[p_ctx->reconfig_count][1]);
                 p_ctx->reconfig_count++;
             }
-            break;          
+            break;
         case XCODER_TEST_CRF_API:
             if (p_enc_ctx->frame_num ==
                 api_param->reconf_hash[p_ctx->reconfig_count][0])
@@ -782,6 +782,7 @@ int encoder_send_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc_ctx,
     p_in_frame->roi_len = 0;
     p_in_frame->reconf_len = 0;
     p_in_frame->sei_total_len = 0;
+    p_in_frame->pts = p_ctx->pts[enc_id];
 
     // collect encode reconfig and demo info and save them as aux data in
     // the input frame struct.
@@ -819,7 +820,7 @@ send_frame:
             p_ctx->num_frames_sent[enc_id]++;
         }
     }
-    
+
     oneSent = ni_enc_write_from_yuv_buffer(p_enc_ctx, p_in_frame, yuv_buf);
     if (oneSent < 0)
     {
@@ -835,13 +836,13 @@ send_frame:
     {
         p_ctx->enc_resend[enc_id] = 0;
 
-        p_ctx->enc_total_bytes_sent[enc_id] += p_in_frame->data_len[0] + 
+        p_ctx->enc_total_bytes_sent[enc_id] += p_in_frame->data_len[0] +
             p_in_frame->data_len[1] + p_in_frame->data_len[2] + p_in_frame->data_len[3];
         ni_log(NI_LOG_DEBUG, "encoder_send_data: total sent data size=%lu\n",
                p_ctx->enc_total_bytes_sent[enc_id]);
 
         ni_log(NI_LOG_DEBUG, "encoder_send_data: success\n");
-        
+
         if (p_enc_ctx->ready_to_close)
         {
             if (p_enc_ctx->session_run_state != SESSION_RUN_STATE_SEQ_CHANGE_DRAINING)
@@ -857,6 +858,9 @@ send_frame:
                    "encoder_send_data: session_run_state change to %d\n",
                    p_enc_ctx->session_run_state);
         }
+
+        ni_pts_enqueue(p_ctx->enc_pts_queue[enc_id], p_ctx->pts[enc_id]);
+        ++p_ctx->pts[enc_id];
     }
 
     ni_frame_wipe_aux_data(p_in_frame);
@@ -947,6 +951,7 @@ int encoder_send_data2(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc_ctx
     p_in_frame->reconf_len = 0;
     p_in_frame->sei_total_len = 0;
     p_in_frame->force_pic_qp = 0;
+    p_in_frame->pts = p_ctx->pts[enc_id];
 
     // collect encode reconfig and demo info and save them in the decode out
     // frame, to be used in the aux data prep and copy later
@@ -955,7 +960,7 @@ int encoder_send_data2(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc_ctx
     int dst_stride[NI_MAX_NUM_DATA_POINTERS] = {0};
     int dst_height_aligned[NI_MAX_NUM_DATA_POINTERS] = {0};
     bool alignment_2pass_wa = (
-                   (api_params->cfg_enc_params.lookAheadDepth || 
+                   (api_params->cfg_enc_params.lookAheadDepth ||
                     api_params->cfg_enc_params.crf >= 0 ||
                     api_params->cfg_enc_params.crfFloat >= 0) &&
                    (p_enc_ctx->codec_format == NI_CODEC_FORMAT_H265 ||
@@ -964,7 +969,7 @@ int encoder_send_data2(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc_ctx
                           p_enc_ctx->bit_depth_factor, is_semiplanar,
                           dst_stride, dst_height_aligned);
 
-	if (alignment_2pass_wa && !is_hwframe) {
+    if (alignment_2pass_wa && !is_hwframe) {
         if (is_semiplanar) {
             // for 2-pass encode output mismatch WA, need to extend (and
             // pad) CbCr plane height, because 1st pass assume input 32
@@ -1051,7 +1056,7 @@ int encoder_send_data2(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc_ctx
         }
     }
 
-    ni_log(NI_LOG_DEBUG, 
+    ni_log(NI_LOG_DEBUG,
         "p_dst alloc linesize = %d/%d/%d  src height=%d  "
         "dst height aligned = %d/%d/%d force_key_frame=%d, "
         "extra_data_len=%u"
@@ -1163,6 +1168,10 @@ send_frame:
         {
             p_ctx->enc_eos_sent[enc_id] = 1;
         }
+
+        ni_pts_enqueue(p_ctx->enc_pts_queue[enc_id], p_ctx->pts[enc_id]);
+        ++p_ctx->pts[enc_id];
+
         ni_log(NI_LOG_DEBUG, "encoder_send_data2: success\n");
     }
 
@@ -1172,7 +1181,7 @@ send_frame:
 /*!*****************************************************************************
  *  \brief  Send encoder input data, read from uploader instance hwframe
  *
- *  \param  
+ *  \param
  *
  *  \return
  ******************************************************************************/
@@ -1208,6 +1217,7 @@ int encoder_send_data3(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc_ctx
     p_in_frame->force_key_frame = 0;
     p_in_frame->video_width = input_video_width;
     p_in_frame->video_height = input_video_height;
+    p_in_frame->pts = p_ctx->pts[enc_id];
     if (eos)
     {
         ni_log(NI_LOG_DEBUG, "encoder_send_data3: read chunk size 0, eos!\n");
@@ -1243,6 +1253,9 @@ send_frame:
         {
             p_ctx->enc_eos_sent[enc_id] = 1;
         }
+
+        ni_pts_enqueue(p_ctx->enc_pts_queue[enc_id], p_ctx->pts[enc_id]);
+        ++p_ctx->pts[enc_id];
     }
 
     return 0;
@@ -1251,7 +1264,7 @@ send_frame:
 /*!*****************************************************************************
  *  \brief  Encoder session open
  *
- *  \param  
+ *  \param
  *
  *  \return 0 if successful, < 0 otherwise
  ******************************************************************************/
@@ -1352,9 +1365,9 @@ int encoder_open_session(ni_session_context_t *p_enc_ctx, int dst_codec_format,
 
     if (check_zerocopy)
     {
-        
+
         // config linesize for zero copy (if input resolution is zero copy compatible)
-        int src_stride[NI_MAX_NUM_DATA_POINTERS];     
+        int src_stride[NI_MAX_NUM_DATA_POINTERS];
 
         // NOTE - FFmpeg / Gstreamer users should use linesize array in frame structure instead of src_stride in the following sample code
         src_stride[0] = width * p_enc_ctx->bit_depth_factor;
@@ -1367,7 +1380,7 @@ int encoder_open_session(ni_session_context_t *p_enc_ctx, int dst_codec_format,
             src_stride[1] = isnv12frame ? src_stride[0] : src_stride[0] / 2;
             src_stride[2] = isnv12frame ? 0 : src_stride[0] / 2;
         }
-        
+
         ni_encoder_frame_zerocopy_check(p_enc_ctx,
             p_enc_params, width, height,
             (const int *)src_stride, true);
@@ -1395,7 +1408,7 @@ int encoder_open_session(ni_session_context_t *p_enc_ctx, int dst_codec_format,
 /*!*****************************************************************************
  *  \brief  Reopen or reconfig encoder upon sequence change
  *
- *  \param  
+ *  \param
  *
  *  \return 0 - success got packet
  *          1 - received eos
@@ -1489,7 +1502,7 @@ int encoder_reinit_session(ni_session_context_t *p_enc_ctx,
         ni_log(NI_LOG_DEBUG, "xcoder_encode_reinit needs to close and re-open "
              "due to crop width x height\n");
         bIsSmallPicture = true;
-    }    
+    }
 
     ni_log(NI_LOG_DEBUG, "xcoder_encode_reinit resolution: %dx%d->%dx%d "
          "pix fmt: %d->%d bIsSmallPicture %d codec %d\n",
@@ -1527,7 +1540,7 @@ int encoder_reinit_session(ni_session_context_t *p_enc_ctx,
               ni_log(NI_LOG_ERROR,
                      "resolution change: AV1 Picture Width not aligned to %d - picture will be cropped\n",
                      NI_PARAM_AV1_ALIGN_WIDTH_HEIGHT);
-   
+
           if (new_height % NI_PARAM_AV1_ALIGN_WIDTH_HEIGHT)
               ni_log(NI_LOG_ERROR,
                      "resolution change: AV1 Picture Height not aligned to %d - picture will be cropped\n",
@@ -1546,11 +1559,11 @@ int encoder_reinit_session(ni_session_context_t *p_enc_ctx,
     return ret;
 }
 
-void write_av1_ivf_header(ni_demo_context_t *p_ctx, uint32_t width, uint32_t height, uint32_t frame_num, 
+void write_av1_ivf_header(ni_demo_context_t *p_ctx, uint32_t width, uint32_t height, uint32_t frame_num,
                           uint32_t frame_denom, FILE *p_file)
 {
     // write the global ivf start header
-    if (!p_ctx->ivf_header_written && p_file != NULL && !p_ctx->av1_output_obu)
+    if (!p_ctx->ivf_header_written[p_ctx->curr_enc_index] && p_file != NULL && !p_ctx->av1_output_obu)
     {
         uint8_t start_header[32] = {
             0x44, 0x4b, 0x49, 0x46, /* signature: 'DKIF' */
@@ -1591,7 +1604,7 @@ void write_av1_ivf_header(ni_demo_context_t *p_ctx, uint32_t width, uint32_t hei
             ni_log(NI_LOG_ERROR, "Error: ferror rc = %d\n", ferror(p_file));
         }
 
-        p_ctx->ivf_header_written = 1;
+        p_ctx->ivf_header_written[p_ctx->curr_enc_index] = 1;
     }
 }
 
@@ -1718,8 +1731,8 @@ int write_av1_ivf_trailer(ni_demo_context_t *p_ctx, ni_packet_t *p_out_pkt, uint
  *          2 - got nothing, need retry
  *          -1 - failure
  ******************************************************************************/
-int encoder_receive_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc_ctx, 
-                         ni_session_data_io_t *p_out_data, int output_video_width, 
+int encoder_receive_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc_ctx,
+                         ni_session_data_io_t *p_out_data, int output_video_width,
                          int output_video_height, FILE *p_file, ni_session_data_io_t * p_in_data)
 {
     int packet_size = NI_MAX_TX_SZ;
@@ -1730,6 +1743,8 @@ int encoder_receive_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc_c
     ni_packet_t *p_out_pkt = &(p_out_data->data.packet);
     int meta_size = p_enc_ctx->meta_size;
     ni_xcoder_params_t *p_api_param = (ni_xcoder_params_t *)p_enc_ctx->p_session_config;
+    int pts = -1;
+    int dts = -1;
 
     ni_log(NI_LOG_DEBUG, "===> encoder_receive_data <===\n");
     if (NI_INVALID_SESSION_ID == p_enc_ctx->session_id)
@@ -1771,6 +1786,7 @@ receive_data:
                 p_out_pkt->p_data = NULL;
                 p_out_pkt->buffer_size = 0;
                 p_out_pkt->data_len = 0;
+                p_enc_ctx->pkt_num = 1;
             } else
             {
                 // store the av1 unshown frames for next packet writing
@@ -1833,12 +1849,14 @@ receive_data:
 
         p_ctx->enc_total_bytes_received[enc_id] += rx_size - meta_size;
 
-        if (0 == p_enc_ctx->pkt_num)
+        // The first packet is the sequence head packet and it will be read before the first frame is sent
+        if(p_ctx->num_packets_received[enc_id] != 0)
         {
-            p_enc_ctx->pkt_num = 1;
-            ni_log(NI_LOG_DEBUG, "got encoded stream header, keep reading ..\n");
-            goto receive_data;
+            pts = p_out_pkt->pts;
+            ni_pts_dequeue(p_ctx->enc_pts_queue[enc_id], &dts);
+            ni_log(NI_LOG_DEBUG, "PTS: %d, DTS: %d\n", pts, dts);
         }
+
         (p_ctx->num_packets_received[enc_id])++;
 
         ni_log(NI_LOG_DEBUG, "Got:   Packets= %u\n", p_ctx->num_packets_received[enc_id]);
@@ -1917,7 +1935,7 @@ receive_data:
 /*!*****************************************************************************
  *  \brief  encoder session close
  *
- *  \param  
+ *  \param
  *
  *  \return 0 if successful, < 0 otherwise
  ******************************************************************************/
@@ -1927,7 +1945,7 @@ int encoder_close_session(ni_session_context_t *p_enc_ctx,
 {
     int ret = 0;
     ni_device_session_close(p_enc_ctx, 1, NI_DEVICE_TYPE_ENCODER);
-    
+
     ni_log(NI_LOG_DEBUG, "encoder_close_session - close encoder blk_io_handle %d device_handle %d\n", p_enc_ctx->blk_io_handle, p_enc_ctx->device_handle);
 #ifdef _WIN32
     ni_device_close(p_enc_ctx->device_handle);
@@ -1943,11 +1961,11 @@ int encoder_close_session(ni_session_context_t *p_enc_ctx,
     }
     ni_frame_buffer_free(&(p_in_data->data.frame));
     ni_packet_buffer_free(&(p_out_data->data.packet));
-    return ret;    
+    return ret;
 }
 
 int encoder_sequence_change(ni_session_context_t *p_enc_ctx,
-                         ni_session_data_io_t *p_in_data,    
+                         ni_session_data_io_t *p_in_data,
                          ni_session_data_io_t *p_out_data,
                          int width, int height, ni_pix_fmt_t pix_fmt)
 {
@@ -1996,7 +2014,8 @@ int encoder_sequence_change(ni_session_context_t *p_enc_ctx,
   return ret;
 }
 
-int encoder_open(ni_session_context_t *enc_ctx_list,
+int encoder_open(ni_demo_context_t *p_ctx,
+                 ni_session_context_t *enc_ctx_list,
                  ni_xcoder_params_t *p_api_param_list,
                  int output_total, char p_enc_conf_params[][2048],
                  char p_enc_conf_gop[][2048],
@@ -2052,6 +2071,17 @@ int encoder_open(ni_session_context_t *enc_ctx_list,
 
     for (i = 0; i < output_total; i++)
     {
+
+        if(!p_ctx->enc_pts_queue[i])
+        {
+            p_ctx->enc_pts_queue[i] = (ni_pts_queue *)calloc(1, sizeof(ni_pts_queue));
+            if(!p_ctx->enc_pts_queue[i])
+            {
+                ni_log(NI_LOG_ERROR, "Failed to allocate ni_pts_queue\n");
+                return -1;
+            }
+        }
+
         // set up encoder p_config, using some info from source
         ret = ni_encoder_init_default_params(&p_api_param_list[i], fps_num,
                                              fps_den, bitrate, width, height,
@@ -2173,6 +2203,10 @@ int encoder_open(ni_session_context_t *enc_ctx_list,
             ni_log(NI_LOG_ERROR, "Error encoder[%d] open session failed!\n", i);
             return -1;
         }
+
+        ni_init_pts_queue(p_ctx->enc_pts_queue[i]);
+        p_ctx->pts[i] = 0;
+        ni_prepare_pts_queue(p_ctx->enc_pts_queue[i], &p_api_param_list[i], p_ctx->pts[i]);
     }
 
     return ret;
@@ -2219,7 +2253,8 @@ int encoder_receive(ni_demo_context_t *p_ctx,
         }
 
         if (prev_num_pkt[i] < p_ctx->num_packets_received[i] &&
-            enc_ctx_list[i].codec_format == NI_CODEC_FORMAT_AV1)
+            enc_ctx_list[i].codec_format == NI_CODEC_FORMAT_AV1 &&
+            p_ctx->num_packets_received[i] > 1)
         {
             // For low delay mode encoding, only one packet is received for one
             // frame sent. For non low delay mode, there will be multiple
@@ -2402,8 +2437,8 @@ void *encoder_receive_thread(void *args)
         if (current_time - previous_time >= (uint64_t)1000000000) {
             for (i = 0; i < p_enc_recv_param->output_total; i++)
             {
-                ni_log(NI_LOG_INFO, "Encoder %d stats: received %u packets, fps %.2f, total bytes %u\n", 
-                        i, p_ctx->num_packets_received[i], 
+                ni_log(NI_LOG_INFO, "Encoder %d stats: received %u packets, fps %.2f, total bytes %u\n",
+                        i, p_ctx->num_packets_received[i],
                         (float)p_enc_ctx[i].frame_num / (float)(current_time - p_ctx->start_time) * (float)1000000000,
                         p_ctx->enc_total_bytes_received[i]);
             }
@@ -2424,4 +2459,116 @@ void *encoder_receive_thread(void *args)
 
     ni_log(NI_LOG_TRACE, "%s exit\n", __func__);
     return (void *)(long)ret;
+}
+
+void ni_init_pts_queue(ni_pts_queue *q)
+{
+    q->front = 0;
+    q->rear = 0;
+    q->size = 0;
+}
+int ni_pts_queue_empty(ni_pts_queue *q)
+{
+    return q->size == 0;
+}
+int ni_pts_queue_full(ni_pts_queue *q)
+{
+    return q->size == NI_MAX_PTS_QUEUE_SIZE;
+}
+int ni_pts_enqueue(ni_pts_queue *q, int value)
+{
+    if(ni_pts_queue_full(q))
+    {
+        ni_log(NI_LOG_ERROR, "Failed to enqueue, ni_pts_queue is full\n");
+        return 0;
+    }
+
+    q->data[q->rear] = value;
+    q->rear = (q->rear + 1) % NI_MAX_PTS_QUEUE_SIZE;
+    ++q->size;
+    return 1;
+}
+int ni_pts_dequeue(ni_pts_queue *q, int *value)
+{
+    if(ni_pts_queue_empty(q))
+    {
+        ni_log(NI_LOG_ERROR, "Failed to dequeue, ni_pts_queue is empty\n");
+    }
+    *value = q->data[q->front];
+    q->front = (q->front + 1) % NI_MAX_PTS_QUEUE_SIZE;
+    --q->size;
+    return 1;
+}
+
+void ni_prepare_pts_queue(ni_pts_queue *q, ni_xcoder_params_t *enc_param, int pts_start)
+{
+    int dtsOffset = 0;
+
+    switch (enc_param->cfg_enc_params.gop_preset_index)
+    {
+    /* dtsOffset is the max number of non-reference frames in a GOP
+     * (derived from x264/5 algo) In case of IBBBP the first dts of the I
+     * frame should be input_pts-(3*ticks_per_frame) In case of IBP the
+     * first dts of the I frame should be input_pts-(1*ticks_per_frame)
+     * thus we ensure pts>dts in all cases
+     * */
+    case 1:
+    case 9:
+    case 10:
+        dtsOffset = 0;
+        break;
+    /* ts requires dts/pts of I fraem not same when there are B frames in
+     * streams */
+    case 3:
+    case 4:
+    case 7:
+        dtsOffset = 1;
+        break;
+    case 5:
+        dtsOffset = 2;
+        break;
+    case -1: // adaptive GOP
+    case 8:
+        dtsOffset = 3;
+        break;
+    default:
+        dtsOffset = 7;
+        break;
+    }
+
+    if (enc_param->cfg_enc_params.custom_gop_params.custom_gop_size)
+    {
+        int dts_offset;
+        dtsOffset = 0;
+        int has_b_frame = 0;
+        for (int idx = 0;
+             idx < enc_param->cfg_enc_params.custom_gop_params.custom_gop_size;
+             idx++)
+        {
+            if (enc_param->cfg_enc_params.custom_gop_params.pic_param[idx].poc_offset < idx + 1)
+            {
+                dts_offset = (idx + 1) - enc_param->cfg_enc_params.custom_gop_params.pic_param[idx].poc_offset;
+                if (dtsOffset < dts_offset)
+                {
+                    dtsOffset = dts_offset;
+                }
+            }
+
+            if (!has_b_frame &&
+                (enc_param->cfg_enc_params.custom_gop_params.pic_param[idx].pic_type == PIC_TYPE_B))
+            {
+                has_b_frame = 1;
+            }
+        }
+
+        if (has_b_frame && !dtsOffset)
+        {
+            dtsOffset = 1;
+        }
+    }
+
+    for (int i = 0; i < dtsOffset; ++i)
+    {
+        ni_pts_enqueue(q, i - dtsOffset + pts_start);
+    }
 }

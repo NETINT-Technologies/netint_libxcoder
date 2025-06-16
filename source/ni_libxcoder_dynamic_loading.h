@@ -243,9 +243,9 @@ typedef ni_retcode_t (LIB_API* PNIP2PRECV) (ni_session_context_t *pSession, cons
 typedef ni_retcode_t (LIB_API* PNIDEVICESESSIONRESTART) (ni_session_context_t *p_ctx, int video_width, int video_height, ni_device_type_t device_type);
 
 /* End API function pointers */
- 
- 
- 
+
+
+
 /*
  * Definition of _NETINT_LIBXCODER_API_FUNCTION_LIST
  */

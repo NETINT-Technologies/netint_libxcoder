@@ -92,7 +92,7 @@ typedef struct _ni_sw_instance_info
   int                 height;
   int                 fps;
 } ni_sw_instance_info_t;
-  
+
 typedef struct _ni_device_pool
 {
   ni_lock_handle_t lock;
@@ -136,13 +136,13 @@ typedef struct _ni_device_info
 } ni_device_info_t;
 
 // This structure is very big (2.6MB). Recommend storing in heap
-typedef struct _ni_device 
+typedef struct _ni_device
 {
     int xcoder_cnt[NI_DEVICE_TYPE_XCODER_MAX];
     ni_device_info_t xcoders[NI_DEVICE_TYPE_XCODER_MAX][NI_MAX_DEVICE_CNT];
 } ni_device_t;
 
-typedef struct _ni_device_context 
+typedef struct _ni_device_context
 {
   char   shm_name[NI_MAX_DEVICE_NAME_LEN];
   ni_lock_handle_t    lock;
@@ -166,7 +166,7 @@ typedef struct _ni_hw_device_info_quadra
   int device_type_num;
   int consider_mem;
   ni_device_type_t *device_type;
-  ni_card_info_quadra_t **card_info; 
+  ni_card_info_quadra_t **card_info;
   int card_current_card;
   int err_code;
 } ni_hw_device_info_quadra_t;
@@ -262,7 +262,7 @@ typedef enum
  *           In case of custom application integration, revised functionality might
  *           be necessary utilizing coresponding API functions.
  *
- *  \param[in]   should_match_rev  0: transcoder firmware revision matching the 
+ *  \param[in]   should_match_rev  0: transcoder firmware revision matching the
  *                             library's version is NOT required for placing
  *                             the transcoder into resource pool; 1: otherwise
  *               timeout_seconds    0: No timeout amount, loop until init success
@@ -279,7 +279,7 @@ LIB_API int ni_rsrc_init(int should_match_rev, int timeout_seconds);
  *  \brief   Scan and refresh all resources on the host, taking into account
  *           hot-plugged and pulled out cards.
  *
- *  \param[in]   should_match_rev  0: transcoder firmware revision matching the 
+ *  \param[in]   should_match_rev  0: transcoder firmware revision matching the
  *                             library's version is NOT required for placing
  *                             the transcoder into resource pool; 1: otherwise
  *
@@ -330,7 +330,7 @@ LIB_API int ni_rsrc_get_local_device_list2(char ni_devices[][NI_MAX_DEVICE_NAME_
 
 /*!******************************************************************************
 * \brief      Allocates and returns a pointer to ni_device_context_t struct
-*             based on provided device_type and guid. 
+*             based on provided device_type and guid.
 *             To be used for load update and codec query.
 *
  *  \param[in]  device_type  NI_DEVICE_TYPE_DECODER or NI_DEVICE_TYPE_ENCODER
@@ -338,8 +338,8 @@ LIB_API int ni_rsrc_get_local_device_list2(char ni_devices[][NI_MAX_DEVICE_NAME_
 *
 * \return     pointer to ni_device_context_t if found, NULL otherwise
 *
-*  Note:     The returned ni_device_context_t content is not supposed to be used by 
-*            caller directly: should only be passed to API in the subsequent 
+*  Note:     The returned ni_device_context_t content is not supposed to be used by
+*            caller directly: should only be passed to API in the subsequent
 *            calls; also after its use, the context should be released by
 *            calling ni_rsrc_free_device_context.
 *******************************************************************************/
@@ -355,14 +355,14 @@ LIB_API ni_device_context_t * ni_rsrc_get_device_context(ni_device_type_t type, 
 LIB_API void ni_rsrc_free_device_context(ni_device_context_t *p_ctxt);
 
 /*!******************************************************************************
-*  \brief        List device(s) based on device type with full information 
+*  \brief        List device(s) based on device type with full information
 *                including s/w instances on the system.
 *
 *   \param[in]   device_type     NI_DEVICE_TYPE_DECODER or NI_DEVICE_TYPE_ENCODER
 *   \param[out]  p_device        The device information returned.
 *   \param[out]  p_device_count  The number of ni_device_info_t structs returned.
 *
-*   \return      
+*   \return
 *                NI_RETCODE_SUCCESS
 *                NI_RETCODE_FAILURE
 *
@@ -404,7 +404,7 @@ LIB_API ni_retcode_t ni_rsrc_list_all_devices(ni_device_t* p_device);
 LIB_API ni_retcode_t ni_rsrc_list_all_devices2(ni_device_t* p_device, bool list_uninitialized);
 
 /*!*****************************************************************************
-*  \brief        Print detailed capability information of all devices 
+*  \brief        Print detailed capability information of all devices
 *                on the system.
 
 *   \param       none
@@ -431,12 +431,12 @@ LIB_API void ni_rsrc_print_all_devices_capability2(bool list_uninitialized);
 
 *   \param[in]   device_type     NI_DEVICE_TYPE_DECODER or NI_DEVICE_TYPE_ENCODER
 *   \param[in]   guid            unique device(decoder or encoder) id
-*   
+*
 *   \return
 *                pointer to ni_device_info_t if found
 *                NULL otherwise
 *
-*   Note: Caller is responsible for releasing memory that was allocated for the 
+*   Note: Caller is responsible for releasing memory that was allocated for the
 *         returned pointer
 *******************************************************************************/
 LIB_API ni_device_info_t* ni_rsrc_get_device_info(ni_device_type_t device_type, int guid);
@@ -461,7 +461,7 @@ LIB_API int ni_rsrc_get_device_by_block_name(const char *blk_name,
 *   \param[in]  sw_instance_cnt  Number of s/w instances
 *   \param[in]  sw_instance_info Info of s/w instances
 *
-*   \return     
+*   \return
 *               NI_RETCODE_SUCCESS
 *               NI_RETCODE_FAILURE
 *******************************************************************************/
@@ -491,8 +491,8 @@ ni_device_context_t *ni_rsrc_allocate_simple_direct
 );
 
 /*!*****************************************************************************
-*   \brief       Release resources allocated for decoding/encoding. 
-*                function This *must* be called at the end of transcoding 
+*   \brief       Release resources allocated for decoding/encoding.
+*                function This *must* be called at the end of transcoding
 *                with previously assigned load value by allocate* functions.
 *
 *   \param[in/out]  p_ctxt  the device context
@@ -524,7 +524,7 @@ LIB_API int ni_rsrc_check_hw_available(int guid, ni_device_type_t device_type);
 *               NI_RETCODE_FAILURE
 *******************************************************************************/
 LIB_API int ni_rsrc_remove_device(const char* p_dev);
- 
+
 /*!*****************************************************************************
 *   \brief      Remove all NetInt h/w devices from resource pool on the host.
 *
@@ -540,7 +540,7 @@ LIB_API int ni_rsrc_remove_all_devices(void);
 *   \brief      Add an NetInt h/w device into resource pool on the host.
 *
 *   \param[in]  p_dev  the NVMe device name
-*   \param[in]  should_match_rev  0: transcoder firmware revision matching the 
+*   \param[in]  should_match_rev  0: transcoder firmware revision matching the
 *                             library's version is NOT required for placing
 *                             the transcoder into resource pool; 1: otherwise
 *
@@ -608,15 +608,15 @@ LIB_API int ni_rsrc_unlock(int device_type, ni_lock_handle_t lock);
 LIB_API int ni_rsrc_is_fw_compat(uint8_t fw_rev[8]);
 
 /*!******************************************************************************
- *  \brief  Create a pointer to  hw_device_info_coder_param_t instance .This instance will be created and 
+ *  \brief  Create a pointer to  hw_device_info_coder_param_t instance .This instance will be created and
  *          set to default vaule by param mode.You may change the resolution fps bit_8_10 or other vaule you want to set.
- *  
+ *
  *  \param[in] mode:0:create instance with decoder_param ,encoder_param, scaler_param and ai_param will be set to NULL
  *                  1:create instance with encoder_param ,decoder_param, scaler_param and ai_param will be set to NULL
  *                  2:create instance with scaler_param ,decoder_param, encoder_param and ai_param will be set to NULL
  *                  3:create instance with ai_param ,decoder_param, encoder_param and scaler_param will be set to NULL
  *                  >= 4:create instance with decoder_param encoder_param scaler_param and ai_param for ni_check_hw_info() hw_mode
- * 
+ *
  *  \return  NULL-error,pointer to an instance when success
  *******************************************************************************/
 LIB_API ni_hw_device_info_quadra_coder_param_t *ni_create_hw_device_info_quadra_coder_param(int mode);
@@ -624,19 +624,19 @@ LIB_API ni_hw_device_info_quadra_coder_param_t *ni_create_hw_device_info_quadra_
 /*!******************************************************************************
  *  \brief  Release a pointer to  hw_device_info_coder_param_t instance created by create_hw_device_info_coder_param
  *
- *  
+ *
  *  \param[in] p_hw_device_info_coder_param:pointer to a hw_device_info_coder_param_t instance created by create_hw_device_info_coder_param
- *                     
+ *
  *******************************************************************************/
 LIB_API void ni_destory_hw_device_info_quadra_coder_param(ni_hw_device_info_quadra_coder_param_t *p_hw_device_info_quadra_coder_param);
 
 /*!******************************************************************************
  *  \brief  Create a pointer to ni_hw_device_info_quadra_t instance .
- *  
+ *
  *  \param[in] device_type_num:number of device type to be allocated in this function
- *                 
+ *
  *  \param[in] avaliable_card_num:number of avaliable card per device to be allocated in this function
- * 
+ *
  *  \return  NULL-error,pointer to an instance when success
  *******************************************************************************/
 LIB_API ni_hw_device_info_quadra_t *ni_hw_device_info_alloc_quadra(int device_type_num,int avaliable_card_num);
@@ -644,9 +644,9 @@ LIB_API ni_hw_device_info_quadra_t *ni_hw_device_info_alloc_quadra(int device_ty
 /*!******************************************************************************
  *  \brief  Release a pointer to  ni_hw_device_info_quadra_t instance created by create_hw_device_info_coder_param
  *
- *  
+ *
  *  \param[in] p_hw_device_info:pointer to a ni_hw_device_info_quadra_t instance created by create_hw_device_info_coder_param
- *                     
+ *
  *******************************************************************************/
 LIB_API void ni_hw_device_info_free_quadra(ni_hw_device_info_quadra_t *p_hw_device_info);
 
@@ -662,12 +662,12 @@ LIB_API void ni_hw_device_info_free_quadra(ni_hw_device_info_quadra_t *p_hw_devi
  *                        1 - both the load_num and task_num should consider, usually applied to live scenes
  *                        0 - only consider the task_num, don not care the load_num
  *  \param[in] hw_info_threshold_param : an array of threshold including device type task threshold and load threshold
- *                                       in hw_mode fill the arry with both encoder and decoder threshold or 
+ *                                       in hw_mode fill the arry with both encoder and decoder threshold or
  *                                       fill the arry with preferential device type threshold when don not in hw_mode
  *                                       load threshold in range[0:100] task num threshold in range [0:32]
  *  \param[in] preferential_device_type : which device type is preferential 0:decode 1:encode .
  *                                        This need to set to encoder/decoder even if in sw_mode to check whether coder_param is wrong.
- *  \param[in] coder_param : encoder and decoder information that helps to choose card .This coder_param can be created and 
+ *  \param[in] coder_param : encoder and decoder information that helps to choose card .This coder_param can be created and
  *                           set to default value by function hw_device_info_coder_param_t * create_hw_device_info_coder_param().
  *                           You may change the resolution fps bit_8_10 or other vaule you want to use
  *  \param[in] hw_mode:Set 1 then this function will choose encoder and decoder in just one card .
@@ -681,7 +681,7 @@ LIB_API void ni_hw_device_info_free_quadra(ni_hw_device_info_quadra_t *p_hw_devi
  *
  *  \return  0-error 1-success
  *******************************************************************************/
-LIB_API int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info, 
+LIB_API int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
                              int task_mode,
                              ni_hw_device_info_quadra_threshold_param_t *hw_info_threshold_param,
                              ni_device_type_t preferential_device_type,
@@ -703,18 +703,18 @@ LIB_API int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device
 *                           task. Returned *only* for encoder for now.
 *
 *   \return     pointer to ni_device_context_t if found, NULL otherwise
-*   
+*
 *   Note:  codec, width, height, fps need to be supplied for NI_DEVICE_TYPE_ENCODER only,
 *          they are ignored otherwize.
-*   Note:  the returned ni_device_context_t content is not supposed to be used by 
-*          caller directly: should only be passed to API in the subsequent 
+*   Note:  the returned ni_device_context_t content is not supposed to be used by
+*          caller directly: should only be passed to API in the subsequent
 *          calls; also after its use, the context should be released by
 *          calling ni_rsrc_free_device_context.
 *******************************************************************************/
 LIB_API ni_device_context_t* ni_rsrc_allocate_auto( ni_device_type_t device_type,
                                                     ni_alloc_rule_t rule,
                                                     ni_codec_t codec,
-                                                    int width, int height, 
+                                                    int width, int height,
                                                     int frame_rate,
                                                     uint64_t *p_load);
 

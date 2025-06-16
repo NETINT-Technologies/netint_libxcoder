@@ -55,7 +55,7 @@ int main(int argc, char **argv)
     //     fprintf(stderr, "%s\n", error);
     //     exit(1);
     // }
-    
+
     ni_libxcoder_api_dl.NiLibxcoderAPICreateInstance(handle, &functionList);
     if ((error = dlerror()) != NULL)  {
         fprintf(stderr, "%s\n", error);

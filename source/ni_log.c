@@ -128,7 +128,7 @@ int32_t ni_log_gettimeofday(struct timeval *p_tp, struct timezone *p_tzp)
  *  \param[in] vl     variadric args list
  *
  *  \return
- *  \note This function doesn't automatically append a newline to the end of 
+ *  \note This function doesn't automatically append a newline to the end of
  *       the log message.
  ******************************************************************************/
 void ni_log_default_callback(int level, const char* fmt, va_list vl)
@@ -349,17 +349,17 @@ void ni_log2(const void *p_context, ni_log_level_t level, const char *fmt, ...)
 
         if(p_session_context && level == NI_LOG_ERROR)
         {
-            ni_log(level, NI_LOG2_SESSION_ID_TIMESTAMP_FMT "" NI_LOG2_E2EID_FMT "" NI_LOG2_SPACE, 
+            ni_log(level, NI_LOG2_SESSION_ID_TIMESTAMP_FMT "" NI_LOG2_E2EID_FMT "" NI_LOG2_SPACE,
                    p_session_context->session_id, ni_log_get_utime(), p_session_context->E2EID);
         }
         else if(p_session_context)
         {
-            ni_log(level, NI_LOG2_SESSION_ID_FMT "" NI_LOG2_E2EID_FMT "" NI_LOG2_SPACE, 
+            ni_log(level, NI_LOG2_SESSION_ID_FMT "" NI_LOG2_E2EID_FMT "" NI_LOG2_SPACE,
                    p_session_context->session_id, p_session_context->E2EID);
         }
         else if (level == NI_LOG_ERROR)
         {
-            ni_log(level, NI_LOG2_TIMESTAMP_FMT "" NI_LOG2_SPACE, 
+            ni_log(level, NI_LOG2_TIMESTAMP_FMT "" NI_LOG2_SPACE,
                    ni_log_get_utime());
         }
 
@@ -395,19 +395,19 @@ void ni_log2(const void *p_context, ni_log_level_t level, const char *fmt, ...)
 
         if(p_session_context && level == NI_LOG_ERROR)
         {
-            this_used_size = snprintf(printbuf, NI_LOG2_PRINT_BUFF_SIZE, 
+            this_used_size = snprintf(printbuf, NI_LOG2_PRINT_BUFF_SIZE,
                                       NI_LOG2_SESSION_ID_TIMESTAMP_FMT "" NI_LOG2_E2EID_FMT "" NI_LOG2_SPACE "" NI_LOG2_FMT_FMT,
                                       p_session_context->session_id, ni_log_get_utime(), p_session_context->E2EID, fmt);
         }
         else if(p_session_context)
         {
-            this_used_size = snprintf(printbuf, NI_LOG2_PRINT_BUFF_SIZE, 
+            this_used_size = snprintf(printbuf, NI_LOG2_PRINT_BUFF_SIZE,
                                       NI_LOG2_SESSION_ID_FMT "" NI_LOG2_E2EID_FMT "" NI_LOG2_SPACE "" NI_LOG2_FMT_FMT,
                                       p_session_context->session_id, p_session_context->E2EID, fmt);
         }
         else if (level == NI_LOG_ERROR)
         {
-            this_used_size = snprintf(printbuf, NI_LOG2_PRINT_BUFF_SIZE, 
+            this_used_size = snprintf(printbuf, NI_LOG2_PRINT_BUFF_SIZE,
                                       NI_LOG2_TIMESTAMP_FMT "" NI_LOG2_SPACE "" NI_LOG2_FMT_FMT,
                                       ni_log_get_utime(), fmt);
         }
@@ -448,7 +448,7 @@ void ni_log2(const void *p_context, ni_log_level_t level, const char *fmt, ...)
         {
             ni_log_callback(level, printbuf, vl);
         }
-        va_end(vl);  
-        
+        va_end(vl);
+
     }
 }

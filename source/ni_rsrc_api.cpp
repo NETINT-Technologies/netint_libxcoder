@@ -133,7 +133,7 @@ void print_device(ni_device_t *p_device)
             {
                 if (strcmp(p_dev_info->dev_name,
                            p_device->xcoders[dev_type][xcoder_index_2].dev_name)
-	            == 0 && p_dev_info->module_id >= 0)
+                    == 0 && p_dev_info->module_id >= 0)
                 {
                     ni_rsrc_print_device_info(&(p_device->xcoders[dev_type]
                                                 [xcoder_index_2]));
@@ -198,7 +198,7 @@ ni_retcode_t ni_rsrc_refresh(int should_match_rev)
         ni_log(NI_LOG_INFO,"%d devices retrieved from current pool at start up\n",
                 xcoder_dev_count);
 #endif
-                
+
     } else
     {
         ni_log(NI_LOG_ERROR, "Error retrieving from current pool at start "
@@ -222,7 +222,7 @@ ni_retcode_t ni_rsrc_refresh(int should_match_rev)
                                 xcoder_refresh_dev_names, xcoder_refresh_dev_count);
     if (0 == curr_dev_count)
     {
-        ni_log(NI_LOG_ERROR, "No devices found on the host\n");   
+        ni_log(NI_LOG_ERROR, "No devices found on the host\n");
     }
     int devices_removed = 0;
     int devices_added = 0;
@@ -300,9 +300,9 @@ android::sp<INidec> service = NULL;
 /*!*****************************************************************************
  *  \brief   Init android net.int.SharedBuffer service for binder using.
  *
- *	 \param 	  none
+ *  \param   none
  *
- *	 \return      service (= 0) if get service , < 0 otherwise
+ *  \return  service (= 0) if get service , < 0 otherwise
  *
  ******************************************************************************/
 int ni_rsrc_android_init()
@@ -732,7 +732,7 @@ NI_DEPRECATED int ni_rsrc_get_local_device_list(char ni_devices[][NI_MAX_DEVICE_
 
   if (NULL == (FD = opendir(dir_name)))
   {
-    
+
 #if defined(_ANDROID) || defined(__OPENHARMONY__)
     ni_log(NI_LOG_INFO, "Failed to open directory %s\n", dir_name);
     if(android_dir_num < ANDROID_MAX_DIR_NUM)
@@ -793,7 +793,7 @@ NI_DEPRECATED int ni_rsrc_get_local_device_list(char ni_devices[][NI_MAX_DEVICE_
                       NI_MAX_DEVICE_NAME_LEN);
               memset(&device_capabilites, 0, sizeof(ni_device_capability_t));
 
-              g_device_in_ctxt = false; 
+              g_device_in_ctxt = false;
               for (int j = 0; j < g_xcoder_refresh_dev_count; j++)
               {
                   if (0 ==
@@ -805,7 +805,7 @@ NI_DEPRECATED int ni_rsrc_get_local_device_list(char ni_devices[][NI_MAX_DEVICE_
                   }
               }
               if (NI_RETCODE_SUCCESS != ni_check_dev_name(device_info.dev_name))
-              { 
+              {
                   continue;
               }
               if(ni_quadra_card_identify_precheck(device_info.dev_name) != NI_RETCODE_SUCCESS)
@@ -956,7 +956,7 @@ int ni_rsrc_get_local_device_list2(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
 
   if (NULL == (FD = opendir(dir_name)))
   {
-    
+
 #ifdef _ANDROID
     ni_log(NI_LOG_INFO, "Failed to open directory %s\n", dir_name);
     if(android_dir_num < ANDROID_MAX_DIR_NUM)
@@ -1017,7 +1017,7 @@ int ni_rsrc_get_local_device_list2(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
                       NI_MAX_DEVICE_NAME_LEN);
               memset(&device_capabilites, 0, sizeof(ni_device_capability_t));
 
-              device_in_ctxt = false; 
+              device_in_ctxt = false;
               for (int j = 0; j < xcoder_refresh_dev_count; j++)
               {
                   if (0 ==
@@ -1029,7 +1029,7 @@ int ni_rsrc_get_local_device_list2(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
                   }
               }
               if (NI_RETCODE_SUCCESS != ni_check_dev_name(device_info.dev_name))
-              { 
+              {
                   continue;
               }
               if (ni_quadra_card_identify_precheck(device_info.dev_name) != NI_RETCODE_SUCCESS)
@@ -1180,6 +1180,7 @@ int ni_rsrc_init(int should_match_rev, int timeout_seconds)
     int number_of_devices;
     uint32_t runtime;
     int limit_depth = 3;
+    int ret;
 
     runtime = 0;
     while (1)
@@ -1220,7 +1221,18 @@ int ni_rsrc_init(int should_match_rev, int timeout_seconds)
                           api_version);
     ni_log(NI_LOG_INFO, "Compatible FW API version: %s\n", api_version);
 
-    return ni_rsrc_init_priv(should_match_rev, number_of_devices, device_names, limit_depth);
+    ret = ni_rsrc_init_priv(should_match_rev, number_of_devices, device_names, limit_depth);
+
+    if (ret == NI_RETCODE_SUCCESS)
+    {
+        ret = ni_rsrc_create_retry_lck();
+    }
+
+    if (ret == NI_RETCODE_SUCCESS)
+    {
+        ret = ni_rsrc_refresh(should_match_rev);
+    }
+    return ret;
 }
 
 /*!******************************************************************************
@@ -1935,7 +1947,7 @@ ni_device_context_t *ni_rsrc_allocate_simple_direct
 )
 {
   ni_device_context_t *p_device_context = ni_rsrc_get_device_context(device_type, guid);
- 
+
   return p_device_context;
 }
 
@@ -2276,6 +2288,13 @@ int ni_rsrc_remove_device(const char* dev)
                         p_device_context->p_device_info->dev_name,
                         NI_MAX_DEVICE_NAME_LEN) != 0)
             {
+                if (strncmp(dev, p_device_context->p_device_info->dev_name, strlen(dev)) == 0)
+                {
+                    ni_log(NI_LOG_ERROR,
+                           "ERROR: %s() Devicename format mismatch %s %s\n",
+                           __func__,dev,p_device_context->p_device_info->dev_name);
+                           return_value = NI_RETCODE_FAILURE;
+                }
                 continue;
             }
 
@@ -2667,27 +2686,17 @@ int ni_rsrc_lock_and_open(int device_type, ni_lock_handle_t* lock)
 #else
   do
   {
-    if (count>=1)
-    {
-      //sleep 10ms if the file lock is locked by other FFmpeg process
-      ni_usleep(LOCK_WAIT);
-    }
-    // Here we try to open the file lock, retry if it failed
+    // the retry lock files should be created in ni_rsrc_init
     *lock =
-        open(XCODERS_RETRY_LCK_NAME[device_type], O_RDWR | O_CREAT | O_CLOEXEC,
-             S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+        open(XCODERS_RETRY_LCK_NAME[device_type], O_RDWR | O_CLOEXEC);
 
     if (*lock < 0)
     {
-      count++;
-      if (count > MAX_LOCK_RETRY)
-      {
-        ni_log(NI_LOG_ERROR, "Can not lock down the file lock after 6s");
+        ni_log(NI_LOG_ERROR, "Can not lock down the file lock. Error: %s\n", strerror(errno));
         return NI_RETCODE_ERROR_LOCK_DOWN_DEVICE;
-      }
     }
   }
-  while (*lock < 0);
+  while (0);
 #endif
   // Now the lock is free so we lock it down
   count = 0;
@@ -2878,21 +2887,21 @@ static int check_hw_info_encoder_need_load(ni_hw_device_info_quadra_encoder_para
             factor_lookahead = (double)(encoder_param->lookaheadDepth * 0.0014 + 1.012);
         }
     }
-    
+
     if(encoder_param->bit_8_10 == 10)
     {
         factor_8_10_bit = 2;
     }
-    
+
     factor_720p = 1.125;//consider h and w
     factor = factor_codec * factor_8_10_bit * factor_rdoq * factor_rdoLevel
         * factor_lookahead * factor_720p;
-    
+
     //ENC_TOTAL_BIT_VOLUME_1_SEC (3840 * 2160 * 60ULL)
     //PERF_MODEL_LOAD_PERCENT = ((ENC_TOTAL_BIT_VOLUME_1_SEC / 100) * ENCODER_MULTICORE_NUM)
     //encoedr_need_load = sample_model_load/PERF_MODEL_LOAD_PERCENT
     return uint32_t(
-                    ((uint32_t)((uint32_t)factor*encoder_param->fps * resolution)) / 
+                    ((uint32_t)((uint32_t)factor*encoder_param->fps * resolution)) /
                                 ((3840 * 2160 * 60ULL) / 100 * 4));
 }
 
@@ -2983,9 +2992,9 @@ static int check_hw_info_decoder_shared_mem_usage(const ni_hw_device_info_quadra
         return 0;
     }
     const int hw_frame = decoder_param->hw_frame;
-    
+
     const int v30_xlsx = 0;
-    int b_counts = 1 * (v30_xlsx + 
+    int b_counts = 1 * (v30_xlsx +
                         (hw_frame ? 0 : 1)*3 +
                         estimated_max_dpb);
     int b_scale = check_hw_info_shared_mem_calculate_b_scale(decoder_param->h, decoder_param->w,
@@ -3016,9 +3025,9 @@ static int check_hw_info_scaler_shared_mem_usage(const ni_hw_device_info_quadra_
     }
     // const int hw_frame = 1;
     //cppcheck do not allow this
-    
+
     const int v30_xlsx = 0;
-    int b_counts = 1 * (v30_xlsx + 
+    int b_counts = 1 * (v30_xlsx +
                         0/* (hw_frame ? 0 : 1)*3 */ +
                         estimated_max_dpb);
     int b_scale = check_hw_info_shared_mem_calculate_b_scale(scaler_param->h, scaler_param->w,
@@ -3030,7 +3039,7 @@ static int check_hw_info_scaler_shared_mem_usage(const ni_hw_device_info_quadra_
 /*!*************************************************************************************************
 *  \brief  Remove unsupported card in ni_check_hw_info() by memroy
 *          This function is used for ni_check_hw_info()
-*          
+*
 *  \param[in]  card_remove
 *  \param[in]  ni_card_info
 *  \param[in]  card_num
@@ -3073,14 +3082,14 @@ static void check_hw_info_remove_card_with_memory(int *card_remove, const ni_hw_
         int decoder_shared_mem_usage = check_hw_info_decoder_shared_mem_usage(coder_param->decoder_param,16);
         int encoder_shared_mem_usage = check_hw_info_encoder_shared_mem_usage(coder_param->encoder_param);
         int scaler_shared_mem_usage = check_hw_info_scaler_shared_mem_usage(coder_param->scaler_param,16);
-        task_mem_usage = decoder_shared_mem_usage + ((encoder_shared_mem_usage > scaler_shared_mem_usage) ? 
+        task_mem_usage = decoder_shared_mem_usage + ((encoder_shared_mem_usage > scaler_shared_mem_usage) ?
                                                         encoder_shared_mem_usage : scaler_shared_mem_usage);
     }
     else
     {
         ni_log(NI_LOG_ERROR, "parameter:mode is out of range\n");
-        task_mem_usage = check_hw_info_decoder_shared_mem_usage(coder_param->decoder_param,16) + 
-                    check_hw_info_encoder_shared_mem_usage(coder_param->encoder_param)+ 
+        task_mem_usage = check_hw_info_decoder_shared_mem_usage(coder_param->decoder_param,16) +
+                    check_hw_info_encoder_shared_mem_usage(coder_param->encoder_param)+
                     check_hw_info_scaler_shared_mem_usage(coder_param->scaler_param,16);
     }
 
@@ -3110,7 +3119,7 @@ static void check_hw_info_remove_card_with_memory(int *card_remove, const ni_hw_
 /*!*********************************************************************************************
 *  \brief  Create and alloc a pointer to ni_hw_device_info_quadra_coder_param_t
 *          This function is used for ni_check_hw_info()
-*          
+*
 *  \param[in]  mode  0 for decoder,1 for encoder,2 for scaler,3 for AI, >= 4 for hw_mode
 *
 *  \return     a pointer to ni_hw_device_info_quadra_coder_param_t on success,NULL for otherwise
@@ -3254,14 +3263,14 @@ ni_hw_device_info_quadra_coder_param_t *ni_create_hw_device_info_quadra_coder_pa
         p_coder_param->ai_param->bit_8_10 = 8;
         p_coder_param->ai_param->rgba = 0;
     }
-    return p_coder_param; 
+    return p_coder_param;
 }
 
 
 /*!*********************************************************************************************
 *  \brief   Free resource in p_hw_device_info_quadra_coder_param
 *           This function is used for ni_check_hw_info()
-*          
+*
 *  \param[in]  device_type_num
 *
 *  \param[in]  avaliable_card_num
@@ -3373,7 +3382,7 @@ p_hw_device_info_end:
 /*!*********************************************************************************************
 *  \brief    Free resource in a pointer of ni_hw_device_info_quadra_t
 *            This function is used for ni_check_hw_info()
-*   
+*
 *  \param[in]  p_hw_device_info  Poiner to a ni_hw_device_info_quadra_t struct
 *
 *  \return     None
@@ -3398,7 +3407,7 @@ void ni_hw_device_info_free_quadra(ni_hw_device_info_quadra_t *p_hw_device_info)
     return;
 }
 
-int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info, 
+int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
                      int task_mode,
                      ni_hw_device_info_quadra_threshold_param_t *hw_info_threshold_param,
                      ni_device_type_t preferential_device_type,
@@ -3420,7 +3429,7 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
     ni_device_queue_t *coders = NULL;
     ni_device_context_t *p_device_context = NULL;
     ni_session_context_t xCtxt = { 0 };
-    int *card_remove = NULL;//cards which are not satisfied threshold 
+    int *card_remove = NULL;//cards which are not satisfied threshold
     // uint64_t reserved_memory = 0;
     // int needed_memory = 0;
     uint64_t decoder_need_load = 0;
@@ -3496,7 +3505,7 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
 
 
     if((task_mode != 0 && task_mode != 1) ||
-       (preferential_device_type != NI_DEVICE_TYPE_DECODER && preferential_device_type != NI_DEVICE_TYPE_ENCODER && 
+       (preferential_device_type != NI_DEVICE_TYPE_DECODER && preferential_device_type != NI_DEVICE_TYPE_ENCODER &&
         preferential_device_type != NI_DEVICE_TYPE_SCALER && preferential_device_type != NI_DEVICE_TYPE_AI))//scaler
     {
         if(b_valid)
@@ -3649,7 +3658,7 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
                 break;
             }
         }
-        qsort(&hw_info_threshold_param[1], device_type_num - 1, 
+        qsort(&hw_info_threshold_param[1], device_type_num - 1,
               sizeof(ni_hw_device_info_quadra_threshold_param_t), ni_hw_device_info_quadra_threshold_param_t_compare);
     }
 
@@ -3732,7 +3741,7 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
     {
         p_hw_device_info->consider_mem = 0;
     }
-    
+
     if (p_hw_device_info->available_card_num <= 0)
     {
         LRETURN;
@@ -3813,8 +3822,8 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
 #ifdef _WIN32
                     ni_close_event(xCtxt.event_handle);
 #endif
-                    ni_log(NI_LOG_ERROR, "Error query %s %s %s.%d\n", 
-                                          (all_need_device_type[j] == NI_DEVICE_TYPE_DECODER) ? "decoder" : 
+                    ni_log(NI_LOG_ERROR, "Error query %s %s %s.%d\n",
+                                          (all_need_device_type[j] == NI_DEVICE_TYPE_DECODER) ? "decoder" :
                                           (all_need_device_type[j] == NI_DEVICE_TYPE_ENCODER) ? "encoder" :
                                           (all_need_device_type[j] == NI_DEVICE_TYPE_SCALER) ? "scaler " : "AIs   ",
                             p_device_context->p_device_info->dev_name,
@@ -3838,7 +3847,7 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
                 //use model_load in card remove for encoder just like before
 #ifdef XCODER_311
                 p_hw_device_info->card_info[j][i].load          = xCtxt.load_query.current_load; //monitor changes this
-                                                                  
+
 #else
                 p_hw_device_info->card_info[j][i].load          =
                                 (xCtxt.load_query.total_contexts == 0 || xCtxt.load_query.current_load > xCtxt.load_query.fw_load) ? xCtxt.load_query.current_load : xCtxt.load_query.fw_load;
@@ -3893,7 +3902,7 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
 #else
             ni_log(NI_LOG_INFO, "%s Card[%3d], load: %3d,  task_num: %3d,  firmware_load: %3d,  model_load: %3d, shared_mem_usage: %3d\n",
 #endif
-                    (p_hw_device_info->device_type[j] == NI_DEVICE_TYPE_DECODER ? "Decoder" : 
+                    (p_hw_device_info->device_type[j] == NI_DEVICE_TYPE_DECODER ? "Decoder" :
                     ((p_hw_device_info->device_type[j] == NI_DEVICE_TYPE_ENCODER) ? "Encoder" :
                     (p_hw_device_info->device_type[j] == NI_DEVICE_TYPE_SCALER) ? "Scaler " : "AIs    ")),
                     p_hw_device_info->card_info[j][i].card_idx,
@@ -3902,7 +3911,7 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
                     p_hw_device_info->card_info[j][i].firmware_load,
                     p_hw_device_info->card_info[j][i].model_load,
                     p_hw_device_info->card_info[j][i].shared_mem_usage);
-            
+
             if(card_remove[i] == 1)
             {
                 continue;//for print

@@ -413,7 +413,7 @@ int parse_h264_slice_header(uint8_t *buf, int size_bytes, ni_h264_sps_t *sps,
                             int32_t *frame_num, unsigned int *first_mb_in_slice);
 
 uint64_t find_h265_next_nalu(ni_demo_context_t *p_ctx, uint8_t *p_dst, int *nal_type);
-void h265_decode_sublayer_hrd(ni_bitstream_reader_t *br, unsigned int nb_cpb, 
+void h265_decode_sublayer_hrd(ni_bitstream_reader_t *br, unsigned int nb_cpb,
                               int subpic_params_present);
 int h265_decode_profile_tier_level(ni_bitstream_reader_t *br, PTLCommon *ptl);
 int h265_parse_ptl(ni_bitstream_reader_t *br, PTL *ptl, int max_num_sub_layers);

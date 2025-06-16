@@ -43,7 +43,7 @@ extern "C" {
 #define lseek _lseek
 #endif
 
-#define FILE_NAME_LEN 	 256
+#define FILE_NAME_LEN    256
 #define MAX_INPUT_FILES  3
 #define MAX_OUTPUT_FILES 4
 
@@ -72,6 +72,9 @@ extern "C" {
 #define HEVC_MAX_SPS_COUNT 16
 #define HEVC_MAX_REFS 16
 #define HEVC_MAX_LOG2_CTB_SIZE 6
+
+// pts and dts
+#define NI_MAX_PTS_QUEUE_SIZE 1024
 
 typedef enum
 {
@@ -106,6 +109,14 @@ typedef struct _ni_test_frame_list
     int tail;
 } ni_test_frame_list_t;
 
+typedef struct _ni_pts_queue
+{
+    int data[NI_MAX_PTS_QUEUE_SIZE];
+    int front;
+    int rear;
+    int size;
+} ni_pts_queue;
+
 typedef struct _ni_demo_context
 {
     uint8_t end_all_threads;
@@ -136,7 +147,7 @@ typedef struct _ni_demo_context
     uint8_t *p_av1_seq_header[MAX_OUTPUT_FILES];
     uint32_t av1_seq_header_len[MAX_OUTPUT_FILES];
     uint8_t av1_output_obu;
-    uint8_t ivf_header_written;
+    uint8_t ivf_header_written[MAX_OUTPUT_FILES];
 
     // trackers for current state of decoder/encoder
     int dec_sos_sent;
@@ -146,6 +157,10 @@ typedef struct _ni_demo_context
     int enc_sos_sent[MAX_OUTPUT_FILES];
     int enc_eos_sent[MAX_OUTPUT_FILES];
     int enc_eos_received[MAX_OUTPUT_FILES];
+
+    // pts and dts
+    ni_pts_queue *enc_pts_queue[MAX_OUTPUT_FILES];
+    int pts[MAX_OUTPUT_FILES];
 } ni_demo_context_t;
 
 typedef struct uploader_param
@@ -197,7 +212,7 @@ int convert_yuv_444p_to_420p(ni_session_data_io_t *p_frame,
                              ni_sw_pix_fmt_t sw_pix_fmt, int mode,
                              ni_codec_format_t codec_format);
 
-int write_rawvideo_data(FILE *p_file, int input_aligned_width, int input_aligned_height, 
+int write_rawvideo_data(FILE *p_file, int input_aligned_width, int input_aligned_height,
                         int output_width, int output_height, int format, ni_frame_t *p_out_frame);
 
 int scan_and_clean_hwdescriptors(void);

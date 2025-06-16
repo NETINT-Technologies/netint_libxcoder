@@ -1,4 +1,73 @@
 ================================================================================
+Release version: 5.3.0_RC2
+Date: 2025-06-07            SW version: 5.3.0_RC2           FW version: 5.3.0_RC2
+Compat FW API ver: 6sB      Libxcoder API ver: 2.76
+--------------------------------------------------------------------------------
+[LIBXCODER] Create NI_RETRY* lock files in ni_rsrc_init instead of ni_rsrc_lock_and_open
+[LIBXCODER] Improve log messaging when SEI message is dropped by FW
+[LIBXCODER] Temporal layers VPS and SPS syntax incorrect
+            1. Block HDR conformance (hrdEnable=1) with mulitple temporal layers (temporalLayersEnable=1), which is currently not supported
+[LIBXCODER] Update code quality: Uninitialised variables and popen/pclose
+[LIBXCODER] Add patch to extract PCI BDF from the block device
+            name. Instead of calling external programs udevadm(8),
+            perl(1), and tail(1), parse the sysfs path to extract it.
+[LIBXCODER] Update libxcoder demos to read sequence header packet before sending first frame to encoder
+[LIBXCODER] Add pts and dts process to libxcoder demos
+[LIBXCODER] Support -d in ni_rsrc_mon when using -o json1 and -o json2
+[LIBXCODER] Fix an issue where enableUserDataSeiPassthru decoder parameter was not taking effect properly
+[LIBXCODER] Support separated rate control for AV1 spatial layers
+            Changing FW API version to 6sB
+[LIBXCODER] Add Encoder parameter checks:
+             1. horOffset, verOffset odd values rejected
+             2. AV1 tuneBframeVisual medium rejected
+             3. Jpeg encoder checks added
+             4. Encoder error message updated
+[LIBXCODER] Code format clean up for libxcoder and api_examples
+[LIBXCODER] Added 720p resolution NB file support for hvsplus filter
+            Changing FW API version to 6sA
+[LIBXCODER] Added decoder low delay codec limitations check
+[LIBXCODER] Add 2 improved bicubic algorithm filterblit=3 and filterblit=4 for scaler and merge filters.
+            Changing FW API version to 6s9
+[LIBXCODER] Reject crf + longTermRef comination in libxcoder
+[LIBXCODER] Update shared memory usage
+            1. ni_rsrc_update Delete operation returns error on device name format
+            2. init_rsrc also calls ni_rsrc refresh (QDFW-5048)
+[LIBXCODER] Return correct error if enableHVSPlus or enableAIEnhance is called for JPEG
+[LIBXCODER] Disable zeroCopymode when using AiEnhanceMode and the width is not matching the AI model.
+[LIBXCODER] Add ni_rsrc_mon extra support for T1M persistent config E
+[LIBXCODER] Add stack protection and strip support for OpenHarmony and optimized Makefile for libxcoder
+            1. Add stack protection and strip support for OpenHarmony
+            2. Compile options and link options are defined and used separately, and compile options are used in compile phase,
+               link options are used in link phase
+[LIBXCODER] Fix false rejection of yuv444p input in ni_xcoder_encode
+[LIBXCODER] Improve capped CRF I-frame bits allocation and overall subjective quality
+            1. Expand crfMaxIframeEnable supported options to mode 1 (MEDIUM), mode 2 (HIGH), mode 5 (MEDIUM + AMORTIZE), mode 6 (HIGH + AMORTIZE)
+            Changing FW API version to 6s8
+[LIBXCODER] Support decoding power for T1M
+[LIBXCODER] Reject pixel formats not supported by encoder in libxcoder and demos
+[LIBXCODER] Fix ivf header write in av1 ladder output for libxcoder demos
+[LIBXCODER] Fix exit condition check and some typos in libxcoder demos
+[LIBXCODER] Improve capped CRF quality by optimized cu tree algorithm
+            1. Add totalCuTreeDepth parameter to configure cu tree depth in optimized algorithm, which includes past and future frames (default 0)
+            2. Add adaptiveCuTree parameter to enable / disable dynamically adjust cu tree depth when vbv buffer is full (default 0)
+            3. Add preIntraHandling parameter to enable / disable dynamically adjust cu tree depth before I-frame (default 1)
+            4. Add baseLayerOnly parameter to enable / disable cu tree only including past frames in base layer (default 0)
+            5. Add pastFrameMaxIntraRatio parameter to configure the max past frames intra blocks percentage allowed to be included in cu tree (default 20)
+            6. Add linkFrameMaxIntraRatio parameter to configure the max link frames (link past to future frames) intra blocks percentage allowed to be included in cu tree (default 40)
+            Changing FW API version to 6s7
+[LIBXCODER] Support iovec for IO concurrency
+            1. Introduce and wrap linux aio API to support asynchronous IO.
+            2. Re-use SET_ALLOC_FRAME command to get iovecs before write command.
+            3. Each iovec has its own relative LBA based on this write session base LBA
+               and valid size to be written.
+            4. There must be one LBA gap in the LBA range during consecutive iovecs.
+               this is to allow concurrent IO to be sent and avoid multiple write IO
+               to be merged altogether in the OS level.
+            5. This commit uses the asynchronous IO to write AI session input data.
+            Changing FW API version to 6s6
+[LIBXCODER] Fix multiple ivf header write issue when encoder demo sequence change occurs
+[LIBXCODER] Ni_rsrc_mon help message updated
+================================================================================
 Release version: 5.2.0_RC3
 Date: 2025-03-13            SW version: 5.2.0_RC3           FW version: 5.2.0_RC1
 Compat FW API ver: 6s5      Libxcoder API ver: 2.76

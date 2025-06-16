@@ -57,7 +57,7 @@ int scaler_session_open(ni_session_context_t *p_scaler_ctx, int iXcoderGUID, ni_
 int launch_scaler_operation(ni_session_context_t *p_scaler_ctx, int iXcoderGUID,
                             ni_frame_t *p_frame_in_up, ni_frame_t *p_frame_in_bg,
                             ni_session_data_io_t *p_data_out, ni_scaler_input_params_t scaler_params);
-                            
+
 int drawbox_filter(ni_session_context_t *p_crop_ctx, ni_session_context_t *p_pad_ctx,
                    ni_session_context_t *p_overlay_ctx, ni_session_context_t *p_fmt_ctx,
                    ni_frame_t *p_frame_in, ni_session_data_io_t *p_data_out, ni_drawbox_params_t *p_box_params,

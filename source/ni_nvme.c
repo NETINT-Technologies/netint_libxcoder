@@ -238,8 +238,34 @@ int ni_nvme_enumerate_devices
         }
         else
         {
-            ZeroMemory(p_buffer, data_len);
-            rc = ni_nvme_get_identity(handle, event_handle, p_buffer);
+            DISK_GEOMETRY_EX disk_geometry = { 0 };
+            DWORD bytes_returned;
+            if (DeviceIoControl(
+                handle,
+                IOCTL_DISK_GET_DRIVE_GEOMETRY_EX,
+                NULL,
+                0,
+                &disk_geometry,
+                sizeof(disk_geometry),
+                &bytes_returned,
+                NULL))
+            {
+                LONGLONG disk_size = disk_geometry.DiskSize.QuadPart;
+                if (disk_size > ((IDENTIFY_DEVICE_R) << (LBA_BIT_OFFSET)) + (NI_NVME_IDENTITY_CMD_DATA_SZ))
+                {
+                    ZeroMemory(p_buffer, data_len);
+                    rc = ni_nvme_get_identity(handle, event_handle, p_buffer);
+                }
+                else
+                {
+                    ni_log(NI_LOG_DEBUG,"port %s size: %.2f is not NETINT card\n",
+                                        port_name_buffer, (double)disk_size);
+                    rc = NI_RETCODE_FAILURE;
+                }
+            } else {
+                rc = NI_RETCODE_FAILURE;
+            }
+
             if (NI_RETCODE_SUCCESS == rc)
             {
                 ni_nvme_identity_t *p_ni_id_data =
@@ -725,3 +751,59 @@ int32_t ni_nvme_send_write_cmd(ni_device_handle_t handle,
 #endif
     return rc;
 }
+
+//linux aio
+#ifdef __linux__
+void ni_nvme_setup_aio_iocb(ni_device_handle_t handle, ni_iocb_t *iocb,
+                               void *p_data, uint32_t data_len, uint32_t lba,
+                               int write)
+{
+    memset(iocb, 0, sizeof(ni_iocb_t));
+    iocb->aio_fildes = handle;
+    iocb->aio_lio_opcode = write ? IOCB_CMD_PWRITE : IOCB_CMD_PREAD;
+    iocb->aio_reqprio = 0;
+    iocb->aio_buf = (uint64_t)p_data;
+    iocb->aio_nbytes = data_len;
+    iocb->aio_offset = (uint64_t)lba << LBA_BIT_OFFSET;
+}
+
+int32_t ni_nvme_batch_cmd_aio(ni_aio_context_t ctx, ni_iocb_t **iocbs,
+        ni_io_event_t *events, int iocb_num)
+{
+    int32_t rc;
+    int i;
+
+    for (i = 0; i < iocb_num; i++) {
+        ni_iocb_t *iocb = iocbs[i];
+        ni_log(NI_LOG_TRACE, "%s: iocb %d, fdes %d, opcode %d, buf 0x%llx,"
+                " nbytes %llu, offset 0x%llx\n", i, iocb->aio_fildes, iocb->aio_lio_opcode,
+                iocb->aio_buf, iocb->aio_nbytes, iocb->aio_offset);
+    }
+
+    rc = ni_aio_submit(ctx, iocb_num, iocbs);
+    if (rc != iocb_num) {
+        ni_log(NI_LOG_ERROR, "%s: ERROR: failed to submit enough aio iocb, rc=%d\n", __func__,
+                rc);
+        return NI_RETCODE_ERROR_NVME_CMD_FAILED;
+    }
+
+    rc = ni_aio_getevents(ctx, iocb_num, iocb_num, events, NULL);
+    if (rc != iocb_num) {
+        ni_log(NI_LOG_ERROR, "%s: ERROR: failed to get events, rc=%d\n", __func__, rc);
+        rc = NI_RETCODE_ERROR_NVME_CMD_FAILED;
+    } else {
+        for (i = 0; i < iocb_num; i++) {
+            ni_io_event_t *evt = &events[i];
+            ni_iocb_t *iocb = (ni_iocb_t *)evt->obj;
+            if (iocb->aio_nbytes != evt->res) {
+                ni_log(NI_LOG_ERROR, "ERROR %s(): failed to write data, size %llu, res %lld\n",
+                        __func__, iocb->aio_nbytes, evt->res);
+                return NI_RETCODE_ERROR_NVME_CMD_FAILED;
+            }
+        }
+        rc = NI_RETCODE_SUCCESS;
+    }
+
+    return rc;
+}
+#endif

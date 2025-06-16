@@ -164,7 +164,7 @@ int get_numa_node(char *device_name)
   char *ptr = NULL;
   char cmd[128] = {0};
   char cmd_ret[64] = {0};
-  
+
   if(!device_name)
   {
     return ret;
@@ -236,12 +236,12 @@ int remove_device_from_saved(ni_device_type_t device_type, int32_t module_id,
 int argToI(char *numArray)
 {
   int i;
-  
+
   if( !numArray )
   {
     return 0;
   }
-  
+
   const size_t len = strlen(numArray);
 
   for (i = 0; i < len; i++)
@@ -599,7 +599,7 @@ int strcat_dyn_buf(dyn_str_buf_t *dyn_str_buf, const char *fmt, ...)
          DYN_STR_BUF_CHUNK_SIZE) *
             DYN_STR_BUF_CHUNK_SIZE :
         0;
-    
+
     // realloc() to expand str_buf if necessary
     if (add_buf_size)
     {
@@ -797,144 +797,143 @@ UPLOADER:
   //Nvme[0] and TP[1] and Pcie[2] load
   for (int icore = NP_LOAD; icore <= PCIE_LOAD; icore++)
   {
-	  // ASSUMPTION: Each Quadra has at least and only one encoder.
-	  device_type = NI_DEVICE_TYPE_ENCODER;
-	  device_count = get_modules(device_type,
-	                             p_device_queue,
-	                             device_name,
-	                             &module_ids);
+    // ASSUMPTION: Each Quadra has at least and only one encoder.
+    device_type = NI_DEVICE_TYPE_ENCODER;
+    device_count = get_modules(device_type,
+                               p_device_queue,
+                               device_name,
+                               &module_ids);
 
-	  if (icore == NP_LOAD)
-	  {
-		strcat_dyn_buf(&output_buf, "Num Nvmes: ");
-		g_temp_load = (uint32_t*)calloc(device_count, sizeof(uint32_t));
-		if (!g_temp_load)
-		{
-		  fprintf(stderr, "ERROR: calloc() failed for g_temp_load\n");
-		  return;
-		}
-		g_temp_pload = (uint32_t*)calloc(device_count, sizeof(uint32_t));
-		if (!g_temp_pload)
-		{
-		  fprintf(stderr, "ERROR: calloc() failed for g_temp_pload\n");
-		  return;
-		}
-		g_temp_pthroughput = (uint32_t*)calloc(device_count, sizeof(uint32_t));
-		if (!g_temp_pthroughput)
-		{
-		  fprintf(stderr, "ERROR: calloc() failed for g_temp_pthroughput\n");
-		  return;
-		}
-		g_temp_sharemem = (uint32_t*)calloc(device_count, sizeof(uint32_t));
-		if (!g_temp_sharemem)
-		{
-		  fprintf(stderr, "ERROR: calloc() failed for g_temp_sharemem\n");
-		  return;
-		}
-	  }
-	  else
-	  {
-		(icore == TP_LOAD)?strcat_dyn_buf(&output_buf, "Num TPs: "):strcat_dyn_buf(&output_buf, "Num PCIes: ");
-	  }
-	  
-	  strcat_dyn_buf(&output_buf, "%u\n", device_count);
-	  if (icore == PCIE_LOAD)
-	  {
-		  strcat_dyn_buf(&output_buf,
-					 "INDEX LOAD(          FW )                  PCIE_THROUGHPUT GBps "
-					 "DEVICE       L_FL2V   N_FL2V   FR       N_FR\n");
-	  }
-	  else
-	  {
-		  strcat_dyn_buf(&output_buf,
-					 "INDEX LOAD(          FW )         MEM(               SHARE    ) "
-					 "DEVICE       L_FL2V   N_FL2V   FR       N_FR\n");
-	  }
-	  if (!device_count)
-	  {
-		if (output_buf.str_buf)
-			printf("%s", output_buf.str_buf);
-		clear_dyn_str_buf(&output_buf);
-		free(g_temp_load);
-		free(g_temp_pload);
-		free(g_temp_pthroughput);
-		free(g_temp_sharemem);
-		return;
-	  }
-	  
-	  for (index = 0; index < device_count; index++)
-	  {
-		p_device_context =
-			ni_rsrc_get_device_context(device_type,
-									 module_ids[index]);
-		if (icore == NP_LOAD)
-		{
-			if (!open_and_query(device_type,
-							p_device_context,
-							p_session_context,
-							device_name, detail, detail_data_v1))
-			{
-				continue;
-			}
-	  
-			return_code = ni_query_nvme_status(p_session_context, &load_query);
-			if (return_code != NI_RETCODE_SUCCESS)
-			{
-				fprintf(stderr,
-						"ERROR: ni_query_nvme_status() returned %d for %s:%s:%d\n",
-						return_code,
-						device_name,
-						p_device_context->p_device_info->dev_name,
-						p_device_context->p_device_info->hw_id);
-				remove_device_from_saved(device_type,
-								   p_device_context->p_device_info->module_id,
-								   p_session_context->device_handle);
-				ni_device_close(p_session_context->device_handle);
-				goto CLOSE;
-			}
-			g_temp_load[index] = load_query.tp_fw_load;
-			g_temp_pload[index] = load_query.pcie_load;
-			g_temp_pthroughput[index] = load_query.pcie_throughput;
+    if (icore == NP_LOAD)
+    {
+      strcat_dyn_buf(&output_buf, "Num Nvmes: ");
+      g_temp_load = (uint32_t*)calloc(device_count, sizeof(uint32_t));
+      if (!g_temp_load)
+      {
+        fprintf(stderr, "ERROR: calloc() failed for g_temp_load\n");
+        return;
+      }
+      g_temp_pload = (uint32_t*)calloc(device_count, sizeof(uint32_t));
+      if (!g_temp_pload)
+      {
+        fprintf(stderr, "ERROR: calloc() failed for g_temp_pload\n");
+        return;
+      }
+      g_temp_pthroughput = (uint32_t*)calloc(device_count, sizeof(uint32_t));
+      if (!g_temp_pthroughput)
+      {
+        fprintf(stderr, "ERROR: calloc() failed for g_temp_pthroughput\n");
+        return;
+      }
+      g_temp_sharemem = (uint32_t*)calloc(device_count, sizeof(uint32_t));
+      if (!g_temp_sharemem)
+      {
+        fprintf(stderr, "ERROR: calloc() failed for g_temp_sharemem\n");
+        return;
+      }
+    }
+    else
+    {
+      (icore == TP_LOAD)?strcat_dyn_buf(&output_buf, "Num TPs: "):strcat_dyn_buf(&output_buf, "Num PCIes: ");
+    }
+
+    strcat_dyn_buf(&output_buf, "%u\n", device_count);
+    if (icore == PCIE_LOAD)
+    {
+      strcat_dyn_buf(&output_buf,
+                     "INDEX LOAD(          FW )                  PCIE_THROUGHPUT GBps "
+                     "DEVICE       L_FL2V   N_FL2V   FR       N_FR\n");
+    }
+    else
+    {
+      strcat_dyn_buf(&output_buf,
+                     "INDEX LOAD(          FW )         MEM(               SHARE    ) "
+                     "DEVICE       L_FL2V   N_FL2V   FR       N_FR\n");
+    }
+    if (!device_count)
+    {
+      if (output_buf.str_buf)
+        printf("%s", output_buf.str_buf);
+      clear_dyn_str_buf(&output_buf);
+      free(g_temp_load);
+      free(g_temp_pload);
+      free(g_temp_pthroughput);
+      free(g_temp_sharemem);
+      return;
+    }
+
+    for (index = 0; index < device_count; index++)
+    {
+      p_device_context = ni_rsrc_get_device_context(device_type,
+                                                    module_ids[index]);
+    if (icore == NP_LOAD)
+    {
+      if (!open_and_query(device_type,
+                          p_device_context,
+                          p_session_context,
+                          device_name, detail, detail_data_v1))
+      {
+        continue;
+      }
+
+      return_code = ni_query_nvme_status(p_session_context, &load_query);
+      if (return_code != NI_RETCODE_SUCCESS)
+      {
+        fprintf(stderr,
+                "ERROR: ni_query_nvme_status() returned %d for %s:%s:%d\n",
+                return_code,
+                device_name,
+                p_device_context->p_device_info->dev_name,
+                p_device_context->p_device_info->hw_id);
+        remove_device_from_saved(device_type,
+                                 p_device_context->p_device_info->module_id,
+                                 p_session_context->device_handle);
+        ni_device_close(p_session_context->device_handle);
+        goto CLOSE;
+      }
+      g_temp_load[index] = load_query.tp_fw_load;
+      g_temp_pload[index] = load_query.pcie_load;
+      g_temp_pthroughput[index] = load_query.pcie_throughput;
                         g_temp_sharemem[index] = load_query.fw_share_mem_usage;
-		}
-		if (icore==PCIE_LOAD)
-		{
-			load_query.fw_load = g_temp_pload[index];
-			load_query.fw_share_mem_usage = g_temp_pthroughput[index];
+    }
+    if (icore==PCIE_LOAD)
+    {
+      load_query.fw_load = g_temp_pload[index];
+      load_query.fw_share_mem_usage = g_temp_pthroughput[index];
 
-			strcat_dyn_buf(&output_buf,
-					   "%-5d                %-3u                             %-3.1f        "
-					   "%-11s %-8.8s %-8.8s %-8.8s %-8.8s\n",
-					   p_device_context->p_device_info->module_id,
-					   load_query.fw_load,
-					   (float)load_query.fw_share_mem_usage/10,
-					   p_device_context->p_device_info->dev_name,
-					   p_device_context->p_device_info->fl_ver_last_ran,
-					   p_device_context->p_device_info->fl_ver_nor_flash,
-					   p_device_context->p_device_info->fw_rev,
-					   p_device_context->p_device_info->fw_rev_nor_flash);
-		}
-		else
-		{
-			load_query.fw_load = (icore==TP_LOAD)?g_temp_load[index]:load_query.fw_load;
-			load_query.fw_share_mem_usage = (icore==TP_LOAD)?g_temp_sharemem[index]:load_query.fw_share_mem_usage;
+      strcat_dyn_buf(&output_buf,
+                     "%-5d                %-3u                             %-3.1f        "
+                     "%-11s %-8.8s %-8.8s %-8.8s %-8.8s\n",
+                     p_device_context->p_device_info->module_id,
+                     load_query.fw_load,
+                     (float)load_query.fw_share_mem_usage/10,
+                     p_device_context->p_device_info->dev_name,
+                     p_device_context->p_device_info->fl_ver_last_ran,
+                     p_device_context->p_device_info->fl_ver_nor_flash,
+                     p_device_context->p_device_info->fw_rev,
+                     p_device_context->p_device_info->fw_rev_nor_flash);
+    }
+    else
+    {
+      load_query.fw_load = (icore==TP_LOAD)?g_temp_load[index]:load_query.fw_load;
+      load_query.fw_share_mem_usage = (icore==TP_LOAD)?g_temp_sharemem[index]:load_query.fw_share_mem_usage;
 
-			strcat_dyn_buf(&output_buf,
-					   "%-5d                %-3u                             %-3u        "
-					   "%-11s %-8.8s %-8.8s %-8.8s %-8.8s\n",
-					   p_device_context->p_device_info->module_id,
-					   load_query.fw_load,
-					   load_query.fw_share_mem_usage,
-					   p_device_context->p_device_info->dev_name,
-					   p_device_context->p_device_info->fl_ver_last_ran,
-					   p_device_context->p_device_info->fl_ver_nor_flash,
-					   p_device_context->p_device_info->fw_rev,
-					   p_device_context->p_device_info->fw_rev_nor_flash);
-		}
+      strcat_dyn_buf(&output_buf,
+                     "%-5d                %-3u                             %-3u        "
+                     "%-11s %-8.8s %-8.8s %-8.8s %-8.8s\n",
+                     p_device_context->p_device_info->module_id,
+                     load_query.fw_load,
+                     load_query.fw_share_mem_usage,
+                     p_device_context->p_device_info->dev_name,
+                     p_device_context->p_device_info->fl_ver_last_ran,
+                     p_device_context->p_device_info->fl_ver_nor_flash,
+                     p_device_context->p_device_info->fw_rev,
+                     p_device_context->p_device_info->fw_rev_nor_flash);
+    }
 
-		CLOSE:
-			ni_rsrc_free_device_context(p_device_context);
-	  }
+    CLOSE:
+      ni_rsrc_free_device_context(p_device_context);
+    }
   }
 
   free(g_temp_load);
@@ -945,7 +944,7 @@ UPLOADER:
 
 PRINT_OUTPUT:
   if (output_buf.str_buf)
-  	printf("%s", output_buf.str_buf);
+    printf("%s", output_buf.str_buf);
   clear_dyn_str_buf(&output_buf);
 }
 
@@ -1070,35 +1069,35 @@ void print_simple_text(ni_device_queue_t *p_device_queue,
     {
       continue;
     }
-	
+
     //Nvme and TP load
     {
-		return_code =
-			ni_query_nvme_status(p_session_context, &load_query);
-		if (return_code == NI_RETCODE_SUCCESS)
-		{
-			if (*maximum_firmware_loads_per_quadra < load_query.fw_load)
-			{
-				*maximum_firmware_loads_per_quadra = load_query.fw_load;
-			}
-			if (*maximum_firmware_loads_per_quadra < load_query.tp_fw_load)
-			{
-				*maximum_firmware_loads_per_quadra = load_query.tp_fw_load;
-			}
-			strcat_dyn_buf(&output_buf, "%s: %u%%\n", block_name,
-					 *maximum_firmware_loads_per_quadra);
-		}
-		else
-		{
-			fprintf(
-				stderr, "ERROR: ni_query_nvme_status() returned %d for %s:%s:%d\n",
-				return_code, device_name, p_device_context->p_device_info->dev_name,
-				p_device_context->p_device_info->hw_id);
-			remove_device_from_saved(device_type,
-									 p_device_context->p_device_info->module_id,
-									 p_session_context->device_handle);
-			ni_device_close(p_session_context->device_handle);
-		}
+    return_code =
+      ni_query_nvme_status(p_session_context, &load_query);
+    if (return_code == NI_RETCODE_SUCCESS)
+    {
+      if (*maximum_firmware_loads_per_quadra < load_query.fw_load)
+      {
+        *maximum_firmware_loads_per_quadra = load_query.fw_load;
+      }
+      if (*maximum_firmware_loads_per_quadra < load_query.tp_fw_load)
+      {
+        *maximum_firmware_loads_per_quadra = load_query.tp_fw_load;
+      }
+      strcat_dyn_buf(&output_buf, "%s: %u%%\n", block_name,
+                     *maximum_firmware_loads_per_quadra);
+    }
+    else
+    {
+      fprintf(
+        stderr, "ERROR: ni_query_nvme_status() returned %d for %s:%s:%d\n",
+        return_code, device_name, p_device_context->p_device_info->dev_name,
+        p_device_context->p_device_info->hw_id);
+      remove_device_from_saved(device_type,
+                               p_device_context->p_device_info->module_id,
+                               p_session_context->device_handle);
+      ni_device_close(p_session_context->device_handle);
+    }
     }
 
     ni_rsrc_free_device_context(p_device_context);
@@ -1108,6 +1107,158 @@ void print_simple_text(ni_device_queue_t *p_device_queue,
     printf("%s", output_buf.str_buf);
   clear_dyn_str_buf(&output_buf);
   free(maximum_firmware_loads);
+}
+
+void print_json_detail(ni_device_queue_t *p_device_queue, ni_session_context_t *p_session_context, ni_instance_mgr_detail_status_v1_t *detail_data_v1)
+{
+  char device_name[MAX_DEVICE_NAME_SIZE] = {0};
+  unsigned int index, device_count;
+  int instance_count;
+  int32_t *module_ids;
+
+  int detail = 1;
+
+  dyn_str_buf_t output_buf = {0};
+  ni_device_context_t *p_device_context;
+  ni_device_type_t device_type;
+  int max_device_type = NI_DEVICE_TYPE_SCALER;
+  int first_item_printed = 0;
+  int first_device_type_printed = 0;
+
+  strcat_dyn_buf(&output_buf, "{\n");
+
+  for (device_type = NI_DEVICE_TYPE_DECODER;
+       device_type != max_device_type;
+       device_type++)
+  {
+    instance_count = 0;
+    device_count = get_modules(device_type,
+                               p_device_queue,
+                               device_name,
+                               &module_ids);
+    if (!device_count)
+    {
+      continue;
+    }
+
+    for (index = 0; index < device_count; index++)
+    {
+      p_device_context =
+        ni_rsrc_get_device_context(device_type,
+                                   module_ids[index]);
+      if (!open_and_query(device_type,
+                          p_device_context,
+                          p_session_context,
+                          device_name, detail, detail_data_v1))
+      {
+        continue;
+      }
+
+      if(first_device_type_printed)
+      {
+        strcat_dyn_buf(&output_buf, ",\n");
+      }
+
+      strcat_dyn_buf(&output_buf,
+                         "\t\"%s\" :"
+                         "[\n",
+                         device_name
+                         );
+      first_item_printed = 0;
+      for(index = 0; index < NI_MAX_CONTEXTS_PER_HW_INSTANCE; index++)
+      {
+        if(detail_data_v1->sInstDetailStatus[index].ui16FrameRate)
+        {
+          if(first_item_printed)
+          {
+            strcat_dyn_buf(&output_buf, ",\n");
+          }
+
+          if(device_type == NI_DEVICE_TYPE_DECODER)
+          {
+            strcat_dyn_buf(&output_buf,
+                    "\t\t{\n"
+                    "\t\t\t\"NUMBER\": %u,\n"
+                    "\t\t\t\"INDEX\": %u,\n"
+                    "\t\t\t\"AvgCost\": %u,\n"
+                    "\t\t\t\"FrameRate\": %u,\n"
+                    "\t\t\t\"IDR\": %u,\n"
+                    "\t\t\t\"InFrame\": %u,\n"
+                    "\t\t\t\"OutFrame\": %u,\n"
+                    "\t\t\t\"Width\": %u,\n"
+                    "\t\t\t\"Height\": %u,\n"
+                    "\t\t\t\"SID\": \"%s\",\n"
+                    "\t\t\t\"DEVICE\": \"%s\"\n"
+                    "\t\t}",
+                    device_count,
+                    instance_count++,
+                    detail_data_v1->sInstDetailStatus[index].ui8AvgCost,
+                    detail_data_v1->sInstDetailStatus[index].ui16FrameRate,
+                    detail_data_v1->sInstDetailStatus[index].ui32NumIDR,
+                    detail_data_v1->sInstDetailStatus[index].ui32NumInFrame,
+                    detail_data_v1->sInstDetailStatus[index].ui32NumOutFrame,
+                    detail_data_v1->sInstDetailStatusAppend[index].ui32Width,
+                    detail_data_v1->sInstDetailStatusAppend[index].ui32Height,
+                    get_session_id(p_device_context, detail_data_v1->sInstDetailStatusAppend[index].u32InstanceId),
+                    p_device_context->p_device_info->dev_name);
+          }
+          else if (device_type == NI_DEVICE_TYPE_ENCODER)
+          {
+            strcat_dyn_buf(&output_buf,
+                    "\t\t{\n"
+                    "\t\t\t\"NUMBER\": %u,\n"
+                    "\t\t\t\"INDEX\": %u,\n"
+                    "\t\t\t\"AvgCost\": %u,\n"
+                    "\t\t\t\"FrameRate\": %u,\n"
+                    "\t\t\t\"IDR\": %u,\n"
+                    "\t\t\t\"UserIDR\": %u,\n"
+                    "\t\t\t\"InFrame\": %u,\n"
+                    "\t\t\t\"OutFrame\": %u,\n"
+                    "\t\t\t\"BR\": %u,\n"
+                    "\t\t\t\"AvgBR\": %u,\n"
+                    "\t\t\t\"Width\": %u,\n"
+                    "\t\t\t\"Height\": %u,\n"
+                    "\t\t\t\"Format\": \"%s\",\n"
+                    "\t\t\t\"SID\": \"%s\",\n"
+                    "\t\t\t\"DEVICE\": \"%s\"\n"
+                    "\t\t}",
+                    device_count,
+                    instance_count++,
+                    detail_data_v1->sInstDetailStatus[index].ui8AvgCost,
+                    detail_data_v1->sInstDetailStatus[index].ui16FrameRate,
+                    detail_data_v1->sInstDetailStatus[index].ui32NumIDR,
+                    detail_data_v1->sInstDetailStatusAppend[index].ui32UserIDR,
+                    detail_data_v1->sInstDetailStatus[index].ui32NumInFrame,
+                    detail_data_v1->sInstDetailStatus[index].ui32NumOutFrame,
+                    detail_data_v1->sInstDetailStatus[index].ui32BitRate,
+                    detail_data_v1->sInstDetailStatus[index].ui32AvgBitRate,
+                    detail_data_v1->sInstDetailStatusAppend[index].ui32Width,
+                    detail_data_v1->sInstDetailStatusAppend[index].ui32Height,
+                    get_pixel_format(p_device_context, detail_data_v1->sInstDetailStatusAppend[index].u8PixelFormat),
+                    get_session_id(p_device_context, detail_data_v1->sInstDetailStatusAppend[index].u32InstanceId),
+                    p_device_context->p_device_info->dev_name);
+          }
+          first_item_printed = 1;
+        }
+      }
+      strcat_dyn_buf(&output_buf, "\n");
+      strcat_dyn_buf(&output_buf,
+                      "\t]"
+                      );
+      first_device_type_printed = 1;
+    }
+  }
+
+  strcat_dyn_buf(&output_buf, "\n");
+  strcat_dyn_buf(&output_buf, "}\n");
+
+  if(output_buf.str_buf)
+  {
+    printf("%s", output_buf.str_buf);
+  }
+
+  clear_dyn_str_buf(&output_buf);
+
 }
 
 void print_json(ni_device_queue_t *p_device_queue,
@@ -1289,12 +1440,12 @@ UPLOADER:
                          "\t\t\t\"N_FL2V\": \"%s\",\n"
                          "\t\t\t\"FR\": \"%.8s\",\n"
                          "\t\t\t\"N_FR\": \"%.8s\""
-  #ifdef __linux__
+#ifdef __linux__
                          ",\n\t\t\t\"NUMA_NODE\": %d,\n"
                          "\t\t\t\"PCIE_ADDR\": \"%s\"\n"
-  #else
+#else
                          ",\n"
-  #endif
+#endif
                          "\t\t}\n"
                          "\t]\n"
                          "}\n",
@@ -1344,12 +1495,12 @@ UPLOADER:
                          "\t\t\t\"N_FL2V\": \"%s\",\n"
                          "\t\t\t\"FR\": \"%.8s\",\n"
                          "\t\t\t\"N_FR\": \"%.8s\""
-  #ifdef __linux__
+#ifdef __linux__
                          ",\n\t\t\t\"NUMA_NODE\": %d,\n"
                          "\t\t\t\"PCIE_ADDR\": \"%s\"\n"
-  #else
+#else
                          ",\n"
-  #endif
+#endif
                          "\t\t}\n"
                          "\t]\n"
                          "}\n",
@@ -1368,10 +1519,9 @@ UPLOADER:
                          p_device_context->p_device_info->fl_ver_nor_flash,
                          p_device_context->p_device_info->fw_rev,
                          p_device_context->p_device_info->fw_rev_nor_flash
-  #ifdef __linux__
-                         ,
-                         numa_node, pcie
-  #endif
+#ifdef __linux__
+                         , numa_node, pcie
+#endif
           );
         }
       }
@@ -1404,191 +1554,187 @@ UPLOADER:
   //Nvme[0] and TP[1] load and PCIe[3] load
   for (int icore = NP_LOAD; icore <= PCIE_LOAD; icore++)
   {
-	  // ASSUMPTION: Each Quadra has at least and only one encoder.
-	  device_type = NI_DEVICE_TYPE_ENCODER;
-	  device_count = get_modules(device_type,
-								 p_device_queue,
-								 device_name,
-								 &module_ids);
+    // ASSUMPTION: Each Quadra has at least and only one encoder.
+    device_type = NI_DEVICE_TYPE_ENCODER;
+    device_count = get_modules(device_type,
+                               p_device_queue,
+                               device_name,
+                               &module_ids);
 
-	  if (!device_count)
-	  {
-		  if (output_buf.str_buf)
-			  printf("%s", output_buf.str_buf);
-		  clear_dyn_str_buf(&output_buf);
-		  return;
-	  }
-	  if (icore == NP_LOAD)
-	  {
-		  strcpy(device_name, "nvme");
-		  g_temp_load = (uint32_t*)calloc(device_count, sizeof(uint32_t));
-		  if (!g_temp_load)
-		  {
-		    fprintf(stderr, "ERROR: calloc() failed for g_temp_load\n");
-		    return;
-		  }
-		  g_temp_pload = (uint32_t*)calloc(device_count, sizeof(uint32_t));
-		  if (!g_temp_pload)
-		  {
-		      fprintf(stderr, "ERROR: calloc() failed for g_temp_pload\n");
-			  return;
-		  }
-		  g_temp_pthroughput = (uint32_t*)calloc(device_count, sizeof(uint32_t));
-		  if (!g_temp_pthroughput)
-		  {
-		      fprintf(stderr, "ERROR: calloc() failed for g_temp_pthroughput\n");
-			  return;
-		  }
-		  g_temp_sharemem = (uint32_t*)calloc(device_count, sizeof(uint32_t));
-		  if (!g_temp_sharemem)
-		  {
-		    fprintf(stderr, "ERROR: calloc() failed for g_temp_sharemem\n");
-		    return;
-		  }
-	  }
-	  else
-	  {
-		  (icore == TP_LOAD)?strcpy(device_name, "tp"):strcpy(device_name, "pcie");
-	  }
-	  for (index = 0; index < device_count; index++)
-	  {
-		p_device_context =
-				ni_rsrc_get_device_context(device_type,
-								 module_ids[index]);
-		if (icore == NP_LOAD)
-		{
-			if (!open_and_query(device_type,
-							p_device_context,
-							p_session_context,
-							device_name, detail, detail_data_v1))
-			{
-				continue;
-			}
+    if (!device_count)
+    {
+      if (output_buf.str_buf)
+        printf("%s", output_buf.str_buf);
+      clear_dyn_str_buf(&output_buf);
+      return;
+    }
+    if (icore == NP_LOAD)
+    {
+      strcpy(device_name, "nvme");
+      g_temp_load = (uint32_t*)calloc(device_count, sizeof(uint32_t));
+      if (!g_temp_load)
+      {
+        fprintf(stderr, "ERROR: calloc() failed for g_temp_load\n");
+        return;
+      }
+      g_temp_pload = (uint32_t*)calloc(device_count, sizeof(uint32_t));
+      if (!g_temp_pload)
+      {
+        fprintf(stderr, "ERROR: calloc() failed for g_temp_pload\n");
+        return;
+      }
+      g_temp_pthroughput = (uint32_t*)calloc(device_count, sizeof(uint32_t));
+      if (!g_temp_pthroughput)
+      {
+        fprintf(stderr, "ERROR: calloc() failed for g_temp_pthroughput\n");
+        return;
+      }
+      g_temp_sharemem = (uint32_t*)calloc(device_count, sizeof(uint32_t));
+      if (!g_temp_sharemem)
+      {
+        fprintf(stderr, "ERROR: calloc() failed for g_temp_sharemem\n");
+        return;
+      }
+    }
+    else
+    {
+      (icore == TP_LOAD)?strcpy(device_name, "tp"):strcpy(device_name, "pcie");
+    }
+    for (index = 0; index < device_count; index++)
+    {
+    p_device_context = ni_rsrc_get_device_context(device_type, module_ids[index]);
+    if (icore == NP_LOAD)
+    {
+      if (!open_and_query(device_type,
+                          p_device_context,
+                          p_session_context,
+                          device_name, detail, detail_data_v1))
+      {
+        continue;
+      }
 
-			return_code =
-			  ni_query_nvme_status(p_session_context, &load_query);
-			if (return_code != NI_RETCODE_SUCCESS)
-			{
-			  fprintf(stderr,
-					  "ERROR: ni_query_nvme_status() returned %d for %s:%s:%d\n",
-					  return_code,
-					  device_name,
-					  p_device_context->p_device_info->dev_name,
-					  p_device_context->p_device_info->hw_id);
-			  remove_device_from_saved(device_type,
-									   p_device_context->p_device_info->module_id,
-									   p_session_context->device_handle);
-			  ni_device_close(p_session_context->device_handle);
-			  goto CLOSE;
-			}
-			g_temp_load[index] = load_query.tp_fw_load;
-			g_temp_pload[index] = load_query.pcie_load;
-			g_temp_pthroughput[index] = load_query.pcie_throughput;
-			g_temp_sharemem[index] = load_query.fw_share_mem_usage;
-		}
+      return_code =
+        ni_query_nvme_status(p_session_context, &load_query);
+      if (return_code != NI_RETCODE_SUCCESS)
+      {
+        fprintf(stderr,
+                "ERROR: ni_query_nvme_status() returned %d for %s:%s:%d\n",
+                return_code,
+                device_name,
+                p_device_context->p_device_info->dev_name,
+                p_device_context->p_device_info->hw_id);
+        remove_device_from_saved(device_type,
+                                 p_device_context->p_device_info->module_id,
+                                 p_session_context->device_handle);
+        ni_device_close(p_session_context->device_handle);
+        goto CLOSE;
+      }
+      g_temp_load[index] = load_query.tp_fw_load;
+      g_temp_pload[index] = load_query.pcie_load;
+      g_temp_pthroughput[index] = load_query.pcie_throughput;
+      g_temp_sharemem[index] = load_query.fw_share_mem_usage;
+    }
 
-	#ifdef __linux__
-		get_pcie_addr(p_device_context->p_device_info->dev_name, pcie);
-		numa_node = get_numa_node(p_device_context->p_device_info->dev_name);
-	#endif
+#ifdef __linux__
+    get_pcie_addr(p_device_context->p_device_info->dev_name, pcie);
+    numa_node = get_numa_node(p_device_context->p_device_info->dev_name);
+#endif
 
-		if (icore == PCIE_LOAD)
-		{
-			strcat_dyn_buf(&output_buf,
-					   "{ \"%s\" :\n"
-					   "\t[\n"
-					   "\t\t{\n"
-					   "\t\t\t\"NUMBER\": %u,\n"
-					   "\t\t\t\"INDEX\": %d,\n"
-					   "\t\t\t\"LOAD\": 0,\n"
-					   "\t\t\t\"MODEL_LOAD\": 0,\n"
-					   "\t\t\t\"FW_LOAD\": %u,\n"
-					   "\t\t\t\"INST\": 0,\n"
-					   "\t\t\t\"MAX_INST\": 0,\n"
-					   "\t\t\t\"MEM\": 0,\n"
-					   "\t\t\t\"CRITICAL_MEM\": 0,\n"
-                                           "\t\t\t\"SHARE_MEM\": %u,\n"
-					   "\t\t\t\"PCIE_THROUGHPUT\": %.1f,\n"
-					   "\t\t\t\"P2P_MEM\": 0,\n"
-					   "\t\t\t\"DEVICE\": \"%s\",\n"
-					   "\t\t\t\"L_FL2V\": \"%s\",\n"
-					   "\t\t\t\"N_FL2V\": \"%s\",\n"
-					   "\t\t\t\"FR\": \"%.8s\",\n"
-					   "\t\t\t\"N_FR\": \"%.8s\""
-	#ifdef __linux__
-					   ",\n\t\t\t\"NUMA_NODE\": %d,\n"
-					   "\t\t\t\"PCIE_ADDR\": \"%s\"\n"
-	#else
-					   ",\n"
-	#endif
-					   "\t\t}\n"
-					   "\t]\n"
-					   "}\n",
-					   device_name, device_count,
-					   p_device_context->p_device_info->module_id,
-					   g_temp_pload[index], 0, (float)g_temp_pthroughput[index]/10,
-					   p_device_context->p_device_info->dev_name,
-					   p_device_context->p_device_info->fl_ver_last_ran,
-					   p_device_context->p_device_info->fl_ver_nor_flash,
-					   p_device_context->p_device_info->fw_rev,
-					   p_device_context->p_device_info->fw_rev_nor_flash
-	#ifdef __linux__
-					   ,
-					   numa_node, pcie
-	#endif
-			);
-		}
-		else
-		{
-			load_query.fw_load = (icore==TP_LOAD)?g_temp_load[index]:load_query.fw_load;
-			load_query.fw_share_mem_usage = (icore==TP_LOAD)?g_temp_sharemem[index]:load_query.fw_share_mem_usage;
+    if (icore == PCIE_LOAD)
+    {
+      strcat_dyn_buf(&output_buf,
+                     "{ \"%s\" :\n"
+                     "\t[\n"
+                     "\t\t{\n"
+                     "\t\t\t\"NUMBER\": %u,\n"
+                     "\t\t\t\"INDEX\": %d,\n"
+                     "\t\t\t\"LOAD\": 0,\n"
+                     "\t\t\t\"MODEL_LOAD\": 0,\n"
+                     "\t\t\t\"FW_LOAD\": %u,\n"
+                     "\t\t\t\"INST\": 0,\n"
+                     "\t\t\t\"MAX_INST\": 0,\n"
+                     "\t\t\t\"MEM\": 0,\n"
+                     "\t\t\t\"CRITICAL_MEM\": 0,\n"
+                     "\t\t\t\"SHARE_MEM\": %u,\n"
+                     "\t\t\t\"PCIE_THROUGHPUT\": %.1f,\n"
+                     "\t\t\t\"P2P_MEM\": 0,\n"
+                     "\t\t\t\"DEVICE\": \"%s\",\n"
+                     "\t\t\t\"L_FL2V\": \"%s\",\n"
+                     "\t\t\t\"N_FL2V\": \"%s\",\n"
+                     "\t\t\t\"FR\": \"%.8s\",\n"
+                     "\t\t\t\"N_FR\": \"%.8s\""
+#ifdef __linux__
+                     ",\n\t\t\t\"NUMA_NODE\": %d,\n"
+                     "\t\t\t\"PCIE_ADDR\": \"%s\"\n"
+#else
+                     ",\n"
+#endif
+                     "\t\t}\n"
+                     "\t]\n"
+                     "}\n",
+                     device_name, device_count,
+                     p_device_context->p_device_info->module_id,
+                     g_temp_pload[index], 0, (float)g_temp_pthroughput[index]/10,
+                     p_device_context->p_device_info->dev_name,
+                     p_device_context->p_device_info->fl_ver_last_ran,
+                     p_device_context->p_device_info->fl_ver_nor_flash,
+                     p_device_context->p_device_info->fw_rev,
+                     p_device_context->p_device_info->fw_rev_nor_flash
+#ifdef __linux__
+                     , numa_node, pcie
+#endif
+                    );
+    }
+    else
+    {
+      load_query.fw_load = (icore==TP_LOAD)?g_temp_load[index]:load_query.fw_load;
+      load_query.fw_share_mem_usage = (icore==TP_LOAD)?g_temp_sharemem[index]:load_query.fw_share_mem_usage;
 
-			strcat_dyn_buf(&output_buf,
-					   "{ \"%s\" :\n"
-					   "\t[\n"
-					   "\t\t{\n"
-					   "\t\t\t\"NUMBER\": %u,\n"
-					   "\t\t\t\"INDEX\": %d,\n"
-					   "\t\t\t\"LOAD\": 0,\n"
-					   "\t\t\t\"MODEL_LOAD\": 0,\n"
-					   "\t\t\t\"FW_LOAD\": %u,\n"
-					   "\t\t\t\"INST\": 0,\n"
-					   "\t\t\t\"MAX_INST\": 0,\n"
-					   "\t\t\t\"MEM\": 0,\n"
-					   "\t\t\t\"CRITICAL_MEM\": 0,\n"
-					   "\t\t\t\"SHARE_MEM\": %u,\n"
-					   "\t\t\t\"P2P_MEM\": 0,\n"
-					   "\t\t\t\"DEVICE\": \"%s\",\n"
-					   "\t\t\t\"L_FL2V\": \"%s\",\n"
-					   "\t\t\t\"N_FL2V\": \"%s\",\n"
-					   "\t\t\t\"FR\": \"%.8s\",\n"
-					   "\t\t\t\"N_FR\": \"%.8s\""
-	#ifdef __linux__
-					   ",\n\t\t\t\"NUMA_NODE\": %d,\n"
-					   "\t\t\t\"PCIE_ADDR\": \"%s\"\n"
-	#else
-					   ",\n"
-	#endif
-					   "\t\t}\n"
-					   "\t]\n"
-					   "}\n",
-					   device_name, device_count,
-					   p_device_context->p_device_info->module_id,
-					   load_query.fw_load, load_query.fw_share_mem_usage,
-					   p_device_context->p_device_info->dev_name,
-					   p_device_context->p_device_info->fl_ver_last_ran,
-					   p_device_context->p_device_info->fl_ver_nor_flash,
-					   p_device_context->p_device_info->fw_rev,
-					   p_device_context->p_device_info->fw_rev_nor_flash
-	#ifdef __linux__
-					   ,
-					   numa_node, pcie
-	#endif
-			);
-		}
-	CLOSE:
-		ni_rsrc_free_device_context(p_device_context);
-	  }
+      strcat_dyn_buf(&output_buf,
+                     "{ \"%s\" :\n"
+                     "\t[\n"
+                     "\t\t{\n"
+                     "\t\t\t\"NUMBER\": %u,\n"
+                     "\t\t\t\"INDEX\": %d,\n"
+                     "\t\t\t\"LOAD\": 0,\n"
+                     "\t\t\t\"MODEL_LOAD\": 0,\n"
+                     "\t\t\t\"FW_LOAD\": %u,\n"
+                     "\t\t\t\"INST\": 0,\n"
+                     "\t\t\t\"MAX_INST\": 0,\n"
+                     "\t\t\t\"MEM\": 0,\n"
+                     "\t\t\t\"CRITICAL_MEM\": 0,\n"
+                     "\t\t\t\"SHARE_MEM\": %u,\n"
+                     "\t\t\t\"P2P_MEM\": 0,\n"
+                     "\t\t\t\"DEVICE\": \"%s\",\n"
+                     "\t\t\t\"L_FL2V\": \"%s\",\n"
+                     "\t\t\t\"N_FL2V\": \"%s\",\n"
+                     "\t\t\t\"FR\": \"%.8s\",\n"
+                     "\t\t\t\"N_FR\": \"%.8s\""
+#ifdef __linux__
+                     ",\n\t\t\t\"NUMA_NODE\": %d,\n"
+                     "\t\t\t\"PCIE_ADDR\": \"%s\"\n"
+#else
+                     ",\n"
+#endif
+                     "\t\t}\n"
+                     "\t]\n"
+                     "}\n",
+                     device_name, device_count,
+                     p_device_context->p_device_info->module_id,
+                     load_query.fw_load, load_query.fw_share_mem_usage,
+                     p_device_context->p_device_info->dev_name,
+                     p_device_context->p_device_info->fl_ver_last_ran,
+                     p_device_context->p_device_info->fl_ver_nor_flash,
+                     p_device_context->p_device_info->fw_rev,
+                     p_device_context->p_device_info->fw_rev_nor_flash
+#ifdef __linux__
+                     , numa_node, pcie
+#endif
+                    );
+    }
+  CLOSE:
+    ni_rsrc_free_device_context(p_device_context);
+    }
   }
 
   free(g_temp_load);
@@ -1692,7 +1838,7 @@ UPLOADER:
               sprintf(power_consumption, "%umW", p_dev_extra_info.power_consumption);
           }
       }
-      if (p_session_context->overall_load_query.admin_queried && 
+      if (p_session_context->overall_load_query.admin_queried &&
           device_type != NI_DEVICE_TYPE_UPLOAD)
       {
         strcat_dyn_buf(&output_buf,
@@ -1720,7 +1866,7 @@ UPLOADER:
                        ",\n\t\t\"NUMA_NODE\": %d,\n"
                        "\t\t\"PCIE_ADDR\": \"%s\""
 #endif
-                       ,device_count, p_device_context->p_device_info->module_id,
+                       , device_count, p_device_context->p_device_info->module_id,
                        vpu_load,
                        p_session_context->overall_load_query.overall_current_load,
                        model_load,
@@ -1738,8 +1884,7 @@ UPLOADER:
                        p_device_context->p_device_info->fw_rev,
                        p_device_context->p_device_info->fw_rev_nor_flash
 #ifdef __linux__
-                       ,
-                       numa_node, pcie
+                       , numa_node, pcie
 #endif
         );
       } else
@@ -1788,7 +1933,7 @@ UPLOADER:
       }
       if (format == 2)
       {
-          strcat_dyn_buf(&output_buf, 
+          strcat_dyn_buf(&output_buf,
                          ",\n\t\t\"TEMP\": %d,\n"
                          "\t\t\"POWER\": \"%s\"\n"
                          "\t}",
@@ -1831,213 +1976,210 @@ UPLOADER:
   //Nvme[0] and TP[1] load
   for (int icore = NP_LOAD; icore <= PCIE_LOAD; icore++)
   {
-	  // ASSUMPTION: Each Quadra has at least and only one encoder.
-	  device_type = NI_DEVICE_TYPE_ENCODER;
-	  device_count = get_modules(device_type,
-								 p_device_queue,
-								 device_name,
-								 &module_ids);
+    // ASSUMPTION: Each Quadra has at least and only one encoder.
+    device_type = NI_DEVICE_TYPE_ENCODER;
+    device_count = get_modules(device_type,
+                               p_device_queue,
+                               device_name,
+                               &module_ids);
 
-	  if (!device_count)
-	  {
-		  if (output_buf.str_buf)
-			  printf("%s", output_buf.str_buf);
-		  clear_dyn_str_buf(&output_buf);
-		  return;
-	  }
-	  if (icore == NP_LOAD)
-	  {
-	  	  strcat_dyn_buf(&output_buf, "  \"nvmes\": [\n");
-	  	  g_temp_load = (uint32_t*)calloc(device_count, sizeof(uint32_t));
-	  	  if (!g_temp_load)
-           	  {
-	          	fprintf(stderr, "ERROR: calloc() failed for g_temp_load\n");
-		      	return;
-	      	  }
-		  g_temp_pload = (uint32_t*)calloc(device_count, sizeof(uint32_t));
-		  if (!g_temp_pload)
-		  {
-		      fprintf(stderr, "ERROR: calloc() failed for g_temp_pload\n");
-			  return;
-		  }
-		  g_temp_pthroughput = (uint32_t*)calloc(device_count, sizeof(uint32_t));
-		  if (!g_temp_pthroughput)
-		  {
-		      fprintf(stderr, "ERROR: calloc() failed for g_temp_pthroughput\n");
-			  return;
-		  }
-	          g_temp_sharemem = (uint32_t*)calloc(device_count, sizeof(uint32_t));
-	      	  if (!g_temp_sharemem)
-          	  {
-	              fprintf(stderr, "ERROR: calloc() failed for g_temp_sharemem\n");
-		      return;
-	      	  }
-	  }
-	  else
-	  {
-		  (icore == TP_LOAD)?strcat_dyn_buf(&output_buf, "  \"tps\": [\n"):strcat_dyn_buf(&output_buf, "  \"pcies\": [\n");
-	  }
-	  for (index = 0; index < device_count; index++)
-	  {
-		p_device_context =
-				ni_rsrc_get_device_context(device_type,
-					module_ids[index]);
-		if (icore == NP_LOAD)
-		{
-			if (!open_and_query(device_type,
-							p_device_context,
-							p_session_context,
-							device_name, detail, detail_data_v1))
-			{
-				continue;
-			}
+    if (!device_count)
+    {
+      if (output_buf.str_buf)
+        printf("%s", output_buf.str_buf);
+      clear_dyn_str_buf(&output_buf);
+      return;
+    }
+    if (icore == NP_LOAD)
+    {
+      strcat_dyn_buf(&output_buf, "  \"nvmes\": [\n");
+      g_temp_load = (uint32_t*)calloc(device_count, sizeof(uint32_t));
+      if (!g_temp_load)
+      {
+        fprintf(stderr, "ERROR: calloc() failed for g_temp_load\n");
+        return;
+      }
+      g_temp_pload = (uint32_t*)calloc(device_count, sizeof(uint32_t));
+      if (!g_temp_pload)
+      {
+        fprintf(stderr, "ERROR: calloc() failed for g_temp_pload\n");
+        return;
+      }
+      g_temp_pthroughput = (uint32_t*)calloc(device_count, sizeof(uint32_t));
+      if (!g_temp_pthroughput)
+      {
+        fprintf(stderr, "ERROR: calloc() failed for g_temp_pthroughput\n");
+        return;
+      }
+      g_temp_sharemem = (uint32_t*)calloc(device_count, sizeof(uint32_t));
+      if (!g_temp_sharemem)
+      {
+        fprintf(stderr, "ERROR: calloc() failed for g_temp_sharemem\n");
+        return;
+      }
+    }
+    else
+    {
+      (icore == TP_LOAD)?strcat_dyn_buf(&output_buf, "  \"tps\": [\n"):strcat_dyn_buf(&output_buf, "  \"pcies\": [\n");
+    }
+    for (index = 0; index < device_count; index++)
+    {
+      p_device_context = ni_rsrc_get_device_context(device_type,
+                                                    module_ids[index]);
+      if (icore == NP_LOAD)
+      {
+        if (!open_and_query(device_type,
+                            p_device_context,
+                            p_session_context,
+                            device_name, detail, detail_data_v1))
+        {
+          continue;
+        }
 
-			return_code =
-			  ni_query_nvme_status(p_session_context, &load_query);
-			if (return_code != NI_RETCODE_SUCCESS)
-			{
-			  fprintf(stderr,
-					  "ERROR: ni_query_nvme_status() returned %d for %s:%s:%d\n",
-					  return_code,
-					  device_name,
-					  p_device_context->p_device_info->dev_name,
-					  p_device_context->p_device_info->hw_id);
-			  remove_device_from_saved(device_type,
-									   p_device_context->p_device_info->module_id,
-									   p_session_context->device_handle);
-			  ni_device_close(p_session_context->device_handle);
-			  goto CLOSE;
-			}
-			g_temp_load[index] = load_query.tp_fw_load;
-			g_temp_pload[index] = load_query.pcie_load;
-			g_temp_pthroughput[index] = load_query.pcie_throughput;
-			g_temp_sharemem[index] = load_query.fw_share_mem_usage;
-		}
+        return_code =
+          ni_query_nvme_status(p_session_context, &load_query);
+        if (return_code != NI_RETCODE_SUCCESS)
+        {
+          fprintf(stderr,
+                  "ERROR: ni_query_nvme_status() returned %d for %s:%s:%d\n",
+                  return_code,
+                  device_name,
+                  p_device_context->p_device_info->dev_name,
+                  p_device_context->p_device_info->hw_id);
+          remove_device_from_saved(device_type,
+                                   p_device_context->p_device_info->module_id,
+                                   p_session_context->device_handle);
+          ni_device_close(p_session_context->device_handle);
+          goto CLOSE;
+        }
+        g_temp_load[index] = load_query.tp_fw_load;
+        g_temp_pload[index] = load_query.pcie_load;
+        g_temp_pthroughput[index] = load_query.pcie_throughput;
+        g_temp_sharemem[index] = load_query.fw_share_mem_usage;
+      }
 #ifdef __linux__
-		get_pcie_addr(p_device_context->p_device_info->dev_name, pcie);
-		numa_node = get_numa_node(p_device_context->p_device_info->dev_name);
+      get_pcie_addr(p_device_context->p_device_info->dev_name, pcie);
+      numa_node = get_numa_node(p_device_context->p_device_info->dev_name);
 #endif
-    		if (format == 2)
-    		{
-      			if (ni_query_extra_info(p_session_context->device_handle,
-                              &p_dev_extra_info,
-                              p_device_context->p_device_info->fw_rev))
-      			{
-          			p_dev_extra_info.composite_temp = 0;
-      			}
-      			if (p_dev_extra_info.power_consumption + 1)
-      			{
-          			sprintf(power_consumption, "%umW", p_dev_extra_info.power_consumption);
-      			}
-    		}
+      if (format == 2)
+      {
+        if (ni_query_extra_info(p_session_context->device_handle,
+                                &p_dev_extra_info,
+                                p_device_context->p_device_info->fw_rev))
+        {
+          p_dev_extra_info.composite_temp = 0;
+        }
+        if (p_dev_extra_info.power_consumption + 1)
+        {
+          sprintf(power_consumption, "%umW", p_dev_extra_info.power_consumption);
+        }
+      }
 
-    		if (icore==PCIE_LOAD)
-    		{
-			strcat_dyn_buf(&output_buf,
-					   "\t{\n"
-					   "\t\t\"NUMBER\": %u,\n"
-					   "\t\t\"INDEX\": %d,\n"
-					   "\t\t\"LOAD\": 0,\n"
-					   "\t\t\"MODEL_LOAD\": 0,\n"
-					   "\t\t\"FW_LOAD\": %u,\n"
-					   "\t\t\"INST\": 0,\n"
-					   "\t\t\"MAX_INST\": 0,\n"
-					   "\t\t\"MEM\": 0,\n"
-					   "\t\t\"CRITICAL_MEM\": 0,\n"
-                                           "\t\t\"SHARE_MEM\": %u,\n"
-					   "\t\t\"PCIE_THROUGHPUT\": %.1f,\n"
-					   "\t\t\"P2P_MEM\": 0,\n"
-					   "\t\t\"DEVICE\": \"%s\",\n"
-					   "\t\t\"L_FL2V\": \"%s\",\n"
-					   "\t\t\"N_FL2V\": \"%s\",\n"
-					   "\t\t\"FR\": \"%.8s\",\n"
-					   "\t\t\"N_FR\": \"%.8s\""
+      if (icore==PCIE_LOAD)
+      {
+        strcat_dyn_buf(&output_buf,
+                       "\t{\n"
+                       "\t\t\"NUMBER\": %u,\n"
+                       "\t\t\"INDEX\": %d,\n"
+                       "\t\t\"LOAD\": 0,\n"
+                       "\t\t\"MODEL_LOAD\": 0,\n"
+                       "\t\t\"FW_LOAD\": %u,\n"
+                       "\t\t\"INST\": 0,\n"
+                       "\t\t\"MAX_INST\": 0,\n"
+                       "\t\t\"MEM\": 0,\n"
+                       "\t\t\"CRITICAL_MEM\": 0,\n"
+                       "\t\t\"SHARE_MEM\": %u,\n"
+                       "\t\t\"PCIE_THROUGHPUT\": %.1f,\n"
+                       "\t\t\"P2P_MEM\": 0,\n"
+                       "\t\t\"DEVICE\": \"%s\",\n"
+                       "\t\t\"L_FL2V\": \"%s\",\n"
+                       "\t\t\"N_FL2V\": \"%s\",\n"
+                       "\t\t\"FR\": \"%.8s\",\n"
+                       "\t\t\"N_FR\": \"%.8s\""
 #ifdef __linux__
-             				   ",\n\t\t\"NUMA_NODE\": %d,\n"
-             				   "\t\t\"PCIE_ADDR\": \"%s\""
+                       ",\n\t\t\"NUMA_NODE\": %d,\n"
+                       "\t\t\"PCIE_ADDR\": \"%s\""
 #endif
-             				   ,device_count, p_device_context->p_device_info->module_id,
-					   g_temp_pload[index], 0, (float)g_temp_pthroughput[index]/10,
-					   p_device_context->p_device_info->dev_name,
-					   p_device_context->p_device_info->fl_ver_last_ran,
-					   p_device_context->p_device_info->fl_ver_nor_flash,
-					   p_device_context->p_device_info->fw_rev,
-					   p_device_context->p_device_info->fw_rev_nor_flash
+                       , device_count, p_device_context->p_device_info->module_id,
+                       g_temp_pload[index], 0, (float)g_temp_pthroughput[index]/10,
+                       p_device_context->p_device_info->dev_name,
+                       p_device_context->p_device_info->fl_ver_last_ran,
+                       p_device_context->p_device_info->fl_ver_nor_flash,
+                       p_device_context->p_device_info->fw_rev,
+                       p_device_context->p_device_info->fw_rev_nor_flash
 #ifdef __linux__
-					   ,
-					   numa_node, pcie
+                       , numa_node, pcie
 #endif
-			);
-    		}
-    		else
-    		{
-        		load_query.fw_load = (icore==TP_LOAD)?g_temp_load[index]:load_query.fw_load;
-			load_query.fw_share_mem_usage = (icore==TP_LOAD)?g_temp_sharemem[index]:load_query.fw_share_mem_usage;
+                       );
+      }
+      else
+      {
+        load_query.fw_load = (icore==TP_LOAD)?g_temp_load[index]:load_query.fw_load;
+        load_query.fw_share_mem_usage = (icore==TP_LOAD)?g_temp_sharemem[index]:load_query.fw_share_mem_usage;
 
-			strcat_dyn_buf(&output_buf,
-					   "\t{\n"
-					   "\t\t\"NUMBER\": %u,\n"
-					   "\t\t\"INDEX\": %d,\n"
-					   "\t\t\"LOAD\": 0,\n"
-					   "\t\t\"MODEL_LOAD\": 0,\n"
-					   "\t\t\"FW_LOAD\": %u,\n"
-					   "\t\t\"INST\": 0,\n"
-					   "\t\t\"MAX_INST\": 0,\n"
-					   "\t\t\"MEM\": 0,\n"
-					   "\t\t\"CRITICAL_MEM\": 0,\n"
-					   "\t\t\"SHARE_MEM\": %u,\n"
-					   "\t\t\"P2P_MEM\": 0,\n"
-					   "\t\t\"DEVICE\": \"%s\",\n"
-					   "\t\t\"L_FL2V\": \"%s\",\n"
-					   "\t\t\"N_FL2V\": \"%s\",\n"
-					   "\t\t\"FR\": \"%.8s\",\n"
-					   "\t\t\"N_FR\": \"%.8s\""
+        strcat_dyn_buf(&output_buf,
+                       "\t{\n"
+                       "\t\t\"NUMBER\": %u,\n"
+                       "\t\t\"INDEX\": %d,\n"
+                       "\t\t\"LOAD\": 0,\n"
+                       "\t\t\"MODEL_LOAD\": 0,\n"
+                       "\t\t\"FW_LOAD\": %u,\n"
+                       "\t\t\"INST\": 0,\n"
+                       "\t\t\"MAX_INST\": 0,\n"
+                       "\t\t\"MEM\": 0,\n"
+                       "\t\t\"CRITICAL_MEM\": 0,\n"
+                       "\t\t\"SHARE_MEM\": %u,\n"
+                       "\t\t\"P2P_MEM\": 0,\n"
+                       "\t\t\"DEVICE\": \"%s\",\n"
+                       "\t\t\"L_FL2V\": \"%s\",\n"
+                       "\t\t\"N_FL2V\": \"%s\",\n"
+                       "\t\t\"FR\": \"%.8s\",\n"
+                       "\t\t\"N_FR\": \"%.8s\""
 #ifdef __linux__
-             				   ",\n\t\t\"NUMA_NODE\": %d,\n"
-             				   "\t\t\"PCIE_ADDR\": \"%s\""
+                       ",\n\t\t\"NUMA_NODE\": %d,\n"
+                       "\t\t\"PCIE_ADDR\": \"%s\""
 #endif
-             				   ,device_count, p_device_context->p_device_info->module_id,
-					   load_query.fw_load, load_query.fw_share_mem_usage,
-					   p_device_context->p_device_info->dev_name,
-					   p_device_context->p_device_info->fl_ver_last_ran,
-					   p_device_context->p_device_info->fl_ver_nor_flash,
-					   p_device_context->p_device_info->fw_rev,
-					   p_device_context->p_device_info->fw_rev_nor_flash
+                       , device_count, p_device_context->p_device_info->module_id,
+                       load_query.fw_load, load_query.fw_share_mem_usage,
+                       p_device_context->p_device_info->dev_name,
+                       p_device_context->p_device_info->fl_ver_last_ran,
+                       p_device_context->p_device_info->fl_ver_nor_flash,
+                       p_device_context->p_device_info->fw_rev,
+                       p_device_context->p_device_info->fw_rev_nor_flash
 #ifdef __linux__
-					   ,
-					   numa_node, pcie
+                       , numa_node, pcie
 #endif
-			);
-    		}
-    		if (format == 2)
-    		{
-        		strcat_dyn_buf(&output_buf, 
-                        ",\n\t\t\"TEMP\": %d,\n"
-                        "\t\t\"POWER\": \"%s\"\n"
-                        "\t}",
-                        p_dev_extra_info.composite_temp + ABSOLUTE_TEMP_ZERO,
-                        (p_dev_extra_info.power_consumption + 1) ? power_consumption : "N/A");
-    		}
-    		else
-    		{
-        		strcat_dyn_buf(&output_buf, "\n\t}");
-    		}
-		if (index < device_count - 1)
-		{
-			strcat_dyn_buf(&output_buf, ",\n");
-		}
-		else
-		{
-			strcat_dyn_buf(&output_buf, "\n");
-			if (icore != PCIE_LOAD)
-			{
-				strcat_dyn_buf(&output_buf, "  ],\n");
-			}
-		}
+                       );
+      }
+      if (format == 2)
+      {
+        strcat_dyn_buf(&output_buf,
+                       ",\n\t\t\"TEMP\": %d,\n"
+                       "\t\t\"POWER\": \"%s\"\n"
+                       "\t}",
+                       p_dev_extra_info.composite_temp + ABSOLUTE_TEMP_ZERO,
+                       (p_dev_extra_info.power_consumption + 1) ? power_consumption : "N/A");
+      }
+      else
+      {
+        strcat_dyn_buf(&output_buf, "\n\t}");
+      }
+      if (index < device_count - 1)
+      {
+        strcat_dyn_buf(&output_buf, ",\n");
+      }
+      else
+      {
+        strcat_dyn_buf(&output_buf, "\n");
+        if (icore != PCIE_LOAD)
+        {
+          strcat_dyn_buf(&output_buf, "  ],\n");
+        }
+      }
 
 CLOSE:
-		ni_rsrc_free_device_context(p_device_context);
-	  }
+      ni_rsrc_free_device_context(p_device_context);
+    }
   }
 
   free(g_temp_load);
@@ -2249,7 +2391,7 @@ void print_text(ni_device_queue_t *coders,
                          sessionCtxt->load_query.fw_share_mem_usage,
                          sessionCtxt->load_query.fw_p2p_mem_usage,
                          p_device_context->p_device_info->dev_name);
-          
+
         }
 
           ni_rsrc_free_device_context(p_device_context);
@@ -2275,8 +2417,8 @@ void print_extra(ni_device_queue_t *p_device_queue, ni_session_context_t *p_sess
   char power_consumption[16];
   int instance_count = 0;
 
-  // ASSUMPTION: Each Quadra has at least and only one decoder.
-  device_type = NI_DEVICE_TYPE_DECODER;
+  // ASSUMPTION: Each Quadra has at least and only one encoder.
+  device_type = NI_DEVICE_TYPE_ENCODER;
   device_count = get_modules(device_type,
                              p_device_queue,
                              device_name,
@@ -2315,7 +2457,7 @@ void print_extra(ni_device_queue_t *p_device_queue, ni_session_context_t *p_sess
                 p_session_context->device_handle;
         }
     }
-    
+
     if (p_session_context->device_handle == NI_INVALID_DEVICE_HANDLE)
     {
       fprintf(stderr,
@@ -2332,16 +2474,16 @@ void print_extra(ni_device_queue_t *p_device_queue, ni_session_context_t *p_sess
     {
         p_dev_extra_info.composite_temp = 0;
     }
-    
+
     if (p_dev_extra_info.power_consumption + 1)
     {
         sprintf(power_consumption, "%umW", p_dev_extra_info.power_consumption);
     }
     if (!internal_call)
     {
-    	strcat_dyn_buf(&output_buf,
+      strcat_dyn_buf(&output_buf,
                 "%-4s %-8s %-14s\n", "TEMP", "POWER", "DEVICE");
-    	strcat_dyn_buf(&output_buf,
+      strcat_dyn_buf(&output_buf,
                 "%-4d %-8s %-14s\n",
                 p_dev_extra_info.composite_temp + ABSOLUTE_TEMP_ZERO,
                 (p_dev_extra_info.power_consumption + 1) ? power_consumption : "N/A",
@@ -2349,54 +2491,54 @@ void print_extra(ni_device_queue_t *p_device_queue, ni_session_context_t *p_sess
     }
     else
     {
-	if (instance_count == 0)
-	{
-                strcat_dyn_buf(&output_buf,
-    	        "%-8s %-8s %-8s %-8.8s %-8.8s \n", "INDEX", "TEMP", "POWER", "FR", "SN");
-	}
-    	strcat_dyn_buf(&output_buf,
-    	         "%-8d %-8d %-8s %-8.8s %-8.*s \n",
-    	         instance_count++ , p_dev_extra_info.composite_temp + ABSOLUTE_TEMP_ZERO,
-    	         (p_dev_extra_info.power_consumption + 1) ? power_consumption : "N/A",
-    	         p_device_context->p_device_info->fw_rev,
-    	         (int)sizeof(p_device_context->p_device_info->serial_number), p_device_context->p_device_info->serial_number);
+      if (instance_count == 0)
+      {
+        strcat_dyn_buf(&output_buf,
+                       "%-8s %-8s %-8s %-8.8s %-8.8s \n", "INDEX", "TEMP", "POWER", "FR", "SN");
+      }
+        strcat_dyn_buf(&output_buf,
+                       "%-8d %-8d %-8s %-8.8s %-8.*s \n",
+                       instance_count++ , p_dev_extra_info.composite_temp + ABSOLUTE_TEMP_ZERO,
+                       (p_dev_extra_info.power_consumption + 1) ? power_consumption : "N/A",
+                       p_device_context->p_device_info->fw_rev,
+                       (int)sizeof(p_device_context->p_device_info->serial_number), p_device_context->p_device_info->serial_number);
 
     }
     ni_rsrc_free_device_context(p_device_context);
   }
 
   if (output_buf.str_buf)
-      printf("%s", output_buf.str_buf);
+    printf("%s", output_buf.str_buf);
   clear_dyn_str_buf(&output_buf);
   free(module_ids);
 }
 
 int main(int argc, char *argv[])
 {
-    setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
-    int checkInterval;
-    int skip_init_rsrc = 0;
-    int should_match_rev = 1;
-    int detail = 0;
-    ni_instance_mgr_detail_status_v1_t detail_data_v1 = {0};
-    ni_instance_mgr_detail_status_v1_t (*previous_detail_data)[NI_DEVICE_TYPE_XCODER_MAX] = NULL;
-    ni_device_pool_t *p_device_pool = NULL;
-    ni_device_queue_t *coders = NULL;
-    ni_session_context_t *p_xCtxt = NULL;
-    time_t startTime = {0}, now = {0};
-    int timeout_seconds = 0;
-    struct tm *ltime = NULL;
-    char buf[64] = {0};
-    long long time_diff_hours, time_diff_minutes, time_diff_seconds;
-    int opt;
-    ni_log_level_t log_level = NI_LOG_INFO;
-    enum outFormat printFormat = FMT_TEXT;
-    checkInterval = 0;
-    bool fw_log_dump = false;
-    int devid = -1;
-    int refresh_device_pool = 1;
-    bool is_first_query = true;
-    int ret = 0;
+  setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
+  int checkInterval;
+  int skip_init_rsrc = 0;
+  int should_match_rev = 1;
+  int detail = 0;
+  ni_instance_mgr_detail_status_v1_t detail_data_v1 = {0};
+  ni_instance_mgr_detail_status_v1_t (*previous_detail_data)[NI_DEVICE_TYPE_XCODER_MAX] = NULL;
+  ni_device_pool_t *p_device_pool = NULL;
+  ni_device_queue_t *coders = NULL;
+  ni_session_context_t *p_xCtxt = NULL;
+  time_t startTime = {0}, now = {0};
+  int timeout_seconds = 0;
+  struct tm *ltime = NULL;
+  char buf[64] = {0};
+  long long time_diff_hours, time_diff_minutes, time_diff_seconds;
+  int opt;
+  ni_log_level_t log_level = NI_LOG_INFO;
+  enum outFormat printFormat = FMT_TEXT;
+  checkInterval = 0;
+  bool fw_log_dump = false;
+  int devid = -1;
+  int refresh_device_pool = 1;
+  bool is_first_query = true;
+  int ret = 0;
 
 #ifdef _WIN32
   SetConsoleCtrlHandler(console_ctrl_handler, TRUE);
@@ -2503,7 +2645,7 @@ int main(int argc, char *argv[])
              "    no selection, poll indefinitely until a Quadra device is found.\n"
              "    Default: 0\n"
              "-S  Skip init_rsrc.\n"
-             "-d  Print detailed infomation for decoder/encoder in text and json formats.\n"
+             "-d  Print detailed information for decoder/encoder in text and json formats.\n"
              "-l  Set loglevel of libxcoder API.\n"
              "    [none, fatal, error, info, debug, trace]\n"
              "    Default: info\n"
@@ -2523,6 +2665,11 @@ int main(int argc, char *argv[])
              "P2P_MEM       usage of memory by P2P\n"
              "DEVICE        path to NVMe device file handle\n"
              "NAMESPACE     path to NVMe namespace file handle\n"
+             "Additional information only in text(Default) mode \n"
+             "TEMP          current temperature (degrees Celsius)\n"
+             "POWER         current power(mW), N/A when query power not supported\n"
+             "FR            current firmware revision\n"
+             "SN            serial number of the Quadra device\n"
              "\n"
              "Additional reporting columns for full output format\n"
              "VPU           same as LOAD in JSON outputs\n"
@@ -2536,8 +2683,10 @@ int main(int argc, char *argv[])
              "\n"
              "Additional reporting columns for full JSON formats\n"
              "LOAD          VPU load\n"
-             "FW_LOAD	      system load\n",
-             NI_XCODER_REVISION);
+             "FW_LOAD       system load\n"
+             "\n"
+             "Extra output shows TEMP and POWER of the Quadra device \n",
+              NI_XCODER_REVISION);
       return 0;
     case 'v':
         printf("Release ver: %s\n"
@@ -2600,7 +2749,7 @@ int main(int argc, char *argv[])
       ni_rsrc_refresh(should_match_rev);
       fprintf(stderr, "FATAL: NI resource unavailable\n");
       ret = 0;
-    } else 
+    } else
     {
       ret = 1;
       fprintf(stderr, "FATAL: cannot access NI resource\n");
@@ -2711,10 +2860,24 @@ int main(int argc, char *argv[])
         print_json(coders, p_xCtxt, detail, &detail_data_v1);
         break;
       case FMT_JSON1:
-        print_json1(coders, p_xCtxt, 0, &detail_data_v1, 1);
+        if(!detail)
+        {
+          print_json1(coders, p_xCtxt, 0, &detail_data_v1, 1);
+        }
+        else
+        {
+          print_json_detail(coders, p_xCtxt, &detail_data_v1);
+        }
         break;
       case FMT_JSON2:
-        print_json1(coders, p_xCtxt, 0, &detail_data_v1, 2);
+        if(!detail)
+        {
+          print_json1(coders, p_xCtxt, 0, &detail_data_v1, 2);
+        }
+        else
+        {
+          print_json_detail(coders, p_xCtxt, &detail_data_v1);
+        }
         break;
       case FMT_EXTRA:
         print_extra(coders, p_xCtxt, 0);
@@ -2727,7 +2890,7 @@ int main(int argc, char *argv[])
     {
       printf("**************************************************\n");
     }
- 
+
     fflush(stdout);
 
     if (checkInterval == 0)

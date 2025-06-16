@@ -38,7 +38,7 @@
 
 static void print_usage(void)
 {
-    ni_log(NI_LOG_ERROR, 
+    ni_log(NI_LOG_ERROR,
         "Video decoding demo application directly using Netint Libxcoder version %s\n"
         "Usage: ni_xcoder_decode [options]\n"
         "\n"
@@ -70,7 +70,9 @@ int main(int argc, char *argv[])
     char in_filename[FILE_NAME_LEN] = {0};
     char out_filename[FILE_NAME_LEN] = {0};
     FILE *output_fp = NULL;
-    int video_width, video_height, bit_depth;
+    int video_width = 0;
+    int video_height = 0;
+    int bit_depth = 0;
     int dec_codec_format = -1;
     ni_log_level_t log_level;
     int xcoderGUID = 0;
@@ -141,7 +143,7 @@ int main(int argc, char *argv[])
                 {
                     dec_codec_format = NI_CODEC_FORMAT_VP9;
                 }
-                else 
+                else
                 {
                     ni_log(NI_LOG_ERROR, "Error: Invalid value \"%s\" for -m | --dec-codec option\n"
                            "Must be one of [a|avc, h|hevc, v|vp9]\n", optarg);
@@ -154,7 +156,7 @@ int main(int argc, char *argv[])
                 if (log_level != NI_LOG_INVALID)
                 {
                     ni_log_set_level(log_level);
-                } 
+                }
                 else
                 {
                     ni_log(NI_LOG_ERROR, "Error: Invalid value \"%s\" for -l | --loglevel option\n"
@@ -165,7 +167,7 @@ int main(int argc, char *argv[])
                 break;
             case 'c':
                 xcoderGUID = (int)strtol(optarg, &n, 10);
-                if (n == optarg || *n != '\0' || xcoderGUID < 0) 
+                if (n == optarg || *n != '\0' || xcoderGUID < 0)
                 {
                     ni_log(NI_LOG_ERROR, "Error: Invalid value \"%s\" for -c | --card option\n"
                            "Must be a non-negative integer\n", optarg);
@@ -175,7 +177,7 @@ int main(int argc, char *argv[])
                 break;
             case 'r':
                 ctx.loops_left = strtol(optarg, &n, 10);
-                if (n == optarg || *n != '\0' || ctx.loops_left <= 0)
+                if (n == optarg || *n != '\0' || !(ctx.loops_left >= 1))
                 {
                     ni_log(NI_LOG_ERROR, "Error: Invalid value \"%s\" for -r | --repeat option\n"
                            "Must be a positive integer\n", optarg);
@@ -290,10 +292,10 @@ int main(int argc, char *argv[])
         video_height = vp9_info.height;
         ni_log(NI_LOG_INFO,
                "Using probed VP9 source info: %d bits, resolution %dx%d, timebase %u/%u\n",
-               bit_depth, video_width, video_height, 
+               bit_depth, video_width, video_height,
                vp9_info.timebase.den, vp9_info.timebase.num);
     }
-    
+
     // set up decoder config params with some hard-coded values
     ret = ni_decoder_init_default_params(p_dec_api_param, 25, 1, 200000, video_width, video_height);
     if (ret)
@@ -349,7 +351,7 @@ int main(int argc, char *argv[])
            (send_rc == NI_TEST_RETCODE_EAGAIN && receive_rc == NI_TEST_RETCODE_EAGAIN))
     {
         // Sending
-        send_rc = decoder_send_data(&ctx, &dec_ctx, &in_pkt, video_width, 
+        send_rc = decoder_send_data(&ctx, &dec_ctx, &in_pkt, video_width,
                                     video_height, p_stream_info);
         if (send_rc < 0)
         {
@@ -390,15 +392,15 @@ int main(int argc, char *argv[])
             }
 
             current_time = ni_gettime_ns();
-            if (current_time - previous_time >= (uint64_t)1000000000) 
+            if (current_time - previous_time >= (uint64_t)1000000000)
             {
-                ni_log(NI_LOG_INFO, "Decoder stats: received %u frames, fps %.2f, total bytes %u\n", 
-                       ctx.num_frames_received, 
+                ni_log(NI_LOG_INFO, "Decoder stats: received %u frames, fps %.2f, total bytes %u\n",
+                       ctx.num_frames_received,
                        (float)ctx.num_frames_received / (float)(current_time - ctx.start_time) * (float)1000000000,
                        ctx.dec_total_bytes_received);
                 previous_time = current_time;
             }
-            
+
         } while (!dec_ctx.decoder_low_delay && rx_size > 0); //drain consecutive outputs
 
         // Error or eos
@@ -415,7 +417,7 @@ end:
     if (dec_ctx.hw_action == NI_CODEC_HW_ENABLE)
     {
         ni_frame_buffer_free(&out_frame.data.frame);
-    } else 
+    } else
     {
         ni_decoder_frame_buffer_free(&out_frame.data.frame);
     }
@@ -424,10 +426,15 @@ end:
 
     free(p_dec_api_param);
     free(ctx.file_cache);
+    for(i = 0; i < MAX_OUTPUT_FILES; ++i)
+    {
+        free(ctx.enc_pts_queue[i]);
+        ctx.enc_pts_queue[i] = NULL;
+    }
     if (output_fp != NULL)
     {
         fclose(output_fp);
     }
-    
+
     return ret;
 }

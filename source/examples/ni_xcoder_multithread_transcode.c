@@ -22,7 +22,7 @@
 /*!*****************************************************************************
  *  \file   ni_xcoder_multithread_transcode.c
  *
- *  \brief  Multi-threaded video transcoding and filtering demo application 
+ *  \brief  Multi-threaded video transcoding and filtering demo application
  *          directly using Netint Libxcoder API
  ******************************************************************************/
 
@@ -42,7 +42,7 @@
 
 static void print_usage(void)
 {
-    ni_log(NI_LOG_ERROR, 
+    ni_log(NI_LOG_ERROR,
         "Multi-threaded video transcoding demo application directly using Netint Libxcoder version %s\n"
         "Usage: ni_xcoder_multithread_transcode [options]\n"
         "\n"
@@ -207,7 +207,7 @@ int main(int argc, char *argv[])
                 {
                     dec_codec_format = NI_CODEC_FORMAT_VP9;
                 }
-                else 
+                else
                 {
                     ni_log(NI_LOG_ERROR, "Error: Invalid value \"%s\" for -m | --dec-codec option\n"
                         "Must be one of [a|avc, h|hevc, v|vp9]\n", optarg);
@@ -233,7 +233,7 @@ int main(int argc, char *argv[])
                 {
                     enc_codec_format = NI_CODEC_FORMAT_AV1;
                 }
-                else 
+                else
                 {
                     ni_log(NI_LOG_ERROR, "Error: Invalid value \"%s\" for -n | --enc-codec option\n"
                         "Must be one of [a|avc, h|hevc, x|av1]\n", optarg);
@@ -246,7 +246,7 @@ int main(int argc, char *argv[])
                 if (log_level != NI_LOG_INVALID)
                 {
                     ni_log_set_level(log_level);
-                } 
+                }
                 else
                 {
                     ni_log(NI_LOG_ERROR, "Error: Invalid value \"%s\" for -l | --loglevel option\n"
@@ -257,7 +257,7 @@ int main(int argc, char *argv[])
                 break;
             case 'c':
                 xcoderGUID = (int)strtol(optarg, &n, 10);
-                if (n == optarg || *n != '\0' || xcoderGUID < 0) 
+                if (n == optarg || *n != '\0' || xcoderGUID < 0)
                 {
                     ni_log(NI_LOG_ERROR, "Error: Invalid value \"%s\" for -c | --card option\n"
                         "Must be a non-negative integer\n", optarg);
@@ -267,7 +267,7 @@ int main(int argc, char *argv[])
                 break;
             case 'r':
                 ctx.loops_left = strtol(optarg, &n, 10);
-                if (n == optarg || *n != '\0' || ctx.loops_left <= 0)
+                if (n == optarg || *n != '\0' || !(ctx.loops_left >= 1))
                 {
                     ni_log(NI_LOG_ERROR, "Error: Invalid value \"%s\" for -r | --repeat option\n"
                         "Must be a positive integer\n", optarg);
@@ -426,10 +426,10 @@ int main(int argc, char *argv[])
         input_height = vp9_info.height;
         ni_log(NI_LOG_INFO,
             "Using probed VP9 source info: %d bits, resolution %dx%d, timebase %u/%u\n",
-            bit_depth, input_width, input_height, 
+            bit_depth, input_width, input_height,
             vp9_info.timebase.den, vp9_info.timebase.num);
     }
-    
+
     // set up decoder config params with some hard-coded values
     ret = ni_decoder_init_default_params(p_dec_api_param, 25, 1, 200000, input_width, input_height);
     if (ret)
@@ -554,7 +554,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    ni_log(NI_LOG_INFO, "Starting to transcode: HWFrames %d, video resolution %dx%d -> %dx%d\n", 
+    ni_log(NI_LOG_INFO, "Starting to transcode: HWFrames %d, video resolution %dx%d -> %dx%d\n",
         dec_ctx.hw_action, input_width, input_height, output_width, output_height);
 
     ctx.start_time = ni_gettime_ns();
@@ -616,10 +616,10 @@ int main(int argc, char *argv[])
             enc_pix_fmt = NI_PIX_FMT_YUV420P;
         else
             enc_pix_fmt = dec_ctx.pixel_format;
-        
-        ret = encoder_open(enc_ctx, p_enc_api_param, output_total, enc_conf_params, enc_gop_params,
-                           p_ni_frame, output_width, output_height, fps_num, fps_den, bitrate, 
-                           enc_codec_format, enc_pix_fmt, p_ni_frame->aspect_ratio_idc, 
+
+        ret = encoder_open(&ctx, enc_ctx, p_enc_api_param, output_total, enc_conf_params, enc_gop_params,
+                           p_ni_frame, output_width, output_height, fps_num, fps_den, bitrate,
+                           enc_codec_format, enc_pix_fmt, p_ni_frame->aspect_ratio_idc,
                            xcoderGUID, p_hwframe, 1, false);
         if (ret != 0)
         {
@@ -691,6 +691,13 @@ end:
     }
 
     free(ctx.file_cache);
+
+    for(i = 0; i < MAX_OUTPUT_FILES; ++i)
+    {
+        free(ctx.enc_pts_queue[i]);
+        ctx.enc_pts_queue[i] = NULL;
+    }
+
     free(p_dec_api_param);
     free(p_enc_api_param);
 

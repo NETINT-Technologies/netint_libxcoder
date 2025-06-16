@@ -60,7 +60,7 @@ typedef enum
     NI_LOG_ERROR   = 2,  // error messages
     NI_LOG_INFO    = 3,  // info and warning messages
     NI_LOG_DEBUG   = 4,  // very verbose messages about program execution
-    NI_LOG_TRACE   = 5   // most verbose messages (eg. function enter/exit, NVMe 
+    NI_LOG_TRACE   = 5   // most verbose messages (eg. function enter/exit, NVMe
                          // transactions, read/write polling retries)
 } ni_log_level_t;
 
@@ -145,7 +145,7 @@ LIB_API_LOG uint64_t ni_log_get_utime();
  *  \brief  print log message and additional information using ni_log_callback,
  *  \param[in] p_context a pointer to ni_session_context_t if p_context != NULL
  *                       session_id/E2EID will be printed as extra information
- *  \param[in] level  log level, if log_level == NI_LOG_ERROR timastamp will be 
+ *  \param[in] level  log level, if log_level == NI_LOG_ERROR timastamp will be
  *                    printed as extra information
  *  \param[in] format printf format specifier
  *  \param[in] ...    additional arguments
@@ -157,8 +157,8 @@ LIB_API_LOG void ni_log2(const void *p_context, ni_log_level_t level, const char
 /*!*****************************************************************************
  *  \brief set whether to use a lock or not in ni_log2
  *
- *  \param[in] on whether to use a lock, 
- *                1-->use a lock, 
+ *  \param[in] on whether to use a lock,
+ *                1-->use a lock,
  *                0-->use extra buf(no lock)
  *  \return
  ******************************************************************************/

@@ -29,7 +29,7 @@
 #if __linux__ || __APPLE__
 #include <unistd.h>
 #include <sys/types.h>
-#elif _WIN32 
+#elif _WIN32
 #include "ni_getopt.h"
 #endif
 
@@ -105,7 +105,7 @@ int strcat_dyn_buf(dyn_str_buf_t *dyn_str_buf, const char *fmt, ...)
          DYN_STR_BUF_CHUNK_SIZE) *
             DYN_STR_BUF_CHUNK_SIZE :
         0;
-    
+
     // realloc() to expand str_buf if necessary
     if (add_buf_size)
     {
@@ -194,7 +194,7 @@ static void print_text(ni_device_t *p_device)
             {
                 if (strcmp(p_dev_info->dev_name,
                            p_device->xcoders[dev_type][xcoder_index_2].dev_name)
-	            == 0 && p_dev_info->module_id >= 0)
+                    == 0 && p_dev_info->module_id >= 0)
                 {
                     const ni_device_info_t *p_device_info =
                                             &(p_device->xcoders[dev_type][xcoder_index_2]);
@@ -269,8 +269,8 @@ static void print_text(ni_device_t *p_device)
             }
         }
     }
-if (output_buf.str_buf)
-  	printf("%s", output_buf.str_buf);
+    if (output_buf.str_buf)
+        printf("%s", output_buf.str_buf);
     clear_dyn_str_buf(&output_buf);
 }
 
@@ -327,7 +327,7 @@ static void print_full_text(ni_device_t *p_device)
             {
                 if (strcmp(p_dev_info->dev_name,
                            p_device->xcoders[dev_type][xcoder_index_2].dev_name)
-	            == 0 && p_dev_info->module_id >= 0)
+                    == 0 && p_dev_info->module_id >= 0)
                 {
                     const ni_device_info_t *p_device_info =
                                             &(p_device->xcoders[dev_type][xcoder_index_2]);
@@ -359,7 +359,7 @@ static void print_full_text(ni_device_t *p_device)
                             strcat_dyn_buf(&output_buf, "  Capabilities:\n");
                             strcat_dyn_buf(&output_buf, "    Cores: 2\n");
                             strcat_dyn_buf(&output_buf, "    Computing Power: int8 18 tops\n");
-                            strcat_dyn_buf(&output_buf, 
+                            strcat_dyn_buf(&output_buf,
                                 "    Operations: ROI (ni_quadra_roi), Background Replace (ni_quadra_bg),  Ai Pre-processing (ni_quadra_ai_pre)\n"
                                 "                Background Remove (ni_quadra_bgr), Hvsplus (ni_quadra_hvsplus)\n");
                         } else if (NI_DEVICE_TYPE_DECODER == p_device_info->device_type ||
@@ -446,7 +446,7 @@ static void print_full_text(ni_device_t *p_device)
         }
     }
     if (output_buf.str_buf)
-  	    printf("%s", output_buf.str_buf);
+        printf("%s", output_buf.str_buf);
     clear_dyn_str_buf(&output_buf);
 }
 
@@ -498,7 +498,7 @@ static void print_json(ni_device_t *p_device)
             {
                 if (strcmp(p_dev_info->dev_name,
                            p_device->xcoders[dev_type][xcoder_index_2].dev_name)
-	            == 0 && p_dev_info->module_id >= 0)
+                    == 0 && p_dev_info->module_id >= 0)
                 {
                     const ni_device_info_t *p_device_info =
                                             &(p_device->xcoders[dev_type][xcoder_index_2]);
@@ -639,7 +639,7 @@ static void print_json(ni_device_t *p_device)
     }
     strcat_dyn_buf(&output_buf,"}\n");
     if (output_buf.str_buf)
-  	    printf("%s", output_buf.str_buf);
+        printf("%s", output_buf.str_buf);
     clear_dyn_str_buf(&output_buf);
 }
 
@@ -746,7 +746,9 @@ int32_t main(int argc, char *argv[])
             break;
         case FMT_JSON:
             print_json(device);
-        break;
+            break;
+        default:
+            break;
     }
     free(device);
     return 0;

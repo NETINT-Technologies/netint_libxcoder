@@ -380,7 +380,7 @@ bool find_available_guid(ni_device_queue_t *device_queue, int device_type, int *
     int32_t temp_guid;
     int32_t i, j;
     uint32_t guid_mask[4] = {0};
-    
+
     for (i = 0; i < NI_MAX_DEVICE_CNT; i++)
     {
         temp_guid = device_queue->xcoders[device_type][i];
@@ -512,6 +512,40 @@ END:
     ni_device_close(device_handle);
 
     return success;
+}
+
+ni_retcode_t ni_rsrc_create_retry_lck()
+{
+#ifdef _WIN32
+  return NI_RETCODE_SUCCESS;
+#else
+  size_t i;
+  int retry_shm_fd;
+  for(i = 0; i < sizeof(XCODERS_RETRY_LCK_NAME) / sizeof(XCODERS_RETRY_LCK_NAME[0]); ++i)
+  {
+    retry_shm_fd = open(XCODERS_RETRY_LCK_NAME[i], O_RDWR | O_CREAT | O_CLOEXEC | O_EXCL, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+    if(retry_shm_fd < 0)
+    {
+      if(errno != EEXIST)
+      {
+        ni_log(NI_LOG_ERROR, "Failed to create %s ERROR: %s\n", XCODERS_RETRY_LCK_NAME[i], strerror(errno));
+        return NI_RETCODE_ERROR_LOCK_DOWN_DEVICE;
+      }
+      else
+      {
+        ni_log(NI_LOG_DEBUG, "%s already exists\n", XCODERS_RETRY_LCK_NAME[i]);
+      }
+    }
+    else
+    {
+      ni_log(NI_LOG_DEBUG, "Create XCODERS_RETRY_LCK: %s\n", XCODERS_RETRY_LCK_NAME[i]);
+      close(retry_shm_fd);
+    }
+  }
+
+  return NI_RETCODE_SUCCESS;
+
+#endif
 }
 
 #ifdef _WIN32
@@ -824,7 +858,7 @@ static bool check_correctness_count(const ni_device_queue_t *existing_device_que
 
         for (j = NI_DEVICE_TYPE_DECODER; j < NI_DEVICE_TYPE_XCODER_MAX; j++)
         {
-            //Don't count if not in queue. 
+            //Don't count if not in queue.
             if (existing_device_queue->xcoders[j][i] == -1 && device_capability.xcoder_cnt[j] != 0)
             {
                 //If not in queue then it shouldn't be in any device module.
@@ -1232,26 +1266,26 @@ void ni_rsrc_update_record(ni_device_context_t *p_device_context, ni_session_con
  *
  *  \return    void
  *  *******************************************************************************/
-void get_dev_pcie_addr(char *device_name, 
-                       char *pcie, 
+void get_dev_pcie_addr(char *device_name,
+                       char *pcie,
                        char *domain, char *slot, char *dev, char *func)
 {
 #ifndef __linux__
   return;
-#else 
+#else
   int i=0;
   char *ptr = NULL;
   // path to nvme drive
   char path[PATH_MAX];
   int ret;
-  
+
   if(!device_name || !strstr(device_name, "/dev/nvme") || !pcie)
   {
     return ;
   }
 
   // we need to skip '/dev/' in the device name
-  char *start = device_name + 5; 
+  char *start = device_name + 5;
 
   // construct the path to /sys/block
   snprintf(path, sizeof(path), "/sys/block/%s", start);
@@ -1594,7 +1628,7 @@ static ni_retcode_t linux_open_shm(const char *shm_name,
     if (shm_fd_tmp < 0) {
       ni_log(NI_LOG_ERROR, "ERROR: %s() %s shm_open() fail: %s\n",
          __func__, shm_name, strerror(NI_ERRNO));
-      return NI_RETCODE_FAILURE; 
+      return NI_RETCODE_FAILURE;
     }
   }
 
@@ -1707,7 +1741,7 @@ ni_retcode_t ni_rsrc_munmap_shm(void *shm_addr,
   }
 
 #ifdef __OPENHARMONY__
-  shmdt(shm_addr);  
+  shmdt(shm_addr);
 #else
   munmap(shm_addr, shm_size);
 #endif

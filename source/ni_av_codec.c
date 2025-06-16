@@ -198,7 +198,7 @@ int ni_should_send_sei_with_frame(ni_session_context_t *p_enc_ctx,
               p_param->cfg_enc_params.intra_period)))
     {
         if (PIC_TYPE_IDR == pic_type &&
-            p_param->cfg_enc_params.forced_header_enable && 
+            p_param->cfg_enc_params.forced_header_enable &&
             p_param->cfg_enc_params.intra_period &&
             0 != (p_enc_ctx->frame_num % p_param->cfg_enc_params.intra_period))
         {
@@ -433,11 +433,11 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
                 hdrp->targeted_system_display_actual_peak_luminance_flag =
                     ni_bs_reader_get_bits(&br, 1);
 
-                ni_log(NI_LOG_DEBUG, 
+                ni_log(NI_LOG_DEBUG,
                     "hdr10+ targeted_system_display_maximum_luminance "
                     "%d\n",
                     hdrp->targeted_system_display_maximum_luminance.num);
-                ni_log(NI_LOG_DEBUG, 
+                ni_log(NI_LOG_DEBUG,
                     "hdr10+ targeted_system_display_actual_peak_lumi"
                     "nance_flag %u\n",
                     hdrp->targeted_system_display_actual_peak_luminance_flag);
@@ -452,7 +452,7 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
                         hdrp->num_cols_targeted_system_display_actual_peak_luminance =
                             ni_bs_reader_get_bits(&br, 5);
 
-                    ni_log(NI_LOG_DEBUG, 
+                    ni_log(NI_LOG_DEBUG,
                         "hdr10+ num_rows_targeted_system_display_actual"
                         "_peak_luminance x "
                         "num_cols_targeted_system_display_actual_"
@@ -470,7 +470,7 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
                             hdrp->targeted_system_display_actual_peak_luminance
                                 [i][j]
                                     .den = 15;
-                            ni_log(NI_LOG_DEBUG, 
+                            ni_log(NI_LOG_DEBUG,
                                 "hdr10+ targeted_system_display_actual_peak"
                                 "_luminance[%d][%d] %d\n",
                                 i, j,
@@ -499,7 +499,7 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
                     i_limit =
                         hdrp->params[w].num_distribution_maxrgb_percentiles =
                             ni_bs_reader_get_bits(&br, 4);
-                    ni_log(NI_LOG_DEBUG, 
+                    ni_log(NI_LOG_DEBUG,
                         "hdr10+ num_distribution_maxrgb_percentiles[%d] %d\n",
                         w, hdrp->params[w].num_distribution_maxrgb_percentiles);
 
@@ -512,12 +512,12 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
                             ni_bs_reader_get_bits(&br, 17);
                         hdrp->params[w].distribution_maxrgb[i].percentile.den =
                             100000;
-                        ni_log(NI_LOG_DEBUG, 
+                        ni_log(NI_LOG_DEBUG,
                             "hdr10+ distribution_maxrgb_percentage[%d][%d] "
                             "%u\n",
                             w, i,
                             hdrp->params[w].distribution_maxrgb[i].percentage);
-                        ni_log(NI_LOG_DEBUG, 
+                        ni_log(NI_LOG_DEBUG,
                             "hdr10+ distribution_maxrgb_percentile[%d][%d] "
                             "%d\n",
                             w, i,
@@ -535,7 +535,7 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
 
                 hdrp->mastering_display_actual_peak_luminance_flag =
                     ni_bs_reader_get_bits(&br, 1);
-                ni_log(NI_LOG_DEBUG, 
+                ni_log(NI_LOG_DEBUG,
                     "hdr10+ mastering_display_actual_peak_luminance_flag %u\n",
                     hdrp->mastering_display_actual_peak_luminance_flag);
                 if (hdrp->mastering_display_actual_peak_luminance_flag)
@@ -546,7 +546,7 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
                     j_limit =
                         hdrp->num_cols_mastering_display_actual_peak_luminance =
                             ni_bs_reader_get_bits(&br, 5);
-                    ni_log(NI_LOG_DEBUG, 
+                    ni_log(NI_LOG_DEBUG,
                         "hdr10+ num_rows_mastering_display_actual_peak_"
                         "luminance x "
                         "num_cols_mastering_display_actual_peak_luminance "
@@ -562,7 +562,7 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
                                 .num = ni_bs_reader_get_bits(&br, 4);
                             hdrp->mastering_display_actual_peak_luminance[i][j]
                                 .den = 15;
-                            ni_log(NI_LOG_DEBUG, 
+                            ni_log(NI_LOG_DEBUG,
                                 "hdr10+ mastering_display_actual_peak_lumi"
                                 "nance[%d][%d] %d\n",
                                 i, j,
@@ -595,7 +595,7 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
 
                         hdrp->params[w].num_bezier_curve_anchors =
                             ni_bs_reader_get_bits(&br, 4);
-                        ni_log(NI_LOG_DEBUG, 
+                        ni_log(NI_LOG_DEBUG,
                             "hdr10+ num_bezier_curve_anchors[%d] %u\n", w,
                             hdrp->params[w].num_bezier_curve_anchors);
                         for (i = 0;
@@ -604,7 +604,7 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
                             hdrp->params[w].bezier_curve_anchors[i].num =
                                 ni_bs_reader_get_bits(&br, 10);
                             hdrp->params[w].bezier_curve_anchors[i].den = 1023;
-                            ni_log(NI_LOG_DEBUG, 
+                            ni_log(NI_LOG_DEBUG,
                                 "hdr10+ bezier_curve_anchors[%d][%d] %d\n", w,
                                 i, hdrp->params[w].bezier_curve_anchors[i].num);
                         }
@@ -612,7 +612,7 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
 
                     hdrp->params[w].color_saturation_mapping_flag =
                         ni_bs_reader_get_bits(&br, 1);
-                    ni_log(NI_LOG_DEBUG, 
+                    ni_log(NI_LOG_DEBUG,
                         "hdr10+ color_saturation_mapping_flag[%d] %u\n", w,
                         hdrp->params[w].color_saturation_mapping_flag);
                     if (hdrp->params[w].color_saturation_mapping_flag)
@@ -620,7 +620,7 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
                         hdrp->params[w].color_saturation_weight.num =
                             ni_bs_reader_get_bits(&br, 6);
                         hdrp->params[w].color_saturation_weight.den = 8;
-                        ni_log(NI_LOG_DEBUG, 
+                        ni_log(NI_LOG_DEBUG,
                             "hdr10+ color_saturation_weight[%d] %d\n", w,
                             hdrp->params[w].color_saturation_weight.num);
                     }
@@ -756,10 +756,10 @@ static int set_roi_map(ni_session_context_t *p_enc_ctx,
             continue;
         }
         if (api_params->cfg_enc_params.customize_roi_qp_level) {
-            // set_qp in range [1, 10] mean it need to reset qp after 
+            // set_qp in range [1, 10] mean it need to reset qp after
             // rate control in fw when customize_roi_qp_level > 0.
-            // set_qp is the level in customize qp map, it choose dst qp 
-            // in customize qp map base on the rate control qp and set_qp 
+            // set_qp is the level in customize qp map, it choose dst qp
+            // in customize qp map base on the rate control qp and set_qp
             set_qp = (int32_t)((float)roi->qoffset.num * 1.0f /
                             (float)roi->qoffset.den * NI_CUSTOMIZE_ROI_QPOFFSET_LEVEL);
             if (set_qp > 0 && set_qp <= NI_CUSTOMIZE_ROI_QPOFFSET_LEVEL) {
@@ -776,7 +776,7 @@ static int set_roi_map(ni_session_context_t *p_enc_ctx,
             // Theoretically the possible qp delta range is (-32 to 31)
             set_qp = (NI_MAX_QP_INFO + 1 - set_qp) % (NI_MAX_QP_INFO + 1);
         }
-        ni_log2(p_enc_ctx, NI_LOG_DEBUG,  
+        ni_log2(p_enc_ctx, NI_LOG_DEBUG,
             "set_roi_map: left %d right %d top %d bottom %d num %d den"
             " %d set_qp %d\n",
             roi->left, roi->right, roi->top, roi->bottom, roi->qoffset.num,
@@ -824,8 +824,7 @@ static int set_roi_map(ni_session_context_t *p_enc_ctx,
     }
 
     p_enc_ctx->roi_len = customMapSize;
-    p_enc_ctx->roi_avg_qp =
-        (sumQp + (numMbs >> 1)) / numMbs + NI_DEFAULT_INTRA_QP;   // round off
+    p_enc_ctx->roi_avg_qp = (numMbs != 0 ? (sumQp + (numMbs >> 1)) / numMbs : 0) + NI_DEFAULT_INTRA_QP;
 
     return 0;
 }
@@ -884,7 +883,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
                                         p_enc_frame->sei_hdr_plus_len = 0;
 
     // prep for NetInt intra period reconfiguration support: when intra period
-    // setting has been requested by both frame and API, API takes priority    
+    // setting has been requested by both frame and API, API takes priority
     int intraprd = -1;
     aux_data = ni_frame_get_aux_data(p_dec_frame, NI_FRAME_AUX_DATA_INTRAPRD);
     if (aux_data)
@@ -897,7 +896,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
             intraprd = -1;
         }
     }
-    
+
     if (p_enc_ctx->reconfig_intra_period >= 0)
     {
         intraprd = p_enc_ctx->reconfig_intra_period;
@@ -911,7 +910,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
         if (api_params->cfg_enc_params.intra_mb_refresh_mode ||
             api_params->cfg_enc_params.gop_preset_index == 1)
         {
-            ni_log2(p_enc_ctx, NI_LOG_ERROR, "ERROR: %s(): NOT allowed to reconfig intraPeriod %d in intra_mb_refresh_mode %d or gop_preset_index %d\n", 
+            ni_log2(p_enc_ctx, NI_LOG_ERROR, "ERROR: %s(): NOT allowed to reconfig intraPeriod %d in intra_mb_refresh_mode %d or gop_preset_index %d\n",
                 __func__,
                 intraprd,
                 api_params->cfg_enc_params.intra_mb_refresh_mode,
@@ -932,7 +931,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
             {
                 p_enc_ctx->force_idr_intra_offset = 0;
             }
-            
+
             p_enc_ctx->enc_change_params->enable_option |=
                 NI_SET_CHANGE_PARAM_INTRA_PERIOD;
             p_enc_ctx->enc_change_params->intraPeriod = intraprd;
@@ -1052,7 +1051,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
         wpy = (uint16_t)lrint(chroma_den * ni_q2d(p_src->white_point[1]));
         p_mdcv->white_point_y = htons(wpy);
 
-        ni_log2(p_enc_ctx, NI_LOG_DEBUG,  
+        ni_log2(p_enc_ctx, NI_LOG_DEBUG,
             "mastering display color volume, primaries "
             "%u/%u/%u/%u/%u/%u white_point_x/y %u/%u max/min_lumi %u/%u\n",
             (uint16_t)dp00, (uint16_t)dp01, (uint16_t)dp10, (uint16_t)dp11,
@@ -1263,7 +1262,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
         ni_log2(p_enc_ctx, NI_LOG_DEBUG,  "hdr10+ targeted_system_display_maximum_luminance "
                        "%u\n",
                        ui_tmp);
-        ni_log2(p_enc_ctx, NI_LOG_DEBUG,  
+        ni_log2(p_enc_ctx, NI_LOG_DEBUG,
             "hdr10+ targeted_system_display_actual_peak_luminance_"
             "flag %u\n",
             hdrp->targeted_system_display_actual_peak_luminance_flag);
@@ -1278,7 +1277,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
                 &pb,
                 hdrp->num_cols_targeted_system_display_actual_peak_luminance,
                 5);
-            ni_log2(p_enc_ctx, NI_LOG_DEBUG,  
+            ni_log2(p_enc_ctx, NI_LOG_DEBUG,
                 "hdr10+ num_rows_targeted_system_display_actual_peak_luminance "
                 "x num_cols_targeted_system_display_actual_peak_luminance %u x "
                 "%u\n",
@@ -1319,7 +1318,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
 
             ni_bs_writer_put(
                 &pb, hdrp->params[w].num_distribution_maxrgb_percentiles, 4);
-            ni_log2(p_enc_ctx, NI_LOG_DEBUG,  
+            ni_log2(p_enc_ctx, NI_LOG_DEBUG,
                 "hdr10+ num_distribution_maxrgb_percentiles[%d] %d\n", w,
                 hdrp->params[w].num_distribution_maxrgb_percentiles);
 
@@ -1332,10 +1331,10 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
                     100000 *
                     ni_q2d(hdrp->params[w].distribution_maxrgb[i].percentile));
                 ni_bs_writer_put(&pb, ui_tmp, 17);
-                ni_log2(p_enc_ctx, NI_LOG_DEBUG,  
+                ni_log2(p_enc_ctx, NI_LOG_DEBUG,
                     "hdr10+ distribution_maxrgb_percentage[%d][%d] %u\n", w, i,
                     hdrp->params[w].distribution_maxrgb[i].percentage);
-                ni_log2(p_enc_ctx, NI_LOG_DEBUG,  
+                ni_log2(p_enc_ctx, NI_LOG_DEBUG,
                     "hdr10+ distribution_maxrgb_percentile[%d][%d] %u\n", w, i,
                     ui_tmp);
             }
@@ -1348,7 +1347,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
 
         ni_bs_writer_put(&pb,
                          hdrp->mastering_display_actual_peak_luminance_flag, 1);
-        ni_log2(p_enc_ctx, NI_LOG_DEBUG,  
+        ni_log2(p_enc_ctx, NI_LOG_DEBUG,
             "hdr10+ mastering_display_actual_peak_luminance_flag %u\n",
             hdrp->mastering_display_actual_peak_luminance_flag);
         if (hdrp->mastering_display_actual_peak_luminance_flag)
@@ -1357,7 +1356,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
                 &pb, hdrp->num_rows_mastering_display_actual_peak_luminance, 5);
             ni_bs_writer_put(
                 &pb, hdrp->num_cols_mastering_display_actual_peak_luminance, 5);
-            ni_log2(p_enc_ctx, NI_LOG_DEBUG,  
+            ni_log2(p_enc_ctx, NI_LOG_DEBUG,
                 "hdr10+ num_rows_mastering_display_actual_peak_luminance x "
                 "num_cols_mastering_display_actual_peak_luminance %u x %u\n",
                 hdrp->num_rows_mastering_display_actual_peak_luminance,
@@ -1376,7 +1375,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
                             hdrp->mastering_display_actual_peak_luminance[i]
                                                                          [j]));
                     ni_bs_writer_put(&pb, ui_tmp, 4);
-                    ni_log2(p_enc_ctx, NI_LOG_DEBUG,  
+                    ni_log2(p_enc_ctx, NI_LOG_DEBUG,
                         "hdr10+ "
                         "mastering_display_actual_peak_luminance[%d][%d] %u\n",
                         i, j, ui_tmp);
@@ -1480,7 +1479,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
             p_enc_frame->sei_total_len += p_enc_frame->sei_hdr_plus_len;
         } else
         {
-            ni_log2(p_enc_ctx, NI_LOG_ERROR,  
+            ni_log2(p_enc_ctx, NI_LOG_ERROR,
                 "ni_enc_prep_aux_data: codec %d not supported for HDR10+ "
                 "SEI !\n",
                 codec_format);
@@ -1528,7 +1527,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
             // discard this UDU SEI if the total SEI size exceeds the max size
             if (p_enc_frame->sei_total_len + sei_len > NI_ENC_MAX_SEI_BUF_SIZE)
             {
-                ni_log2(p_enc_ctx, NI_LOG_ERROR,  
+                ni_log2(p_enc_ctx, NI_LOG_ERROR,
                     "ni_enc_prep_aux_data sei total length %u + sei_len %d "
                     "exceeds maximum sei size %u, discarding it !\n",
                     p_enc_frame->sei_total_len, sei_len,
@@ -1680,7 +1679,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
     if (aux_data)
     {
         ltr = *((ni_long_term_ref_t *)aux_data->data);
-        ni_log2(p_enc_ctx, NI_LOG_DEBUG, 
+        ni_log2(p_enc_ctx, NI_LOG_DEBUG,
                "%s(): frame aux data LTR use_cur_src_as_ltr %u "
                "use_ltr %u\n",
                __func__, ltr.use_cur_src_as_long_term_pic,
@@ -1693,7 +1692,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
         p_enc_ctx->ltr_to_set.use_cur_src_as_long_term_pic =
             p_enc_ctx->ltr_to_set.use_long_term_ref = 0;
 
-        ni_log2(p_enc_ctx, NI_LOG_DEBUG, 
+        ni_log2(p_enc_ctx, NI_LOG_DEBUG,
                "%s(): frame API set LTR use_cur_src_as_ltr %u "
                "use_ltr %u\n",
                __func__, ltr.use_cur_src_as_long_term_pic,
@@ -1714,7 +1713,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
     if (aux_data)
     {
         qp_info = *(ni_rc_min_max_qp *)aux_data->data;
-        ni_log2(p_enc_ctx, NI_LOG_DEBUG, 
+        ni_log2(p_enc_ctx, NI_LOG_DEBUG,
                 "%s(): frame aux data qp info max/min I qp <%d %d> maxDeltaQp <%d> max/min PB qp <%d %d>",
                 __func__, qp_info.maxQpI, qp_info.minQpI, qp_info.maxDeltaQp, qp_info.maxQpPB, qp_info.minQpPB);
     }
@@ -1910,7 +1909,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
             if (((framerate_num + framerate_denom - 1) / framerate_denom) >
                 NI_MAX_FRAMERATE)
             {
-                ni_log2(p_enc_ctx, NI_LOG_ERROR, 
+                ni_log2(p_enc_ctx, NI_LOG_ERROR,
                        "ERROR: %s(): invalid framerate in aux data (%d/%d)\n",
                        __func__, aux_framerate_ptr->framerate_num,
                        aux_framerate_ptr->framerate_denom);
@@ -2019,8 +2018,8 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
         else
         {
             int32_t tmp_bitrate, tmp_framerate_num, tmp_framerate_denom;
-            tmp_bitrate = (p_enc_ctx->enc_change_params->bitRate > 0) ?  p_enc_ctx->enc_change_params->bitRate : api_params->bitrate;      
-          
+            tmp_bitrate = (p_enc_ctx->enc_change_params->bitRate > 0) ?  p_enc_ctx->enc_change_params->bitRate : api_params->bitrate;
+
             if ((p_enc_ctx->enc_change_params->frameRateNum > 0) && (p_enc_ctx->enc_change_params->frameRateDenom > 0))
             {
               tmp_framerate_num = p_enc_ctx->enc_change_params->frameRateNum;
@@ -2040,11 +2039,11 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
                        __func__, max_frame_size);
                 max_frame_size = 0;
             }
-            
+
             if (max_frame_size > NI_MAX_FRAME_SIZE) {
                 max_frame_size = NI_MAX_FRAME_SIZE;
             }
-        }            
+        }
     }
 
     if (p_enc_ctx->max_frame_size > 0)
@@ -2168,7 +2167,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
             ni_log2(p_enc_ctx, NI_LOG_ERROR,  "%s(): invalid frame aux data vbvBufferSize %d\n", __func__,
                    vbvBufferSize);
             vbvBufferSize = 0;
-        } 
+        }
         else
         {
             ni_log2(p_enc_ctx, NI_LOG_DEBUG,  "%s(): frame aux data vbvBufferSize %d\n", __func__,
@@ -2279,7 +2278,7 @@ void ni_enc_copy_aux_data(ni_session_context_t *p_enc_ctx,
     if (is_hwframe != 0 && is_hwframe != 1 && is_semiplanar != 0 &&
         is_semiplanar != 1)
     {
-        ni_log2(p_enc_ctx, NI_LOG_ERROR,  
+        ni_log2(p_enc_ctx, NI_LOG_ERROR,
             "ni_enc_copy_aux_data: error, illegal hwframe or nv12frame\n");
         return;
     }
@@ -2296,7 +2295,7 @@ void ni_enc_copy_aux_data(ni_session_context_t *p_enc_ctx,
         frame_metadata_size = NI_APP_ENC_FRAME_META_DATA_SIZE_UNDER_MAJOR_6_MINOR_rc;
     }
 
-    
+
     uint8_t *dst = (uint8_t *)p_enc_frame->p_data[2 + is_hwframe] +
         p_enc_frame->data_len[2 + is_hwframe] + frame_metadata_size;
 
@@ -2312,7 +2311,7 @@ void ni_enc_copy_aux_data(ni_session_context_t *p_enc_ctx,
     {
         dst = p_enc_frame->p_metadata_buffer + frame_metadata_size;
         ni_log2(p_enc_ctx, NI_LOG_DEBUG,  "ni_enc_copy_aux_data: p_metadata_buffer %p frame_metadata_size %u dst %p\n",
-                       p_enc_frame->p_metadata_buffer, frame_metadata_size, dst);     
+                       p_enc_frame->p_metadata_buffer, frame_metadata_size, dst);
     }
 
     // fill in reconfig data if enabled; even if it's disabled, keep the space
@@ -2384,7 +2383,7 @@ void ni_enc_copy_aux_data(ni_session_context_t *p_enc_ctx,
     {
         ni_log2(p_enc_ctx, NI_LOG_DEBUG,  "ni_enc_copy_aux_data: preferred characteristics size: %u to %p\n",
                        p_enc_frame->preferred_characteristics_data_len, dst);
-        
+
         dst[0] = dst[1] = dst[2] = 0;
         dst[3] = 1;
         if (NI_CODEC_FORMAT_H265 == codec_format)
@@ -2412,7 +2411,7 @@ void ni_enc_copy_aux_data(ni_session_context_t *p_enc_ctx,
     {
         ni_log2(p_enc_ctx, NI_LOG_DEBUG,  "ni_enc_copy_aux_data: close caption size: %u to %p\n",
                        p_enc_frame->sei_cc_len, dst);
-        
+
         memcpy(dst, cc_data, p_enc_frame->sei_cc_len);
         dst += p_enc_frame->sei_cc_len;
     }
@@ -2421,8 +2420,8 @@ void ni_enc_copy_aux_data(ni_session_context_t *p_enc_ctx,
     if (p_enc_frame->sei_hdr_plus_len)
     {
         ni_log2(p_enc_ctx, NI_LOG_DEBUG,  "ni_enc_copy_aux_data: HDR10+ size: %u to %p\n",
-                       p_enc_frame->sei_hdr_plus_len, dst); 
-        
+                       p_enc_frame->sei_hdr_plus_len, dst);
+
         memcpy(dst, hdrp_data, p_enc_frame->sei_hdr_plus_len);
         dst += p_enc_frame->sei_hdr_plus_len;
     }
@@ -2431,7 +2430,7 @@ void ni_enc_copy_aux_data(ni_session_context_t *p_enc_ctx,
     if (p_enc_frame->sei_user_data_unreg_len)
     {
         ni_log2(p_enc_ctx, NI_LOG_DEBUG,  "ni_enc_copy_aux_data: UDU size: %u to %p\n",
-                       p_enc_frame->sei_user_data_unreg_len, dst); 
+                       p_enc_frame->sei_user_data_unreg_len, dst);
         memcpy(dst, udu_data, p_enc_frame->sei_user_data_unreg_len);
         //dst += p_enc_frame->sei_user_data_unreg_len;
     }
@@ -2439,7 +2438,7 @@ void ni_enc_copy_aux_data(ni_session_context_t *p_enc_ctx,
 
 /*!*****************************************************************************
  *  \brief  Insert timecode data into picture timing SEI (H264) or time code SEI (H265)
- *          
+ *
  *  \note   This function must be callled after all other aux data has been processed by
  *          ni_enc_prep_aux_data and ni_enc_copy_aux_data. Otherwise the timecode SEI data
  *          might be overwritten
@@ -2450,7 +2449,7 @@ void ni_enc_copy_aux_data(ni_session_context_t *p_enc_ctx,
  *
  *  \return NI_RETCODE_SUCCESS on success, NI_RETCODE_FAILURE on failure
  ******************************************************************************/
-LIB_API int ni_enc_insert_timecode(ni_session_context_t *p_enc_ctx, ni_frame_t *p_enc_frame, 
+LIB_API int ni_enc_insert_timecode(ni_session_context_t *p_enc_ctx, ni_frame_t *p_enc_frame,
                                    ni_timecode_t *p_timecode)
 {
     uint8_t timecode_data[NI_MAX_SEI_DATA];
@@ -2476,7 +2475,7 @@ LIB_API int ni_enc_insert_timecode(ni_session_context_t *p_enc_ctx, ni_frame_t *
     ni_bs_writer_put(&pb, 0x00, 8);
     ni_bs_writer_put(&pb, 0x00, 8);
     ni_bs_writer_put(&pb, 0x01, 8);
-    
+
     // NAL type: SEI
     if (p_enc_ctx->codec_format == NI_CODEC_FORMAT_H264) {
         ni_bs_writer_put(&pb, 0x06, 8);
@@ -2542,8 +2541,8 @@ LIB_API int ni_enc_insert_timecode(ni_session_context_t *p_enc_ctx, ni_frame_t *
             ni_bs_writer_put(&pb, p_timecode->time_offset_value, p_timecode->time_offset_length);
         }
     } else {
-        // for H264, time_offset_length is stored in HRD parameters in VUI, which can only be set 
-        // in the FW when HRD is enabled, so we assume that it is not present, in which case it 
+        // for H264, time_offset_length is stored in HRD parameters in VUI, which can only be set
+        // in the FW when HRD is enabled, so we assume that it is not present, in which case it
         // should be intepreted as 24 by default
         ni_bs_writer_put(&pb, p_timecode->time_offset_value, 24);
     }
@@ -2571,7 +2570,7 @@ LIB_API int ni_enc_insert_timecode(ni_session_context_t *p_enc_ctx, ni_frame_t *
     total_len = header_len + payload_len + emu_bytes_inserted + 1;
 
     is_hwframe = p_enc_ctx->hw_action != NI_CODEC_HW_NONE;
-    is_semiplanar = p_enc_ctx->pixel_format == NI_PIX_FMT_NV12 || 
+    is_semiplanar = p_enc_ctx->pixel_format == NI_PIX_FMT_NV12 ||
                     p_enc_ctx->pixel_format == NI_PIX_FMT_P010LE;
     dst = (uint8_t *)p_enc_frame->p_data[2 + is_hwframe] +
         p_enc_frame->data_len[2 + is_hwframe] + p_enc_frame->extra_data_len;
@@ -2584,7 +2583,7 @@ LIB_API int ni_enc_insert_timecode(ni_session_context_t *p_enc_ctx, ni_frame_t *
     // separate metadata buffer (not contiguous with YUV buffer)
     if (p_enc_frame->separate_metadata)
     {
-        dst = p_enc_frame->p_metadata_buffer + p_enc_frame->extra_data_len;  
+        dst = p_enc_frame->p_metadata_buffer + p_enc_frame->extra_data_len;
     }
 
     // copy formatted SEI NAL unit data to the proper buffer
@@ -2598,20 +2597,20 @@ LIB_API int ni_enc_insert_timecode(ni_session_context_t *p_enc_ctx, ni_frame_t *
 }
 
 /*!*****************************************************************************
-  *  \brief  Send an input data frame to the encoder with YUV data given in 
+  *  \brief  Send an input data frame to the encoder with YUV data given in
   *   the inputs.
-  * 
+  *
   *   For ideal performance memory should be 4k aligned. If it is not 4K aligned
   *   then a temporary 4k aligned memory will be used to copy data to and from
   *   when writing and reading. This will negatively impact performance.
-  * 
+  *
   *   Any metadata to be sent with the frame should be attached to p_enc_frame
   *   as aux data (e.g. using ni_frame_new_aux_data()).
   *
   *  \param[in] p_ctx                         Encoder session context
-  *  \param[in] p_enc_frame                   Struct holding information about the frame 
+  *  \param[in] p_enc_frame                   Struct holding information about the frame
   *                                           to be sent to the encoder
-  *  \param[in] p_yuv_buffer                  Caller allocated buffer holding YUV data 
+  *  \param[in] p_yuv_buffer                  Caller allocated buffer holding YUV data
   *                                           for the frame
   *
   *  \return On success
@@ -2747,7 +2746,7 @@ int ni_enc_write_from_yuv_buffer(ni_session_context_t *p_ctx,
     src_stride[0] = frame_width * p_ctx->bit_depth_factor;
     src_height[0] = frame_height;
     p_src[0] = p_yuv_buffer;
-    
+
     if (isrgba)
     {
         src_stride[1] = 0;
@@ -2757,7 +2756,7 @@ int ni_enc_write_from_yuv_buffer(ni_session_context_t *p_ctx,
         src_height[2] = 0;
 
         p_src[1] = NULL;
-        p_src[2] = NULL;    
+        p_src[2] = NULL;
     }
     else
     {
@@ -2769,10 +2768,10 @@ int ni_enc_write_from_yuv_buffer(ni_session_context_t *p_ctx,
 
         p_src[1] = p_src[0] + src_stride[0] * src_height[0];
         p_src[2] = p_src[1] + src_stride[1] * src_height[1];
-    } 
+    }
 
     alignment_2pass_wa = (
-                               (p_param->cfg_enc_params.lookAheadDepth || 
+                               (p_param->cfg_enc_params.lookAheadDepth ||
                                 p_param->cfg_enc_params.crf >= 0 ||
                                 p_param->cfg_enc_params.crfFloat >= 0) &&
                                (p_ctx->codec_format == NI_CODEC_FORMAT_H265 ||
@@ -2822,15 +2821,15 @@ int ni_enc_write_from_yuv_buffer(ni_session_context_t *p_ctx,
         if (retval != NI_RETCODE_SUCCESS)
         {
             return retval;
-        }    
+        }
     }
 
-    ni_log2(p_ctx, NI_LOG_TRACE, 
+    ni_log2(p_ctx, NI_LOG_TRACE,
            "%s: src_stride %d dst_stride "
            "%d dst_height_aligned %d src_height %d need_copy %d\n",
            __func__, src_stride[0],
            dst_stride[0], dst_height_aligned[0],
-           src_height[0], need_copy);    
+           src_height[0], need_copy);
 
     if (need_copy)
     {
@@ -2842,7 +2841,7 @@ int ni_enc_write_from_yuv_buffer(ni_session_context_t *p_ctx,
         p_enc_frame->separate_metadata = 0;
     }
 
-    ni_log2(p_ctx, NI_LOG_DEBUG, 
+    ni_log2(p_ctx, NI_LOG_DEBUG,
            "p_dst alloc linesize = %d/%d/%d  src height=%d  "
            "dst height aligned = %d/%d/%d force_key_frame=%d, "
            "extra_data_len=%u"
@@ -3008,7 +3007,7 @@ int ni_extract_custom_sei(uint8_t *pkt_data, int pkt_size, long index,
   sei_data[0] = sei_type;
 
   /* extract SEI payload data
-   * SEI payload data in NAL is EBSP(Encapsulated Byte Sequence Payload), 
+   * SEI payload data in NAL is EBSP(Encapsulated Byte Sequence Payload),
    * need change EBSP to RBSP(Raw Byte Sequence Payload) for exact size
    */
   for (i = 0, len = 0; (i < pkt_size - index) && len < sei_size; i++, len++)
@@ -3045,7 +3044,7 @@ int ni_extract_custom_sei(uint8_t *pkt_data, int pkt_size, long index,
 /*!******************************************************************************
  * \brief  Decode parse packet
  *
- * \param[in] p_session_ctx             Pointer to a caller allocated 
+ * \param[in] p_session_ctx             Pointer to a caller allocated
  *                                      ni_session_context_t struct
  * \param[in] p_param                   Pointer to a caller allocated
  *                                      ni_xcoder_params_t struct
@@ -3087,7 +3086,7 @@ int ni_dec_packet_parse(ni_session_context_t *p_session_ctx, ni_xcoder_params_t 
 
     if (pkt_nal_bitmap & NI_GENERATE_ALL_NAL_HEADER_BIT)
     {
-        ni_log2(p_session_ctx, NI_LOG_TRACE, 
+        ni_log2(p_session_ctx, NI_LOG_TRACE,
                "ni_dec_packet_parse(): already find the header of streams.\n");
         low_delay = 0;
     }
@@ -3137,7 +3136,7 @@ int ni_dec_packet_parse(ni_session_context_t *p_session_ctx, ni_xcoder_params_t 
 
                 if (pkt_nal_bitmap == (NI_NAL_SPS_BIT | NI_NAL_PPS_BIT))
                 {
-                    ni_log2(p_session_ctx, NI_LOG_TRACE, 
+                    ni_log2(p_session_ctx, NI_LOG_TRACE,
                            "ni_dec_packet_parse(): Detect SPS, PPS and IDR, "
                            "enable decoder low delay mode.\n");
                     p_session_ctx->decoder_low_delay = low_delay;
@@ -3183,7 +3182,7 @@ int ni_dec_packet_parse(ni_session_context_t *p_session_ctx, ni_xcoder_params_t 
                     // H264_NAL_PREFIX UNIT will be sent with the last packet.
                     // So, the H264_NAL_PREFIX here is used for the next packet.
                     *svct_skip_next_packet = 1;
-                    ni_log2(p_session_ctx, NI_LOG_TRACE, 
+                    ni_log2(p_session_ctx, NI_LOG_TRACE,
                            "ni_dec_packet_parse(): temporal_id %d"
                            " is bigger than decoded layer %d, skip the next "
                            "packet\n",
@@ -3222,7 +3221,7 @@ int ni_dec_packet_parse(ni_session_context_t *p_session_ctx, ni_xcoder_params_t 
                 {
                     // Packets before the header is sent cannot be decoded.
                     // So set packet num to zero here.
-                    ni_log2(p_session_ctx, NI_LOG_TRACE, 
+                    ni_log2(p_session_ctx, NI_LOG_TRACE,
                            "ni_dec_packet_parse(): Detect VPS, SPS, PPS and "
                            "IDR enable decoder low delay mode.\n");
                     p_session_ctx->decoder_low_delay = low_delay;
@@ -3473,9 +3472,9 @@ int ni_expand_frame(ni_frame_t *dst, ni_frame_t *src, int dst_stride[],
 /*!******************************************************************************
  * \brief  Reset decoder ppu resolution
  *
- * \param[in] p_session_ctx         Pointer to a caller allocated 
+ * \param[in] p_session_ctx         Pointer to a caller allocated
  *                                          ni_session_context_t struct
- * \param[in] p_param               Pointer to a caller allocated 
+ * \param[in] p_param               Pointer to a caller allocated
  *                                          ni_xcoder_params_t struct
  * \param[in] ppu_config            Pointer to a caller allocated
  *                                          ni_ppu_config_t struct
@@ -3520,14 +3519,14 @@ int ni_reconfig_ppu_output(ni_session_context_t *p_session_ctx,
                         "So can't reconfig ppu\n", __func__);
         return NI_RETCODE_PARAM_INVALID_VALUE;
     }
-    if (p_dec_input_param->enable_out1 == 0 && 
+    if (p_dec_input_param->enable_out1 == 0 &&
             ppu_config->ppu_set_enable & (0x01 << 1))
     {
         ni_log2(p_session_ctx, NI_LOG_ERROR, "%s(): Warning Not enable ppu1, "
                         "So can't reconfig ppu1\n", __func__);
         return NI_RETCODE_PARAM_INVALID_VALUE;
     }
-    if (p_dec_input_param->enable_out2 == 0 && 
+    if (p_dec_input_param->enable_out2 == 0 &&
             ppu_config->ppu_set_enable & (0x01 << 2))
     {
         ni_log2(p_session_ctx, NI_LOG_ERROR, "%s(): Warning Not enable ppu2, "
@@ -3566,10 +3565,10 @@ int ni_reconfig_ppu_output(ni_session_context_t *p_session_ctx,
         return ret;
     }
     memset(p_dst_custom_sei, 0, sizeof(ni_custom_sei_t));
-    
+
 
     sei_size = sizeof(ni_ppu_config_t);
-    
+
     p_src_sei_data = (uint8_t *)ppu_config;
     p_dst_sei_data = &p_dst_custom_sei->data[0];
     size = 0;

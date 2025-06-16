@@ -58,11 +58,11 @@ using namespace std;
 extern android::sp<INidec> service;
 
 /*!*****************************************************************************
- *  \brief   Init android net.int.SharedBuffer service for binder using.
+ *  \brief  Init android net.int.SharedBuffer service for binder using.
  *
- *	 \param 	  none
+ *  \param  none
  *
- *	 \return      service (= 0) if get service , < 0 otherwise
+ *  \return service (= 0) if get service , < 0 otherwise
  *
  ******************************************************************************/
 int ni_rsrc_android_init();

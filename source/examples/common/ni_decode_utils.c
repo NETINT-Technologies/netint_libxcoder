@@ -375,37 +375,37 @@ int h264_parse_scaling_matrices(ni_bitstream_reader_t *br, const ni_h264_sps_t *
                            uint8_t (*scaling_matrix4)[16], uint8_t (*scaling_matrix8)[64])
 {
     int ret = 0;
-    const uint8_t *fallback[4] = {default_scaling4[0], default_scaling4[1], 
+    const uint8_t *fallback[4] = {default_scaling4[0], default_scaling4[1],
                                   default_scaling8[0], default_scaling8[1]};
 
     if (ni_bs_reader_get_bits(br, 1))   // scaling_matrix_present
     {
         // retrieve matrices
-        ret |= h264_parse_scaling_list(br, scaling_matrix4[0], 16, 
+        ret |= h264_parse_scaling_list(br, scaling_matrix4[0], 16,
                                   default_scaling4[0], fallback[0]);   // Intra, Y
-        ret |= h264_parse_scaling_list(br, scaling_matrix4[1], 16, 
+        ret |= h264_parse_scaling_list(br, scaling_matrix4[1], 16,
                                   default_scaling4[0], scaling_matrix4[0]);   // Intra, Cr
-        ret |= h264_parse_scaling_list(br, scaling_matrix4[2], 16, 
+        ret |= h264_parse_scaling_list(br, scaling_matrix4[2], 16,
                                   default_scaling4[0], scaling_matrix4[1]);   // Intra, Cb
-        ret |= h264_parse_scaling_list(br, scaling_matrix4[3], 16, 
+        ret |= h264_parse_scaling_list(br, scaling_matrix4[3], 16,
                                   default_scaling4[1], fallback[1]);   // Inter, Y
-        ret |= h264_parse_scaling_list(br, scaling_matrix4[4], 16, 
+        ret |= h264_parse_scaling_list(br, scaling_matrix4[4], 16,
                                   default_scaling4[1], scaling_matrix4[3]);   // Inter, Cr
-        ret |= h264_parse_scaling_list(br, scaling_matrix4[5], 16, 
+        ret |= h264_parse_scaling_list(br, scaling_matrix4[5], 16,
                                   default_scaling4[1], scaling_matrix4[4]);   // Inter, Cb
-        ret |= h264_parse_scaling_list(br, scaling_matrix8[0], 64, 
+        ret |= h264_parse_scaling_list(br, scaling_matrix8[0], 64,
                                   default_scaling8[0], fallback[2]);   // Intra, Y
-        ret |= h264_parse_scaling_list(br, scaling_matrix8[3], 64, 
+        ret |= h264_parse_scaling_list(br, scaling_matrix8[3], 64,
                                   default_scaling8[1], fallback[3]);   // Inter, Y
         if (sps->chroma_format_idc == 3)
         {
-            ret |= h264_parse_scaling_list(br, scaling_matrix8[1], 64, 
+            ret |= h264_parse_scaling_list(br, scaling_matrix8[1], 64,
                                       default_scaling8[0], scaling_matrix8[0]); // Intra, Cr
-            ret |= h264_parse_scaling_list(br, scaling_matrix8[4], 64, 
+            ret |= h264_parse_scaling_list(br, scaling_matrix8[4], 64,
                                       default_scaling8[1], scaling_matrix8[3]); // Inter, Cr
-            ret |= h264_parse_scaling_list(br, scaling_matrix8[2], 64,   
+            ret |= h264_parse_scaling_list(br, scaling_matrix8[2], 64,
                                       default_scaling8[0], scaling_matrix8[1]); // Intra, Cb
-            ret |= h264_parse_scaling_list(br, scaling_matrix8[5], 64,   
+            ret |= h264_parse_scaling_list(br, scaling_matrix8[5], 64,
                                       default_scaling8[1], scaling_matrix8[4]); // Inter, Cb
         }
         if (!ret)
@@ -684,7 +684,7 @@ int h264_parse_sei(uint8_t *buf, int size_bytes, ni_h264_sps_t *sps,
                     if (dummy < NI_H264_SEI_PIC_STRUCT_FRAME ||
                         dummy > NI_H264_SEI_PIC_STRUCT_FRAME_TRIPLING)
                     {
-                        ni_log(NI_LOG_DEBUG, 
+                        ni_log(NI_LOG_DEBUG,
                             "parse_sei pic_timing SEI invalid pic_struct: "
                             "%d\n",
                             dummy);
@@ -783,7 +783,7 @@ int probe_h264_stream_info(ni_demo_context_t *p_ctx, ni_h264_sps_t *sps)
              sps->vcl_hrd_parameters_present_flag) &&
             NI_H264_SEI_TYPE_PIC_TIMING == sei_type && is_interlaced)
         {
-            ni_log(NI_LOG_ERROR, 
+            ni_log(NI_LOG_ERROR,
                 "probe_h264_stream_info interlaced NOT supported!\n");
             break;
         }
@@ -804,7 +804,7 @@ int probe_h264_stream_info(ni_demo_context_t *p_ctx, ni_h264_sps_t *sps)
     }
 
     static const char csp[4][5] = {"Gray", "420", "422", "444"};
-    ni_log(NI_LOG_DEBUG, 
+    ni_log(NI_LOG_DEBUG,
         "H.264 stream probed %d VCL NAL units, sps:%u "
         "profile:%d/%d poc %d ref:%d %dx%d [SAR: %d:%d] %s %s "
         "%" PRId32 "/%" PRId32 " %d bits max_reord:%d max_dec_buf:"
@@ -2090,7 +2090,7 @@ uint64_t find_vp9_next_packet(ni_demo_context_t *p_ctx, uint8_t *p_dst, ni_vp9_h
             return 0;
         }
     }
-    /** packet structure: 
+    /** packet structure:
      * bytes 0-3: size of frame in bytes (not including the 12-byte header)
      * bytes 4-11: 64-bit presentation timestamp
      * bytes 12.. frame data
@@ -2221,7 +2221,7 @@ end:
 /*!*****************************************************************************
  *  \brief  Send decoder input data
  *
- *  \param  
+ *  \param
  *
  *  \return
  ******************************************************************************/
@@ -2409,7 +2409,7 @@ int decoder_send_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_dec_ctx,
 /*!*****************************************************************************
  *  \brief  Receive decoded output data from decoder
  *
- *  \param  
+ *  \param
  *
  *  \return 0: got YUV frame;  1: end-of-stream;  2: got nothing
  ******s************************************************************************/
@@ -2517,16 +2517,16 @@ int decoder_receive_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_dec_c
                     rc = NI_TEST_RETCODE_FAILURE;
                     goto end;
                 }
-                rc = write_rawvideo_data(p_file, p_dec_ctx->active_video_width, p_dec_ctx->active_video_height, 
-                                         output_video_width, output_video_height, p_dec_ctx->pixel_format, 
+                rc = write_rawvideo_data(p_file, p_dec_ctx->active_video_width, p_dec_ctx->active_video_height,
+                                         output_video_width, output_video_height, p_dec_ctx->pixel_format,
                                          &hwdl_session_data.data.frame);
                 ni_frame_buffer_free(&hwdl_session_data.data.frame);
-            } else 
+            } else
             {
-                rc = write_rawvideo_data(p_file, p_dec_ctx->active_video_width, p_dec_ctx->active_video_height, 
+                rc = write_rawvideo_data(p_file, p_dec_ctx->active_video_width, p_dec_ctx->active_video_height,
                                          output_video_width, output_video_height, p_dec_ctx->pixel_format, p_out_frame);
             }
-            
+
             if (rc < 0) {
                 goto end;
             }
@@ -2534,7 +2534,7 @@ int decoder_receive_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_dec_c
     } else // rx_size == 0 means no decoded frame is available now
     {
         ni_log(NI_LOG_DEBUG, "No data received from decoder, return EAGAIN and retry\n");
-        if (!p_out_frame->end_of_stream) 
+        if (!p_out_frame->end_of_stream)
         {
             if (!b_is_hwframe)
             {
@@ -2568,7 +2568,7 @@ end:
 /*!*****************************************************************************
  *  \brief  decoder session open
  *
- *  \param  
+ *  \param
  *
  *  \return 0 if successful, < 0 otherwise
  ******************************************************************************/
@@ -2616,7 +2616,7 @@ void decoder_stat_report_and_close(ni_demo_context_t *p_ctx, ni_session_context_
     current_time = ni_gettime_ns();
 
     ni_log(NI_LOG_ERROR, "Decoder Closing, Got:  Frames=%u  FPS=%.2f  Total bytes %llu\n",
-           p_ctx->num_frames_received, 
+           p_ctx->num_frames_received,
            (float)p_ctx->num_frames_received / (float)(current_time - p_ctx->start_time) * (float)1000000000,
            p_ctx->dec_total_bytes_received);
 
@@ -2745,8 +2745,8 @@ void *decoder_receive_thread(void *args)
             {
                 p_hwframe = (niFrameSurface1_t *)p_ni_frame->p_data[3];
                 ni_hw_frame_ref(p_hwframe);
-                scale_filter(p_dec_recv_param->p_sca_ctx, p_ni_frame, &filter_out_frame, p_dec_recv_param->xcoderGUID, 
-                             scale_params->width, scale_params->height, ni_to_gc620_pix_fmt(p_dec_ctx->pixel_format), 
+                scale_filter(p_dec_recv_param->p_sca_ctx, p_ni_frame, &filter_out_frame, p_dec_recv_param->xcoderGUID,
+                             scale_params->width, scale_params->height, ni_to_gc620_pix_fmt(p_dec_ctx->pixel_format),
                              scale_params->format);
                 ni_hw_frame_unref(p_hwframe->ui16FrameIdx);
                 ni_frame_buffer_free(p_ni_frame);
@@ -2757,8 +2757,8 @@ void *decoder_receive_thread(void *args)
             {
                 p_hwframe = (niFrameSurface1_t *)p_ni_frame->p_data[3];
                 ni_hw_frame_ref(p_hwframe);
-                drawbox_filter(p_dec_recv_param->p_crop_ctx, p_dec_recv_param->p_pad_ctx, p_dec_recv_param->p_ovly_ctx, 
-                               p_dec_recv_param->p_fmt_ctx, p_ni_frame, &filter_out_frame, drawbox_params, 
+                drawbox_filter(p_dec_recv_param->p_crop_ctx, p_dec_recv_param->p_pad_ctx, p_dec_recv_param->p_ovly_ctx,
+                               p_dec_recv_param->p_fmt_ctx, p_ni_frame, &filter_out_frame, drawbox_params,
                                p_dec_recv_param->xcoderGUID, ni_to_gc620_pix_fmt(p_dec_ctx->pixel_format), GC620_I420);
                 ni_hw_frame_unref(p_hwframe->ui16FrameIdx);
                 ni_frame_buffer_free(p_ni_frame);
@@ -2775,8 +2775,8 @@ void *decoder_receive_thread(void *args)
 
         current_time = ni_gettime_ns();
         if (current_time - previous_time >= (uint64_t)1000000000) {
-            ni_log(NI_LOG_INFO, "Decoder stats: received %u frames, fps %.2f, total bytes %u\n", 
-                   p_ctx->num_frames_received, 
+            ni_log(NI_LOG_INFO, "Decoder stats: received %u frames, fps %.2f, total bytes %u\n",
+                   p_ctx->num_frames_received,
                    (float)p_ctx->num_frames_received / (float)(current_time - p_ctx->start_time) * (float)1000000000,
                    p_ctx->dec_total_bytes_received);
             previous_time = current_time;

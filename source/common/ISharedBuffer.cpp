@@ -48,14 +48,14 @@ class BpSharedBuffer : public BpInterface<ISharedBuffer> {
     {
     }
 
-    /*!*****************************************************************************
- *  \brief   Get file descripter by using android net.int.SharedBuffer service.
- *
- *   \param[in] name    The name of the share mem
- *
- *	 \return      Get fd (> 0) , < 0 otherwise
- *
- ******************************************************************************/
+    /*!*************************************************************************
+     *  \brief  Get file descripter by using android net.int.SharedBuffer service.
+     *
+     *  \param[in] name    The name of the share mem
+     *
+     *  \return Get fd (> 0) , < 0 otherwise
+     *
+     **************************************************************************/
     int getFd(String8 &param)
     {
         Parcel data;
@@ -77,14 +77,14 @@ class BpSharedBuffer : public BpInterface<ISharedBuffer> {
         }
     }
 
-    /*!*****************************************************************************
- *  \brief   Set file descripter with the name of the share mem by using android net.int.SharedBuffer service.
- *
- *   \param[in] name    The name of the share mem
- *
- *	 \return      Get fd (> 0) , < 0 otherwise
- *
- ******************************************************************************/
+    /*!*************************************************************************
+     *  \brief  Set file descripter with the name of the share mem by using android net.int.SharedBuffer service.
+     *
+     *  \param[in] name    The name of the share mem
+     *
+     *  \return Get fd (> 0) , < 0 otherwise
+     *
+     **************************************************************************/
     int setFd(String8 &param, int32_t fd)
     {
         Parcel data;
@@ -104,14 +104,14 @@ class BpSharedBuffer : public BpInterface<ISharedBuffer> {
 IMPLEMENT_META_INTERFACE(SharedBuffer, "net.int.ISharedBuffer");
 
 /*!*****************************************************************************
- *  \brief   transmit the data between binder clint and server.
+ *  \brief  transmit the data between binder clint and server.
  *
- *   \param[in] code    The funtion identify
- *   \param[in] data    The parcel take the data of the shm
- *   \param[in] reply    The parcel take the return data of the shm
- *   \param[in] flags    always 0
+ *  \param[in] code    The funtion identify
+ *  \param[in] data    The parcel take the data of the shm
+ *  \param[in] reply   The parcel take the return data of the shm
+ *  \param[in] flags   always 0
  *
- *	 \return      success status_t (> 0) , < 0 otherwise
+ *  \return success status_t (> 0) , < 0 otherwise
  *
  ******************************************************************************/
 status_t BnSharedBuffer::onTransact(uint32_t code, const Parcel &data,

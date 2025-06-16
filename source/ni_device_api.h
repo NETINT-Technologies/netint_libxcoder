@@ -177,6 +177,7 @@ NI_DEPRECATE_MACRO(NI_MAX_VUI_SIZE)
 #define NI_MIN_FRAME_SIZE 0
 #define NI_MAX_FRAME_SIZE (7680*4320*3)
 #define NI_AV1_INVALID_BUFFER_INDEX (-1)
+#define NI_MAX_SPATIAL_LAYERS 4
 
 #define    RC_SUCCESS           true
 #define    RC_ERROR             false
@@ -300,6 +301,7 @@ typedef enum
 #define NI_AI_FLAG_IO 0x0001 /* 0 = source frame, 1 = destination frame */
 #define NI_AI_FLAG_PC 0x0002 /* 0 = single allocation, 1 = create pool */
 #define NI_AI_FLAG_LM 0x0004 /* 0 == no memory acquisition limit; 1 == limit memory acquisition */
+#define NI_AI_FLAG_IOVEC 0x0008
 
 #define NI_UPLOADER_FLAG_LM 0x0010 /* 0 == no memory acquisition limit, 1 == limit memory acquisition */
 
@@ -563,7 +565,7 @@ typedef enum _ni_frame_aux_data_type
 
     // NETINT: maxFrameSize adjustment, which takes int16_t type data as
     // payload that indicates the new maxFrameSize value
-    NI_FRAME_AUX_DATA_MAX_FRAME_SIZE,    
+    NI_FRAME_AUX_DATA_MAX_FRAME_SIZE,
 
     // NETINT: max&min QP adjustment, which is a struct of
     // payload that indicate the new max&min QP values
@@ -973,7 +975,7 @@ typedef enum _ni_param_change_flags
     NI_SET_CHANGE_PARAM_CRF       = (1<<29),
     NI_SET_CHANGE_PARAM_VBV       = (1<<30),
     NI_SET_CHANGE_PARAM_INTRA_PERIOD = ((unsigned int)1 << 31),
-    //bit [2,7] and [13,15] is still unused 
+    //bit [2,7] and [13,15] is still unused
 } ni_param_change_flags_t;
 
 /**
@@ -1031,12 +1033,12 @@ typedef struct _ni_encoder_change_params_t
   int16_t sliceArg;
   //NI_SET_CHANGE_PARAM_VBV also reconfig for ni_vbvBufferSize
   int32_t vbvMaxRate;
-  
+
   // NI_SET_CHANGE_PARAM_CRF
   // crf reconfig (range in [0.00 .. 51.00])
   uint8_t crfDecimal;              // crf decimal fraction * 100 (range in [0 .. 99])
   uint8_t crf;                     // crf integer (range in [0 .. 51])
-  
+
   // NI_SET_CHANGE_PARAM_MAX_FRAME_SIZE
   uint16_t maxFrameSize; // maxFrameSize reconfig (in unit of 2000 bytes)
 
@@ -1200,8 +1202,8 @@ typedef struct _ni_load_query
   uint32_t fw_load;
   uint32_t total_contexts;
   union{
-	  uint32_t fw_video_mem_usage;
-	  uint32_t pcie_throughput; //PCIe throughput - ni_query_nvme_status
+    uint32_t fw_video_mem_usage;
+    uint32_t pcie_throughput; //PCIe throughput - ni_query_nvme_status
   };
   union {
       uint32_t fw_video_shared_mem_usage;
@@ -1580,7 +1582,7 @@ typedef struct _ni_session_context
     ni_region_of_interest_t *av_rois;
     int nb_rois;
     ni_enc_quad_roi_custom_map *roi_map;   // actual AVC/HEVC QP map
-    
+
     // only for H.264 test roi buffer for up to 8k resolution H.264 - 32 x 32 sub CTUs
     ni_enc_avc_roi_custom_map_t *avc_roi_map;
     // only for H.265 custom map buffer for up to 8k resolution  - 64x64 CTU Regions
@@ -1664,7 +1666,7 @@ typedef struct _ni_session_context
     int low_delay_sync_flag;
     ni_pthread_mutex_t low_delay_sync_mutex;
     ni_pthread_cond_t low_delay_sync_cond;
-    
+
     // muxtex default from source session
     // required pointer to external if used by hwdl
     ni_pthread_mutex_t* pext_mutex;
@@ -1711,7 +1713,7 @@ typedef struct _ni_session_context
     double psnr_u;
     double psnr_v;
     double average_psnr;
-    ///encoder:calculate PSNR end 
+    ///encoder:calculate PSNR end
     int hvsplus_level;
 
     int16_t buffered_frame_index;
@@ -1721,6 +1723,11 @@ typedef struct _ni_session_context
 
     // record the drop num
     uint32_t decoder_last_drop_frame_num;
+
+    //for AI aio
+    ni_aio_context_t aio_context;
+    ni_iocb_t **iocbs;
+    ni_io_event_t *io_event;
 } ni_session_context_t;
 
 typedef struct _ni_split_context_t
@@ -1740,7 +1747,7 @@ typedef enum _ni_reconfig
 {
     XCODER_TEST_RECONF_OFF = 0,
     XCODER_TEST_RECONF_BR = 1,
-    XCODER_TEST_RECONF_INTRAPRD = 2, 
+    XCODER_TEST_RECONF_INTRAPRD = 2,
     XCODER_TEST_RECONF_VUI_HRD = 3,
     XCODER_TEST_RECONF_LONG_TERM_REF = 4,
 //XCODER_TEST_RECONF_RC = 5,   // not required by customers
@@ -1766,7 +1773,7 @@ typedef enum _ni_reconfig
     XCODER_TEST_INVALID_REF_FRAME_API = 108,   // invalidate ref frame thru API
     XCODER_TEST_RECONF_FRAMERATE_API = 109,   // reconfig framerate through libxcoder API
     XCODER_TEST_RECONF_MAX_FRAME_SIZE_API = 110,   // reconfig maxFrameSize through libxcoder API
-    XCODER_TEST_RECONF_RC_MIN_MAX_QP_API  = 111,   // reconfig min&max QP through libxcoder API 
+    XCODER_TEST_RECONF_RC_MIN_MAX_QP_API  = 111,   // reconfig min&max QP through libxcoder API
     XCODER_TEST_CRF_API = 114,   // reconfig crf through libxcoder API
     XCODER_TEST_CRF_FLOAT_API = 115,   // reconfig crf float type through libxcoder API
     XCODER_TEST_RECONF_VBV_API = 116,   // reconfig vbv buffer size and vbv max rate through libxcoder API
@@ -2234,6 +2241,13 @@ NI_DEPRECATE_MACRO(NI_ENC_PARAM_MAX_FRAME_SIZE_LOW_DELAY)
 #define NI_ENC_PARAM_SPATIAL_LAYERS_REF_BASE_LAYER "spatialLayersRefBaseLayer"
 #define NI_ENC_PARAM_GET_RECONSTRUCTED_MODE "getReconstructedMode"
 #define NI_ENC_PARAM_VBV_BUFFER_REENCODE "vbvBufferReencode"
+#define NI_ENC_PARAM_TOTAL_CUTREE_DEPTH "totalCuTreeDepth"
+#define NI_ENC_PARAM_ADAPTIVE_CUTREE "adaptiveCuTree"
+#define NI_ENC_PARAM_PRE_INTRA_HANDLING "preIntraHandling"
+#define NI_ENC_PARAM_BASE_LAYER_ONLY "baseLayerOnly"
+#define NI_ENC_PARAM_PAST_FRAME_MAX_INTRA_RATIO "pastFrameMaxIntraRatio"
+#define NI_ENC_PARAM_LINK_FRAME_MAX_INTRA_RATIO "linkFrameMaxIntraRatio"
+#define NI_ENC_PARAM_SPATIAL_LAYER_BITRATE "spatialLayerBitrate"
 
     //----- Start supported by all codecs -----
     int frame_rate;
@@ -2335,7 +2349,7 @@ NI_DEPRECATE_MACRO(NI_ENC_PARAM_MAX_FRAME_SIZE_LOW_DELAY)
     int inLoopDSRatio;
     int blockRCSize;
     //----- End test use only -----
-  
+
     //----- Start supported by AV1, AVC, HEVC only -----
     int rcQpDeltaRange;
     //----- End supported by AV1, AVC, HEVC only -----
@@ -2403,7 +2417,7 @@ NI_DEPRECATE_MACRO(NI_ENC_PARAM_MAX_FRAME_SIZE_LOW_DELAY)
     int cuTreeFactor;
     float ipRatio;
     float pbRatio;
-    float cplxDecay;  
+    float cplxDecay;
     int pps_init_qp;
     int bitrateMode;
     int pass1_qp;
@@ -2435,11 +2449,18 @@ NI_DEPRECATE_MACRO(NI_ENC_PARAM_MAX_FRAME_SIZE_LOW_DELAY)
     int encMallocStrategy;
     int enable_smooth_crf;
     int enable_compensate_qp;
-    int spatial_layers;    
+    int spatial_layers;
     int enable_timecode;
     int avcc_hvcc;
     int spatial_layers_ref_base_layer;
     int vbvBufferReencode;
+    int totalCuTreeDepth;
+    int adaptiveCuTree;
+    int preIntraHandling;
+    int baseLayerOnly;
+    int pastFrameMaxIntraRatio;
+    int linkFrameMaxIntraRatio;
+    int spatialLayerBitrate[NI_MAX_SPATIAL_LAYERS];
 } ni_encoder_cfg_params_t;
 
 typedef struct _ni_decoder_input_params_t
@@ -2598,6 +2619,11 @@ typedef struct _ni_scaler_multi_watermark_params_t{
     ni_scaler_watermark_params_t multi_watermark_params[NI_MAX_SUPPORT_WATERMARK_NUM];
 }ni_scaler_multi_watermark_params_t;
 
+typedef struct _ni_iovec {
+    uint32_t size;
+    void *ptr;
+} ni_iovec_t;
+
 typedef struct _ni_frame
 {
     // codec of the source from which this frame is decoded
@@ -2708,6 +2734,10 @@ typedef struct _ni_frame
     uint8_t inconsecutive_transfer;
     long long orignal_pts;
     uint32_t error_ratio;
+
+    //for AI non-4k-aligned memory buffer
+    uint32_t iovec_num;
+    ni_iovec_t *iovec;
 } ni_frame_t;
 
 typedef struct _ni_xcoder_params
@@ -2780,7 +2810,7 @@ typedef struct _ni_xcoder_params
     int staticMmapThreshold;
     int enable_ai_enhance;
     int enable2PassGop;
-    int zerocopy_mode;   
+    int zerocopy_mode;
     int luma_linesize;
     int chroma_linesize;
     int ai_enhance_level;
@@ -3212,7 +3242,7 @@ LIB_API ni_retcode_t ni_device_session_query(ni_session_context_t *p_ctx,
  *                          NI_RETCODE_ERROR_NVME_CMD_FAILED
  *                          NI_RETCODE_ERROR_INVALID_SESSION
  ******************************************************************************/
- LIB_API ni_retcode_t ni_device_session_query_detail(ni_session_context_t* p_ctx, 
+ LIB_API ni_retcode_t ni_device_session_query_detail(ni_session_context_t* p_ctx,
                                              ni_device_type_t device_type, ni_instance_mgr_detail_status_t *detail_data);
 
 /*!*****************************************************************************
@@ -3268,7 +3298,7 @@ LIB_API ni_retcode_t ni_device_config_qos(ni_device_handle_t device_handle,
                                           uint32_t mode);
 
     /*!*****************************************************************************
- *  \brief  Send qos over provisioning mode to target namespace with specified logic 
+ *  \brief  Send qos over provisioning mode to target namespace with specified logic
  *          block address.
  *
  *  \param[in] device_handle   Device handle obtained by calling ni_device_open
@@ -3340,7 +3370,7 @@ LIB_API ni_retcode_t ni_frame_buffer_alloc(ni_frame_t *p_frame, int video_width,
 LIB_API ni_retcode_t ni_enc_frame_buffer_alloc(ni_frame_t *p_frame, int video_width,
                                                int video_height, int alignment,
                                                int metadata_flag, int factor,
-                                               int hw_frame_count, int is_planar, 
+                                               int hw_frame_count, int is_planar,
                                                ni_pix_fmt_t pix_fmt);
 
 LIB_API ni_retcode_t ni_frame_buffer_alloc_dl(ni_frame_t *p_frame,
@@ -3386,7 +3416,7 @@ LIB_API ni_retcode_t ni_decoder_frame_buffer_alloc(
   *  \param[in] video_height  Height of the video frame
   *  \param[in] linesize      Picture line size
   *  \param[in] alignment     Allignment requirement
-  *  \param[in] extra_len     Extra data size (incl. meta data). < 0 means not 
+  *  \param[in] extra_len     Extra data size (incl. meta data). < 0 means not
   *                           to allocate any buffer (zero-copy from existing)
   *  \param[in] alignment_2pass_wa set alignment to work with 2pass encode
   *
@@ -3457,7 +3487,7 @@ LIB_API ni_retcode_t ni_frame_buffer_alloc_nv(ni_frame_t *p_frame,
   *  \param[in] video_height  Height of the video frame
   *  \param[in] linesize      Picture line size
   *  \param[in] alignment     Allignment requirement. Only used for planar format.
-  *  \param[in] extra_len     Extra data size (incl. meta data). < 0 means not 
+  *  \param[in] extra_len     Extra data size (incl. meta data). < 0 means not
   *                           to allocate any buffer (zero-copy from existing)
   *  \param[in] alignment_2pass_wa set alignment to work with 2pass encode
   *
@@ -4257,7 +4287,7 @@ LIB_API ni_retcode_t ni_reconfig_framerate(ni_session_context_t *p_ctx,
  *  NOTE - maxFrameSize_Bytes value less than ((bitrate / 8) / framerate) will be rejected
  *
  ******************************************************************************/
-LIB_API ni_retcode_t ni_reconfig_max_frame_size(ni_session_context_t *p_ctx, 
+LIB_API ni_retcode_t ni_reconfig_max_frame_size(ni_session_context_t *p_ctx,
                                            int32_t max_frame_size);
 
 /*!*****************************************************************************
@@ -4320,7 +4350,7 @@ LIB_API ni_retcode_t ni_reconfig_vbv_value(ni_session_context_t *p_ctx,
  *  \return On success    NI_RETCODE_SUCCESS
  *          On failure    NI_RETCODE_INVALID_PARAM
  ******************************************************************************/
-LIB_API ni_retcode_t ni_reconfig_max_frame_size_ratio(ni_session_context_t *p_ctx, 
+LIB_API ni_retcode_t ni_reconfig_max_frame_size_ratio(ni_session_context_t *p_ctx,
                                                       int32_t max_frame_size_ratio);
 
 /*!*****************************************************************************
@@ -4332,7 +4362,7 @@ LIB_API ni_retcode_t ni_reconfig_max_frame_size_ratio(ni_session_context_t *p_ct
  *  \return On success    NI_RETCODE_SUCCESS
  *          On failure    NI_RETCODE_INVALID_PARAM
  ******************************************************************************/
-LIB_API ni_retcode_t ni_reconfig_slice_arg(ni_session_context_t *p_ctx, 
+LIB_API ni_retcode_t ni_reconfig_slice_arg(ni_session_context_t *p_ctx,
                                                       int16_t sliceArg);
 
 #ifndef _WIN32
@@ -4699,7 +4729,7 @@ LIB_API ni_retcode_t ni_encoder_frame_zerocopy_check(ni_session_context_t *p_enc
   *                          NI_RETCODE_INVALID_PARAM
   *                          NI_RETCODE_ERROR_MEM_ALOC
   *****************************************************************************/
-LIB_API ni_retcode_t ni_encoder_frame_zerocopy_buffer_alloc(ni_frame_t *p_frame, 
+LIB_API ni_retcode_t ni_encoder_frame_zerocopy_buffer_alloc(ni_frame_t *p_frame,
                                            int video_width, int video_height,
                                            const int linesize[], const uint8_t *data[],
                                            int extra_len);
@@ -4749,7 +4779,7 @@ LIB_API ni_retcode_t ni_device_alloc_and_get_firmware_logs(ni_session_context_t 
 /*!*****************************************************************************
  *  \brief  Set up hard coded demo ROI map
  *
- *  \param[in] p_enc_ctx   Pointer to a caller allocated  
+ *  \param[in] p_enc_ctx   Pointer to a caller allocated
  *
  *  \return on success
  *              NI_RETCODE_SUCCESS

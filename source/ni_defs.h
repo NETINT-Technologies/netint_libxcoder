@@ -34,6 +34,9 @@
 #elif __linux__ || __APPLE__
 #if __linux__
 #include <linux/types.h>
+#include <unistd.h>
+#include <sys/syscall.h>
+#include <linux/aio_abi.h>
 #endif
 #include <sys/time.h>
 #include <pthread.h>
@@ -88,7 +91,7 @@ extern "C"
 // NI_XCODER_REVISION[6:7] = optional
 // You must change the name in the comment of REVISION line to your name when
 // you change the version number. If a merge conflict arises on a REVISION line,
-#define NI_XCODER_REVISION "5206s5r3"
+#define NI_XCODER_REVISION "5306sBr2"
 #define NI_XCODER_REVISION_API_MAJOR_VER_IDX 3
 #define NI_XCODER_REVISION_API_MINOR_VER_IDX 4
 
@@ -139,6 +142,9 @@ typedef void ni_sigset_t;
 typedef HANDLE ni_device_handle_t;
 typedef HANDLE ni_event_handle_t;
 typedef HANDLE ni_lock_handle_t;
+typedef unsigned ni_aio_context_t;
+typedef unsigned ni_iocb_t;
+typedef unsigned ni_io_event_t;
 #define NI_INVALID_DEVICE_HANDLE (INVALID_HANDLE_VALUE)
 #define NI_INVALID_EVENT_HANDLE (NULL)
 #define NI_INVALID_LOCK_HANDLE (NULL)
@@ -167,6 +173,9 @@ typedef sigset_t ni_sigset_t;
 typedef int32_t ni_device_handle_t;
 typedef int32_t ni_event_handle_t;
 typedef int32_t ni_lock_handle_t;
+typedef unsigned long ni_aio_context_t;
+typedef struct iocb ni_iocb_t;
+typedef struct io_event ni_io_event_t;
 #define NI_INVALID_DEVICE_HANDLE (-1)
 #define NI_INVALID_EVENT_HANDLE (-1)
 #define NI_INVALID_LOCK_HANDLE (-1)
@@ -196,6 +205,9 @@ typedef sigset_t ni_sigset_t;
 typedef int32_t  ni_device_handle_t;
 typedef int32_t  ni_event_handle_t;
 typedef int32_t  ni_lock_handle_t;
+typedef unsigned ni_aio_context_t;
+typedef unsigned ni_iocb_t;
+typedef unsigned ni_io_event_t;
 #define NI_INVALID_DEVICE_HANDLE (-1)
 #define NI_INVALID_EVENT_HANDLE  (-1)
 #define NI_INVALID_LOCK_HANDLE   (-1)
@@ -216,7 +228,7 @@ typedef int32_t  ni_lock_handle_t;
 #define NI_MAX_DEVICE_CNT      128
 #define NI_MAX_DEVICE_NAME_LEN 32
 
-#define NI_NVME_PREFIX   "nvme" 
+#define NI_NVME_PREFIX   "nvme"
 #define NI_MAX_PACKET_SZ                0x20000
 #define NI_POLL_INTERVAL                (2 * 1000)
 

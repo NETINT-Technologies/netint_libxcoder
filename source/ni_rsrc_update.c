@@ -34,7 +34,7 @@
 #if __linux__ || __APPLE__
 #include <unistd.h>
 #include <sys/types.h>
-#endif 
+#endif
 
 #include "ni_defs.h"
 #include "ni_rsrc_api.h"
@@ -53,7 +53,7 @@
  *  \brief  get the NVMe device's block device name (e.g. /dev/nvmeXnY)
  *
  *  \param  in        whole device name passed in
- *          dev_name  full block device name 
+ *          dev_name  full block device name
  *
  *  \return    0 if value device name is found, -1 otherwise
  ******************************************************************************/
@@ -171,12 +171,14 @@ int main(int argc, char *argv[])
     }
 
     // check option
+#ifdef __linux__
     if (add_dev && (del_dev || delete_all))
     {
         fprintf(stderr, "Error: can not add and delete device at the same time\n\n");
         display_help();
         return 1;
     }
+#endif
     if (!should_match_rev && !add_dev)
     {
         fprintf(stderr, "Error: -r option must be used with -a option\n\n");

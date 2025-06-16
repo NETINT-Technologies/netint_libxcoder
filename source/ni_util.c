@@ -675,7 +675,7 @@ int32_t ni_dec_fme_buffer_pool_initialize(ni_session_context_t* p_ctx,
 
     if (p_ctx->dec_fme_buf_pool != NULL)
     {
-        ni_log2(p_ctx, NI_LOG_DEBUG, 
+        ni_log2(p_ctx, NI_LOG_DEBUG,
                "Warning init dec_fme Buf pool already with size %u\n",
                p_ctx->dec_fme_buf_pool->number_of_buffers);
 
@@ -711,7 +711,7 @@ int32_t ni_dec_fme_buffer_pool_initialize(ni_session_context_t* p_ctx,
     ni_pthread_mutex_init(&p_ctx->dec_fme_buf_pool->mutex);
     p_ctx->dec_fme_buf_pool->number_of_buffers = number_of_buffers;
 
-    ni_log2(p_ctx, NI_LOG_DEBUG, 
+    ni_log2(p_ctx, NI_LOG_DEBUG,
            "ni_dec_fme_buffer_pool_initialize: entries %d  entry size "
            "%d\n",
            number_of_buffers, buffer_size);
@@ -1027,7 +1027,7 @@ int32_t ni_get_frame_index(uint32_t *value)
 
 #ifdef _ANDROID
 /*!******************************************************************************
- *	\brief	use cmd to search nvme block file
+ *  \brief  use cmd to search nvme block file
  *
  *  \param[in] p_dev Device name represented as c string. ex: "/dev/nvme0"
  *  \param[in] search cmd
@@ -1192,9 +1192,9 @@ ni_retcode_t ni_find_blk_name(const char *p_dev, char *p_out_buf, int out_buf_le
     snprintf(p_out_buf, out_buf_len, "%s", p_dev);
     return NI_RETCODE_SUCCESS;
 #elif __APPLE__
-    /* 
-    Using smartctl /dev/rdisk4 -i | grep 'PCI Vendor' command check if output 
-    contains Quadra. Model number could be duplicated in other devices so 
+    /*
+    Using smartctl /dev/rdisk4 -i | grep 'PCI Vendor' command check if output
+    contains Quadra. Model number could be duplicated in other devices so
     should use PCI Vendor instead but smartctl is not preinstalled on mac
     snprintf(command, sizeof(command) - 1,
               "smartctl %s -i | grep 'PCI Vendor'", p_dev);
@@ -1257,9 +1257,9 @@ ni_retcode_t ni_check_dev_name(const char *p_dev)
     }
 
 #ifdef __APPLE__
-    /* 
-    Using smartctl /dev/rdisk4 -i | grep 'PCI Vendor' command check if output 
-    contains Quadra. Model number could be duplicated in other devices so 
+    /*
+    Using smartctl /dev/rdisk4 -i | grep 'PCI Vendor' command check if output
+    contains Quadra. Model number could be duplicated in other devices so
     should use PCI Vendor instead but smartctl is not preinstalled on mac
     snprintf(command, sizeof(command) - 1,
               "smartctl %s -i | grep 'PCI Vendor'", p_dev);
@@ -2077,7 +2077,7 @@ void ni_get_hw_yuv420p_dim(int width, int height, int factor,
  *          to encoder for encoding. Caller usually retrieves this info and
  *          uses it in the call to ni_encoder_frame_buffer_alloc for buffer
  *          allocation.
- *          The returned stride and height info will take alignment 
+ *          The returned stride and height info will take alignment
  *          requirements into account.
  *
  *  \param[in]  width   source frame width
@@ -2159,13 +2159,13 @@ void ni_get_frame_dim(int width, int height,
             break;
     }
 
-}   
+}
 
 /*!*****************************************************************************
  *  \brief  Get dimension information of frame to be sent
  *          to encoder for encoding. Caller usually retrieves this info and
  *          uses it in the call to ni_encoder_frame_buffer_alloc for buffer
- *          allocation. 
+ *          allocation.
  *          The returned stride and height info will take into account both min
  *          resolution and alignment requirements.
  *
@@ -2183,7 +2183,7 @@ void ni_get_min_frame_dim(int width, int height,
                       int plane_stride[NI_MAX_NUM_DATA_POINTERS],
                       int plane_height[NI_MAX_NUM_DATA_POINTERS])
 {
-    
+
     if (height < NI_MIN_HEIGHT)
     {
         height = NI_MIN_HEIGHT;
@@ -2409,12 +2409,12 @@ void ni_copy_frame_data(uint8_t *p_dst[NI_MAX_NUM_DATA_POINTERS],
            "%s frame_width %d frame_height %d factor %d conf_win_right %d "
            "dst_stride %d/%d/%d src_stride %d/%d/%d dst_height "
            "%d/%d/%d src_height %d/%d/%d pix_fmt %d\n",
-           __func__, frame_width, frame_height, factor, conf_win_right, 
-           dst_stride[0], dst_stride[1], dst_stride[2], src_stride[0], 
+           __func__, frame_width, frame_height, factor, conf_win_right,
+           dst_stride[0], dst_stride[1], dst_stride[2], src_stride[0],
            src_stride[1], src_stride[2], dst_height[0], dst_height[1],
-           dst_height[2], src_height[0], src_height[1], src_height[2], 
+           dst_height[2], src_height[0], src_height[1], src_height[2],
            pix_fmt);
-    
+
     int is_rgba = 0;
     int is_semiplanar = 0;
     switch (pix_fmt)
@@ -3044,7 +3044,7 @@ static void ni_ai_float32_to_dtype(float src, unsigned char *dst,
     switch (data_type)
     {
         case NI_AI_BUFFER_FORMAT_FP32:
-            *(float *)((void *)dst) = src;
+        memcpy(dst, &src, sizeof(float));
             break;
         case NI_AI_BUFFER_FORMAT_FP16:
             *(int16_t *)dst = ni_ai_fp32_to_fp16(src);
@@ -3746,7 +3746,7 @@ const char *ni_get_rc_txt(ni_retcode_t rc)
  *  \brief  retrieve key and value from 'key=value' pair
  *
  *  \param[in]   p_str    pointer to string to extract pair from
- *  \param[out]  key      pointer to key 
+ *  \param[out]  key      pointer to key
  *  \param[out]  value    pointer to value
  *
  *  \return return 0 if successful, otherwise 1
@@ -3778,7 +3778,7 @@ int ni_param_get_key_value(char *p_str, char *key, char *value)
  *  \brief  retrieve encoder config parameter values from --xcoder-params
  *
  *  \param[in]   xcoderParams    pointer to string containing xcoder params
- *  \param[out]  params          pointer to xcoder params to fill out 
+ *  \param[out]  params          pointer to xcoder params to fill out
  *  \param[out]  ctx             pointer to session context
  *
  *  \return return 0 if successful, -1 otherwise
@@ -3922,7 +3922,7 @@ int ni_retrieve_xcoder_gop(char xcoderGop[],
  *  \brief  retrieve decoder config parameter values from --decoder-params
  *
  *  \param[in]   xcoderParams    pointer to string containing xcoder params
- *  \param[out]  params          pointer to xcoder params to fill out 
+ *  \param[out]  params          pointer to xcoder params to fill out
  *  \param[out]  ctx             pointer to session context
  *
  *  \return return 0 if successful, -1 otherwise
@@ -4002,7 +4002,7 @@ int ni_pthread_mutex_init(ni_pthread_mutex_t *mutex)
 {
 #ifdef _WIN32
     bool rc = false;
-    // error return zero 
+    // error return zero
     rc = InitializeCriticalSectionEx(mutex, 0, CRITICAL_SECTION_NO_DEBUG_INFO);
     if (rc)
     {
@@ -4110,10 +4110,10 @@ static unsigned __stdcall __thread_worker(void *arg)
 /*!*****************************************************************************
  *  \brief  create a new thread
  *
- *  \param[in] thread          thread id 
- *  \param[in] attr            attributes to the new thread 
- *  \param[in] start_routine   entry of the thread routine 
- *  \param[in] arg             sole argument of the routine 
+ *  \param[in] thread          thread id
+ *  \param[in] attr            attributes to the new thread
+ *  \param[in] start_routine   entry of the thread routine
+ *  \param[in] arg             sole argument of the routine
  *
  *  \return On success returns 0
  *          On failure returns <0
@@ -4139,8 +4139,8 @@ int ni_pthread_create(ni_pthread_t *thread, const ni_pthread_attr_t *attr,
 /*!*****************************************************************************
  *  \brief  join with a terminated thread
  *
- *  \param[in]  thread     thread id 
- *  \param[out] value_ptr  return status 
+ *  \param[in]  thread     thread id
+ *  \param[out] value_ptr  return status
  *
  *  \return On success returns 0
  *          On failure returns <0
@@ -4168,8 +4168,8 @@ int ni_pthread_join(ni_pthread_t thread, void **value_ptr)
 /*!*****************************************************************************
  *  \brief  initialize condition variables
  *
- *  \param[in] cond  condition variable 
- *  \param[in] attr  attribute to the condvar 
+ *  \param[in] cond  condition variable
+ *  \param[in] attr  attribute to the condvar
  *
  *  \return On success returns 0
  *          On failure returns <0
@@ -4294,10 +4294,10 @@ int ni_pthread_cond_timedwait(ni_pthread_cond_t *cond,
  *  \brief  examine and change mask of blocked signals
  *
  *  \param[in] how     behavior of this call, can be value of SIG_BLOCK,
- *                     SIG_UNBLOCK and  SIG_SETMASK 
+ *                     SIG_UNBLOCK and  SIG_SETMASK
  *  \param[in] set     current value of the signal mask. If NULL, the mask keeps
- *                     unchanged. 
- *  \param[in] old_set previous value of the signal mask, can be NULL. 
+ *                     unchanged.
+ *  \param[in] old_set previous value of the signal mask, can be NULL.
  *
  *  \return On success returns 0
  *          On failure returns <0
@@ -4395,7 +4395,7 @@ uint32_t ni_decode_power_measurement(uint32_t current_data, const uint8_t *seria
 
     float current_value = (float)current_data;
     voltage_mv = 12000.0f;
-    if (strncmp(pcb_config, "A1", 2) == 0) 
+    if (strncmp(pcb_config, "A1", 2) == 0)
     {
         current_ma = (((current_value * 1000) / TPS25940_R_IMON) - TPS25940_IMON_OS) / TPS25940_GAIN_IMON;
     }
@@ -4407,7 +4407,7 @@ uint32_t ni_decode_power_measurement(uint32_t current_data, const uint8_t *seria
     {
         current_ma = (((current_value * 1000) / (TPS25946_R_IMON_T2A * TPS25946_GAIN_IMON)) * 1000);
     }
-    else if (strncmp(pcb_config, "U0", 2) == 0) 
+    else if (strncmp(pcb_config, "U0", 2) == 0)
     {
         current_ma = ((((current_value) * MAX17613B_R_ISET_TOTAL / MAX17613B_R_ISET_R2) *
                            MAX17613B_C_IRATIO) / MAX17613B_R_ISET_TOTAL);
@@ -4424,7 +4424,7 @@ uint32_t ni_decode_power_measurement(uint32_t current_data, const uint8_t *seria
     {
         current_ma = (((current_value * 1000) / (TPS25946_R_IMON_T1S * TPS25946_GAIN_IMON)) * 1000);
     }
-    else if (strncmp(pcb_config, "M0", 2) == 0)
+    else if ((strncmp(pcb_config, "M0", 2) == 0) || (strncmp(pcb_config, "M1", 2) == 0))
     {
         current_ma = ((((current_value * 1000) / (TPS25946_R_IMON_T1M * TPS25946_GAIN_IMON_T1M)) * 1000) * MCU_REF_VOLTAGE) / MCU_FSR_ADC;
         voltage_mv = 3300.0f;
@@ -4442,7 +4442,7 @@ uint32_t ni_decode_power_measurement(uint32_t current_data, const uint8_t *seria
 /*!******************************************************************************
  *  \brief   Check a device can be read by ni_device_capability_query()
  *           by checking the size of the device using blockdev
- * 
+ *
  *           INFO OR ERROR logs will not be printed in this function
  *
  *  \param[in]   p_dev device path string. eg: "/dev/nvme1n2"
@@ -4451,11 +4451,11 @@ uint32_t ni_decode_power_measurement(uint32_t current_data, const uint8_t *seria
  *  \return
  *           returns -1
  *           when the device can not be read by ni_device_capability_query()
- *           
+ *
  *           returns 1
  *           when the device can be read by ni_device_capability_query()
  *
- *           returns 0 when the result can not be determined 
+ *           returns 0 when the result can not be determined
  *
  *******************************************************************************/
 static int ni_device_size_precheck_blockdev(const char *p_dev, const uint64_t size_needed )
@@ -4496,7 +4496,7 @@ static int ni_device_size_precheck_blockdev(const char *p_dev, const uint64_t si
     {
         LRETURN;
     }
-    
+
     if (fgets(blockdev_result, sizeof(blockdev_result), blockdev_file) == NULL)
     {
         LRETURN;
@@ -4537,7 +4537,7 @@ END:
 
     if (blockdev_file)
     {
-        fclose(blockdev_file);
+        pclose(blockdev_file);
     }
 
     return ret;
@@ -4548,20 +4548,20 @@ END:
 /*!******************************************************************************
  *  \brief   Check a device can be read by ni_device_capability_query()
  *           by checking the size of the device using lsblk
- * 
+ *
  *           INFO OR ERROR logs will not be printed in this function
  *
  *  \param[in]   p_dev Device path string. eg: "/dev/nvme1n2"
  *  \param[in]   size_needed The minimum required size
- * 
+ *
  *  \return
  *           returns -1
  *           when the device can not be read by ni_device_capability_query()
- *           
+ *
  *           returns 1
  *           when the device can be read by ni_device_capability_query()
  *
- *           returns 0 when the result can not be determined 
+ *           returns 0 when the result can not be determined
  *
  *******************************************************************************/
 static int ni_device_size_precheck_lsblk(const char *p_dev, const uint64_t size_needed)
@@ -4662,7 +4662,7 @@ END:
 /*!******************************************************************************
  *  \brief   Check a device can be read by ni_device_capability_query()
  *           by checking the vendor id
- * 
+ *
  *           INFO OR ERROR logs will not be printed in this function
  *
  *  \param[in]   p_dev device path string. eg: "/dev/nvme1n2"
@@ -4670,11 +4670,11 @@ END:
  *  \return
  *           returns -1
  *           when the device can not be read by ni_device_capability_query()
- *           
+ *
  *           returns 1
  *           when the device can be read by ni_device_capability_query()
  *
- *           returns 0 when the result can not be determined 
+ *           returns 0 when the result can not be determined
  *
  *******************************************************************************/
 static int ni_device_vendor_id_precheck(const char *p_dev)
@@ -4693,7 +4693,7 @@ static int ni_device_vendor_id_precheck(const char *p_dev)
 
     const char *vendor_path_devs[] = {"/sys/class/block/%s/device/vendor", "/sys/class/block/%s/device/device/vendor"};
 
-    const char *last_slash = strrchr(p_dev, '/'); 
+    const char *last_slash = strrchr(p_dev, '/');
     const char *device_name = (last_slash ? (last_slash + 1) : p_dev);
 
     const size_t path_len = strlen(p_dev);
@@ -4741,9 +4741,9 @@ static int ni_device_vendor_id_precheck(const char *p_dev)
 
 /*!******************************************************************************
  *  \brief   Check a device can be read by ni_device_capability_query()
- *           by reading size from /sys/class/block/<devname>/size and 
+ *           by reading size from /sys/class/block/<devname>/size and
  *           /sys/class/block/<devname>/queue/logical_block_size
- * 
+ *
  *           INFO OR ERROR logs will not be printed in this function
  *
  *  \param[in]   p_dev device path string. eg: "/dev/nvme1n2"
@@ -4752,11 +4752,11 @@ static int ni_device_vendor_id_precheck(const char *p_dev)
  *  \return
  *           returns -1
  *           when the device can not be read by ni_device_capability_query()
- *           
+ *
  *           returns 1
  *           when the device can be read by ni_device_capability_query()
  *
- *           returns 0 when the result can not be determined 
+ *           returns 0 when the result can not be determined
  *
  *******************************************************************************/
 static int ni_device_size_precheck_system_information(const char *p_dev, const uint64_t size_needed)
@@ -4777,7 +4777,7 @@ static int ni_device_size_precheck_system_information(const char *p_dev, const u
     const char block_path_dev[] = "/sys/class/block/%s/size";
     const char logical_block_size_path_dev[] = "/sys/class/block/%s/queue/logical_block_size";
 
-    const char *last_slash = strrchr(p_dev, '/'); 
+    const char *last_slash = strrchr(p_dev, '/');
     const char *device_name = (last_slash ? (last_slash + 1) : p_dev);
 
     const size_t path_len = strlen(p_dev);
@@ -4806,7 +4806,7 @@ static int ni_device_size_precheck_system_information(const char *p_dev, const u
 
     char this_size_str [20] = {0};
     char this_block_size_str [20] = {0};
-    
+
     if (read(size_fd, this_size_str, sizeof(this_size_str)) <= 0 || read(logical_block_fd, this_block_size_str, sizeof(this_block_size_str)) <= 0)
     {
         ret = 0;
@@ -4868,7 +4868,7 @@ END:
  *
  *           returns NI_RETCODE_SUCCESS when
  *           1. the device can not be read by ni_device_capability_query()
- *           2. the result can not be determined to prevent query failures due to 
+ *           2. the result can not be determined to prevent query failures due to
  *           some reasons such as missing commands on the system
  *******************************************************************************/
 ni_retcode_t ni_quadra_card_identify_precheck(const char *p_dev)

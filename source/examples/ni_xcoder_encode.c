@@ -39,7 +39,7 @@
 
 static void print_usage(void)
 {
-    ni_log(NI_LOG_ERROR, 
+    ni_log(NI_LOG_ERROR,
         "Video encoding demo application directly using Netint Libxcoder version %s\n"
         "Usage: ni_xcoder_encode [options]\n"
         "\n"
@@ -65,7 +65,7 @@ static void print_usage(void)
         "                               (Default: 1)\n"
         "-k | --readframerate           Read input at specified frame rate.\n"
         "-p | --pix_fmt                 Indicate the pixel format of the input.\n"
-        "                               [yuv420p, yuv420p10le, nv12, p010le, rgba, gbra, argb, abgr, bgr0, yuv444p]\n"
+        "                               [yuv420p, yuv420p10le, nv12, p010le, rgba, bgra, argb, abgr, bgr0, yuv444p]\n"
         "                               (Default: yuv420p)\n"
         "-s | --size                    (Required) Resolution of input file in format WIDTHxHEIGHT.\n"
         "                               (eg. '1920x1080')\n"
@@ -208,7 +208,7 @@ int main(int argc, char *argv[])
                     enc_codec_format = NI_CODEC_FORMAT_AV1;
                     ctx.av1_output_obu = 1;
                 }
-                else 
+                else
                 {
                     ni_log(NI_LOG_ERROR, "Error: Invalid value \"%s\" for -m | --dec-codec option\n"
                            "Must be one of [a|avc, h|hevc, x|av1, o|obu]\n", optarg);
@@ -221,7 +221,7 @@ int main(int argc, char *argv[])
                 if (log_level != NI_LOG_INVALID)
                 {
                     ni_log_set_level(log_level);
-                } 
+                }
                 else
                 {
                     ni_log(NI_LOG_ERROR, "Error: Invalid value \"%s\" for -l | --loglevel option\n"
@@ -232,7 +232,7 @@ int main(int argc, char *argv[])
                 break;
             case 'c':
                 xcoderGUID = (int)strtol(optarg, &n, 10);
-                if (n == optarg || *n != '\0' || xcoderGUID < 0) 
+                if (n == optarg || *n != '\0' || xcoderGUID < 0)
                 {
                     ni_log(NI_LOG_ERROR, "Error: Invalid value \"%s\" for -c | --card option\n"
                            "Must be a non-negative integer\n", optarg);
@@ -242,7 +242,7 @@ int main(int argc, char *argv[])
                 break;
             case 'r':
                 ctx.loops_left = strtol(optarg, &n, 10);
-                if (n == optarg || *n != '\0' || ctx.loops_left <= 0)
+                if (n == optarg || *n != '\0' || !(ctx.loops_left >= 1))
                 {
                     ni_log(NI_LOG_ERROR, "Error: Invalid value \"%s\" for -r | --repeat option\n"
                            "Must be a positive integer\n", optarg);
@@ -271,7 +271,7 @@ int main(int argc, char *argv[])
                     else
                     {
                         ni_log(NI_LOG_ERROR, "Error: Invalid value \"%s\" for -p | --pix_fmt option\n"
-                               "Must be one of [yuv420p, yuv420p10le, nv12, p010le, rgba, gbra, argb, abgr, bgr0, yuv444p]\n", 
+                               "Must be one of [yuv420p, yuv420p10le, nv12, p010le, rgba, gbra, argb, abgr, bgr0, yuv444p]\n",
                                optarg);
                         ret = -1;
                         goto end;
@@ -387,6 +387,16 @@ int main(int argc, char *argv[])
         goto end;
     }
 
+    // Only in hwupload mode, the pixel formats not directly supported by encoder
+    // will be converted to yuv420p using 2D engine
+    if (!hwupload && !is_ni_enc_pix_fmt(pix_fmt) && sw_pix_fmt == NI_SW_PIX_FMT_NONE)
+    {
+        ni_log(NI_LOG_ERROR, "Error: pixel format %s is only supported in hwupload mode\n",
+               ni_pixel_format_name(pix_fmt));
+        ret = -1;
+        goto end;
+    }
+
     if (ni_posix_memalign(&yuv_buf, sysconf(_SC_PAGESIZE), MAX_YUV_FRAME_SIZE))
     {
         ni_log(NI_LOG_ERROR, "Error: failed to allocate YUV data buffer\n");
@@ -402,7 +412,7 @@ int main(int argc, char *argv[])
             ret = -1;
             goto end;
         }
-    
+
         input_fp[i] = fopen(in_filename[i], "rb");
 
         if (!input_fp[i])
@@ -479,10 +489,10 @@ int main(int argc, char *argv[])
             goto end;
         }
 
-        ni_log(NI_LOG_INFO, "Starting hwupload + encoding mode: video resolution %dx%d\n", 
+        ni_log(NI_LOG_INFO, "Starting hwupload + encoding mode: video resolution %dx%d\n",
                video_width[0], video_height[0]);
         // buffers by downstream entity like encoders
-        ret = uploader_open_session(&upl_ctx, xcoderGUID, video_width[0] < NI_MIN_WIDTH ? NI_MIN_WIDTH : video_width[0], 
+        ret = uploader_open_session(&upl_ctx, xcoderGUID, video_width[0] < NI_MIN_WIDTH ? NI_MIN_WIDTH : video_width[0],
                                     video_height[0] < NI_MIN_HEIGHT ? NI_MIN_HEIGHT : video_height[0], pix_fmt, 0, 3);
         if (ret != 0)
         {
@@ -497,12 +507,30 @@ int main(int argc, char *argv[])
             goto end;
         }
 
-        ret = encoder_open(&enc_ctx[0], p_enc_api_param, output_total, enc_conf_params, enc_gop_params,
+        ret = encoder_open(&ctx, &enc_ctx[0], p_enc_api_param, output_total, enc_conf_params, enc_gop_params,
                            NULL, video_width[0], video_height[0], 30, 1, 200000, enc_codec_format,
                            is_ni_enc_pix_fmt(pix_fmt) ? pix_fmt : NI_PIX_FMT_YUV420P,
                            0, xcoderGUID, p_hwframe, 0, false);
         if (ret != 0)
         {
+            goto end;
+        }
+
+        do
+        {
+            receive_rc = encoder_receive(&ctx, enc_ctx, &in_frame, out_packet,
+                                         video_width[0], video_height[0], output_total, output_fp);
+        }
+        while (receive_rc == NI_TEST_RETCODE_EAGAIN);
+
+        if (receive_rc == NI_TEST_RETCODE_SUCCESS)
+        {
+            ni_log(NI_LOG_INFO, "Got encoded sequence header packet\n");
+        }
+        else
+        {
+            ni_log(NI_LOG_ERROR, "Failed to get encoded sequence header packet, retcode %d\n", receive_rc);
+            ret = receive_rc;
             goto end;
         }
 
@@ -579,8 +607,8 @@ receive_pkt:
             if (current_time - previous_time >= (uint64_t)1000000000) {
                 for (i = 0; i < output_total; i++)
                 {
-                    ni_log(NI_LOG_INFO, "Encoder %d stats: received %u packets, fps %.2f, total bytes %u\n", 
-                           i,  ctx.num_packets_received[i], 
+                    ni_log(NI_LOG_INFO, "Encoder %d stats: received %u packets, fps %.2f, total bytes %u\n",
+                           i,  ctx.num_packets_received[i],
                            (float)enc_ctx[i].frame_num / (float)(current_time - ctx.start_time) * (float)1000000000,
                            ctx.enc_total_bytes_received);
                 }
@@ -597,21 +625,39 @@ receive_pkt:
     else
     {
         in_frame.data.frame.pixel_format = pix_fmt;
-        ret = encoder_open(enc_ctx, p_enc_api_param, output_total,
+        ret = encoder_open(&ctx, enc_ctx, p_enc_api_param, output_total,
                         enc_conf_params, enc_gop_params, NULL, video_width[0],
                         video_height[0], 30, 1, 200000,
                         enc_codec_format, pix_fmt, 0, xcoderGUID, NULL,
-                        0, (sw_pix_fmt != NI_SW_PIX_FMT_NONE) ? false : true); 
+                        0, (sw_pix_fmt != NI_SW_PIX_FMT_NONE) ? false : true);
                         // zero copy is not supported for YUV444P
         if (ret != 0)
         {
             goto end;
         }
 
+        do
+        {
+            receive_rc = encoder_receive(&ctx, enc_ctx, &in_frame, out_packet,
+                                         video_width[0], video_height[0], output_total, output_fp);
+        }
+        while (receive_rc == NI_TEST_RETCODE_EAGAIN);
+
+        if (receive_rc == NI_TEST_RETCODE_SUCCESS)
+        {
+            ni_log(NI_LOG_INFO, "Got encoded sequence header packet\n");
+        }
+        else
+        {
+            ni_log(NI_LOG_ERROR, "Failed to get encoded sequence header packet, retcode %d\n", receive_rc);
+            ret = receive_rc;
+            goto end;
+        }
+
         ni_log(NI_LOG_INFO, "Starting to encode: video resolution %dx%d\n", video_width[0], video_height[0]);
 
         while (!end_of_all_streams &&
-            (send_rc == NI_TEST_RETCODE_SUCCESS || receive_rc == NI_TEST_RETCODE_SUCCESS || 
+            (send_rc == NI_TEST_RETCODE_SUCCESS || receive_rc == NI_TEST_RETCODE_SUCCESS ||
              (send_rc == NI_TEST_RETCODE_EAGAIN && receive_rc == NI_TEST_RETCODE_EAGAIN)))
         {
             read_size = read_yuv_from_file(&ctx, input_fp[i_index], yuv_buf,
@@ -665,7 +711,7 @@ receive_pkt:
                 }
             }
 
-            receive_rc = encoder_receive(&ctx, enc_ctx, &in_frame, out_packet, 
+            receive_rc = encoder_receive(&ctx, enc_ctx, &in_frame, out_packet,
                                         video_width[0], video_height[0], output_total, output_fp);
             for (i = 0; receive_rc >= 0 && i < output_total; i++)
             {
@@ -685,8 +731,8 @@ receive_pkt:
             if (current_time - previous_time >= (uint64_t)1000000000) {
                 for (i = 0; i < output_total; i++)
                 {
-                    ni_log(NI_LOG_INFO, "Encoder %d stats: received %u packets, fps %.2f, total bytes %u\n", 
-                        i,  ctx.num_packets_received[i], 
+                    ni_log(NI_LOG_INFO, "Encoder %d stats: received %u packets, fps %.2f, total bytes %u\n",
+                        i,  ctx.num_packets_received[i],
                         (float)enc_ctx[i].frame_num / (float)(current_time - ctx.start_time) * (float)1000000000,
                         ctx.enc_total_bytes_received);
                     previous_time = current_time;
@@ -708,7 +754,7 @@ end:
     {
         ni_frame_buffer_free(&sw_pix_frame[i].data.frame);
     }
-    
+
     ni_device_session_context_clear(&upl_ctx);
     ni_device_session_context_clear(&sca_ctx);
     for (i = 0; i < output_total; i++)
@@ -730,6 +776,12 @@ end:
 
     ni_aligned_free(yuv_buf);
     free(p_enc_api_param);
+
+    for(i = 0; i < MAX_OUTPUT_FILES; ++i)
+    {
+        free(ctx.enc_pts_queue[i]);
+        ctx.enc_pts_queue[i] = NULL;
+    }
 
     return ret;
 }

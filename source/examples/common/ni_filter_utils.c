@@ -106,7 +106,7 @@ int retrieve_filter_params(char filter_params[], ni_scale_params_t *scale_params
     char key[64], value[64];
     char *curr = filter_params, *colon_pos;
     int ret = 0;
-    
+
     //reset all params to default values first
     memset(scale_params, 0, sizeof(ni_scale_params_t));
     memset(drawbox_params, 0, sizeof(ni_drawbox_params_t));
@@ -116,7 +116,7 @@ int retrieve_filter_params(char filter_params[], ni_scale_params_t *scale_params
     {
         scale_params->enabled = 1;
         curr += 16;
-    } 
+    }
     else if (strncmp("ni_quadra_drawbox", curr, 17) == 0)
     {
         drawbox_params->enabled = 1;
@@ -148,7 +148,7 @@ int retrieve_filter_params(char filter_params[], ni_scale_params_t *scale_params
         if (scale_params->enabled)
         {
             ret = ni_scaler_params_set_value(scale_params, key, value);
-        } else 
+        } else
         {
             ret = ni_drawbox_params_set_value(drawbox_params, key, value);
         }
@@ -169,9 +169,9 @@ int retrieve_filter_params(char filter_params[], ni_scale_params_t *scale_params
 }
 
 /*!*****************************************************************************
- *  \brief  Init scaler params here - both user setting params and fixed params. 
+ *  \brief  Init scaler params here - both user setting params and fixed params.
  *
- *  \param  
+ *  \param
  *
  *  \return 0 if successful, < 0 otherwise
  ******************************************************************************/
@@ -219,8 +219,8 @@ void init_scaler_params(ni_scaler_input_params_t *p_scaler_params, ni_scaler_opc
         p_scaler_params->out_rec_width = p_scaler_params->input_width;
         p_scaler_params->out_rec_height = p_scaler_params->input_height;
 
-        /* 
-            Scaler uses BGRA color, or ARGB in little-endian 
+        /*
+            Scaler uses BGRA color, or ARGB in little-endian
             ui32RgbaColor = (s->rgba_color[3] << 24) | (s->rgba_color[0] << 16) |
                             (s->rgba_color[1] << 8) | s->rgba_color[2];
             here p_scaler_params->rgba_color = ui32RgbaColor;
@@ -254,7 +254,7 @@ void init_scaler_params(ni_scaler_input_params_t *p_scaler_params, ni_scaler_opc
 /*!*****************************************************************************
  *  \brief  open scaler session
  *
- *  \param  
+ *  \param
  *
  *  \return 0 if successful, < 0 otherwise
  ******************************************************************************/
@@ -293,7 +293,7 @@ int scaler_session_open(ni_session_context_t *p_scaler_ctx, int iXcoderGUID, ni_
 /*!*****************************************************************************
  *  \brief  Launch scaler operation and get the result hw frame
  *
- *  \param  
+ *  \param
  *
  *  \return 0 if successful, < 0 otherwise
  ******************************************************************************/
@@ -366,9 +366,9 @@ int launch_scaler_operation(ni_session_context_t *p_scaler_ctx, int iXcoderGUID,
 }
 
 /*!*****************************************************************************
- *  \brief  Use crop->pad->overlay to simulate a drawbox filter. 
+ *  \brief  Use crop->pad->overlay to simulate a drawbox filter.
  *
- *  \param  
+ *  \param
  *
  *  \return 0 if successful, < 0 otherwise
  ******************************************************************************/
@@ -504,9 +504,9 @@ int drawbox_filter(ni_session_context_t *p_crop_ctx, ni_session_context_t *p_pad
 }
 
 /*!*****************************************************************************
- *  \brief  Do a scale and/or format-change operation. 
+ *  \brief  Do a scale and/or format-change operation.
  *
- *  \param  
+ *  \param
  *
  *  \return 0 if successful, < 0 otherwise
  ******************************************************************************/

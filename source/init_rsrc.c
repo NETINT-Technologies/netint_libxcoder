@@ -27,14 +27,13 @@
  ******************************************************************************/
 
 #include <stdio.h>
-#include <fcntl.h> 
 
 #if __linux__ || __APPLE__
 #include <unistd.h>
 #include <sys/types.h>
 #elif _WIN32
 #include "ni_getopt.h"
-#endif 
+#endif
 
 #include "ni_defs.h"
 #include "ni_log.h"
