@@ -1,4 +1,13 @@
 ================================================================================
+Release version: 5.3.1_RC3
+Date: 2025-07-04            SW version: 5.3.1_RC3           FW version: 5.3.1_RC1
+Compat FW API ver: 6sE      Libxcoder API ver: 2.77
+--------------------------------------------------------------------------------
+[LIBXCODER] In API, allow application to request extra frame buffers between sessions
+            This feature is necessary to use Netint codecs/filters distributed by official FFmpeg project
+            Changing libxcoder API version to 2.77
+            Changing FW API version to 6sE
+================================================================================
 Release version: 5.3.0_RC2
 Date: 2025-06-07            SW version: 5.3.0_RC2           FW version: 5.3.0_RC2
 Compat FW API ver: 6sB      Libxcoder API ver: 2.76

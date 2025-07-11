@@ -727,7 +727,7 @@ typedef struct {
 
 typedef struct _ni_decoder_config_t
 {
-  uint8_t                     ui8HWFrame;
+  uint8_t                     ui8HWFrame; //MSB(4) denote extra buffers needed as per DEFAULT_FRAME_THREAD_QUEUE_SIZE
   uint8_t                     ui8UduSeiEnabled; // ui8OutputFormat;
   uint16_t                    ui16MaxSeiDataSize;
   uint32_t fps_number;

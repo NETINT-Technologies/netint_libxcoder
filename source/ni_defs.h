@@ -91,7 +91,7 @@ extern "C"
 // NI_XCODER_REVISION[6:7] = optional
 // You must change the name in the comment of REVISION line to your name when
 // you change the version number. If a merge conflict arises on a REVISION line,
-#define NI_XCODER_REVISION "5306sBr2"
+#define NI_XCODER_REVISION "5316sEr3"
 #define NI_XCODER_REVISION_API_MAJOR_VER_IDX 3
 #define NI_XCODER_REVISION_API_MINOR_VER_IDX 4
 
@@ -104,7 +104,7 @@ extern "C"
 #define MACRO_TO_STR(s) #s
 #define MACROS_TO_VER_STR(a, b) MACRO_TO_STR(a.b)
 #define LIBXCODER_API_VERSION_MAJOR 2
-#define LIBXCODER_API_VERSION_MINOR 76
+#define LIBXCODER_API_VERSION_MINOR 77
 #define LIBXCODER_API_VERSION MACROS_TO_VER_STR(LIBXCODER_API_VERSION_MAJOR, \
                                                 LIBXCODER_API_VERSION_MINOR)
 
