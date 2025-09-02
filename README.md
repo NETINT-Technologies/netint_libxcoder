@@ -20,7 +20,7 @@ The Libxcoder API can be interfaced with directly, or accesed via higher-level A
 
 ## Documentation
 
-Libxcoder documentation is availabled at the [NETINT Docs Portal](https://docs.netint.com/quadra/documentation/libxcoder)
+Libxcoder documentation is availabled at the [NETINT Docs Portal](https://docs.netint.com/vpu/quadra/documentation/libxcoder)
 
 Doxygen documentation may be generated with `bash build.sh -d`
 
