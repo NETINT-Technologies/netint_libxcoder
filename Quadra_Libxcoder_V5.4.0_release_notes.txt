@@ -1,12 +1,67 @@
 ================================================================================
-Release version: 5.3.1_RC3
-Date: 2025-07-04            SW version: 5.3.1_RC3           FW version: 5.3.1_RC1
-Compat FW API ver: 6sE      Libxcoder API ver: 2.77
+Release version: 5.4.0_RC2
+Date: 2025-09-15            SW version: 5.4.0_RC2           FW version: 5.4.0_RC1
+Compat FW API ver: 6sJ      Libxcoder API ver: 2.79
 --------------------------------------------------------------------------------
-[LIBXCODER] In API, allow application to request extra frame buffers between sessions
-            This feature is necessary to use Netint codecs/filters distributed by official FFmpeg project
-            Changing libxcoder API version to 2.77
-            Changing FW API version to 6sE
+[LIBXCODER] Add Intuitive PCIe throughput display to resource monitor
+[LIBXCODER] Support setting CPU affinity based on the numa node of quadra cards on linux.
+            1. add new parameter enableCpuAffinity(disable by default) on decoder and encoder;
+            2. add new API ni_rsrc_get_numa_node();
+[LIBXCODER] Fix and issue with Ni_rsrc_mon fw log dump
+[LIBXCODER] Fix libxcoder's README.md doc URL
+            Update the NETINT Docs Portal hyperlink URL to
+            https://docs.netint.com/vpu/quadra/documentation/libxcoder
+[LIBXCODER] Support single layer encode data matching with base layer & Support manual level setting per operating point
+            1. Allow single layer encoded output data to match exactly with base layer of 2/3/4-layers bitstreams when user sets spatialLayers=1 with spatialLayerBitrate parameter
+            2. Support manually setting AV1 seq_level_idx for each operating point separately via av1OpLevel parameter
+            3. Extend max manual AV1 level setting to 6.3 for high resolution (E.g. 4K resolution) multi spatial layer encode
+            Change FW API version to 6sJ
+[LIBXCODER] Add libxcoder demo for hwupload -> scale to multiple resolutions -> hwdownload
+[LIBXCODER] Ai_pre filter support use ai align feature
+            	- Changing FW API version to 6sI
+            	- Changing Libxcoder API version to 2.79
+[LIBXCODER] Added the support of 1:N transcoding with scaler for the ni_xcoder_transcode_filter xcoder example
+[LIBXCODER] Fix VS2019 build warnings
+[LIBXCODER] Support timecode passthru in SEI
+[LIBXCODER] Add option to disable AV1 timing info in sequence header
+            1. Add disableAv1TimingInfo parameter to remove AV1 timing info from sequence header, to avoid AV1 decoder model conformance issues
+            Change FW API version to 6sH
+[LIBXCODER] Fix invalid bitrate issue when encoder sequence change
+[LIBXCODER] Reject roi when cropWidth x cropHeight are set
+[LIBXCODER] Support multi-namespace persistence in firmware
+[LIBXCODER] Fix the issues when customizeQpMapFile is specified but customizeQpLevel=0
+[LIBXCODER] Add Ni_rsrc_list print for DDR4 info with -o full and -o json
+[LIBXCODER] Fix VS compile errors and warnings
+            - Removed `_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;` from VS config to print all warnings
+            - Fixed type cast warnings
+            - Fixed signed-unsigned comparision warnings
+            - Fixed insecure function warnings on VS by introducing netint interfaces
+[LIBXCODER] Xcoder code improvement
+            - Added --deprecation-as-error in build.sh to not build anything deprecated
+[LIBXCODER] Fix src and dst buffer size mismatch for ai_pre filter
+            Changing Libxcoder API version to 2.78
+[LIBXCODER] Fix secure compile for libxcoder by adding Safe string copy
+[LIBXCODER] Support customizeQpLevel > 1 for apply customize roi map after cutree
+            Change FW API version to 6sG
+[LIBXCODER] NI_transcode_filter demo support reconfig ppu with mode 1
+[LIBXCODER] Fixed a dec packet loss problem for some customer clip caused by fix
+[LIBXCODER] Support reconfig decoder PPU for each frame
+            	- Changing FW API version to 6sF
+            	- Changing Libxcoder API version to 2.77
+            	- Update NETINT_FFMPEG_CHANGE_LIST.txt
+[LIBXCODER] Set encoder pkt_num to 1 after reading first header packet in libxcoder demo
+[LIBXCODER] Reject getPsnrMode or getReconstructedMode when use jpeg_ni_quadra_enc
+[LIBXCODER] Change JPEG encoder minimum resolution to 144x128
+[LIBXCODER] Extra membin request to decoder and scaler based on DEFAULT_FRAME_THREAD_QUEUE_SIZE
+[LIBXCODER] Add FW API version check for multicoreJointMode with AV1 spatial layer separated rate control encode
+            1. For backward compatibility, reject multicoreJointMode with AV1 spatial layer separated rate control when FW API version < 6sD
+[LIBXCODER] Fix invalid output issue when "-o -json" param is enabled in ni_rsrc_mon
+[LIBXCODER] Support multicoreJointMode for AV1 spatial layer separated rate control encode to improve performance
+            1. Allow multicoreJointMode in AV1 spatial layer saparated rate control mode (spatialLayerBitrate)
+            Change FW API version to 6sD
+[LIBXCODER] Fix pts and dts process after the encoding process was changed
+[LIBXCODER] Support to get 1pass cost by statisticOutputLevel=6
+            Changing FW API version to 6sC
 ================================================================================
 Release version: 5.3.0_RC2
 Date: 2025-06-07            SW version: 5.3.0_RC2           FW version: 5.3.0_RC2

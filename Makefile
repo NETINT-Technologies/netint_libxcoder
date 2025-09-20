@@ -7,6 +7,8 @@ SECURE_COMPILE ?= FALSE
 RPM_DEBUG ?= FALSE
 DONT_WRITE_SONAME ?= FALSE
 SETUP_SYSTEMD ?= FALSE
+DEPRECATION_AS_ERROR ?= FALSE
+CPU_AFFINITY ?= FALSE
 
 C_STANDARD = -std=gnu99
 CXX_STANDARD = -std=c++11
@@ -39,6 +41,10 @@ ifeq ($(SECURE_COMPILE), TRUE)
 	LDFLAGS += -Wl,-z,now -Wl,-z,relro -Wl,-z,noexecstack
 endif
 
+ifeq ($(CPU_AFFINITY), TRUE)
+	LDFLAGS += -lnuma
+endif
+
 ifeq ($(UNAME), Darwin)
 	WERROR_FLAGS = -Werror -Wno-unused-command-line-argument
 else
@@ -52,6 +58,10 @@ endif
 CFLAGS += -fPIC ${WERROR_FLAGS} -DLIBXCODER_OBJS_BUILD
 ifeq ($(OPENHARMONY), TRUE)
 	CFLAGS += -D__OPENHARMONY__
+endif
+
+ifeq ($(DEPRECATION_AS_ERROR), TRUE)
+	CFLAGS += -DDEPRECATION_AS_ERROR
 endif
 
 TARGETNAME = xcoder
@@ -69,7 +79,7 @@ TARGET_PC = xcoder.pc
 SERVICE_FILE = nilibxcoder.service
 OBJECTS = ni_nvme.o ni_device_api_priv.o ni_device_api.o ni_util.o ni_lat_meas.o ni_log.o ni_rsrc_priv.o ni_rsrc_api.o ni_av_codec.o ni_bitstream.o
 LINK_OBJECTS = ${OBJS_PATH}/ni_nvme.o ${OBJS_PATH}/ni_device_api_priv.o ${OBJS_PATH}/ni_device_api.o ${OBJS_PATH}/ni_util.o ${OBJS_PATH}/ni_lat_meas.o ${OBJS_PATH}/ni_log.o ${OBJS_PATH}/ni_rsrc_priv.o ${OBJS_PATH}/ni_rsrc_api.o ${OBJS_PATH}/ni_av_codec.o ${OBJS_PATH}/ni_bitstream.o
-DEMO_OBJECTS = ni_xcoder_decode.o ni_xcoder_encode.o ni_xcoder_transcode_filter.o ni_xcoder_multithread_transcode.o ni_generic_utils.o ni_decode_utils.o ni_encode_utils.o ni_filter_utils.o
+DEMO_OBJECTS = ni_xcoder_decode.o ni_xcoder_encode.o ni_xcoder_scale.o ni_xcoder_transcode_filter.o ni_xcoder_multithread_transcode.o ni_generic_utils.o ni_decode_utils.o ni_encode_utils.o ni_filter_utils.o
 DEMO_LINK_OBJECTS = ${OBJS_PATH}/ni_generic_utils.o ${OBJS_PATH}/ni_decode_utils.o ${OBJS_PATH}/ni_encode_utils.o ${OBJS_PATH}/ni_filter_utils.o 
 ALL_OBJECTS = init_rsrc.o test_rsrc_api.o ni_rsrc_mon.o ni_rsrc_update.o ni_rsrc_list.o ni_rsrc_namespace.o ${OBJECTS} ${DEMO_OBJECTS}
 ifeq ($(WINDOWS), FALSE)
@@ -129,6 +139,7 @@ endif
 
 	${CC} -o $(OBJS_PATH)/ni_xcoder_decode $(OBJS_PATH)/ni_xcoder_decode.o $(LINK_OBJECTS) ${DEMO_LINK_OBJECTS} ${LDFLAGS}
 	${CC} -o $(OBJS_PATH)/ni_xcoder_encode $(OBJS_PATH)/ni_xcoder_encode.o $(LINK_OBJECTS) ${DEMO_LINK_OBJECTS} ${LDFLAGS}
+	${CC} -o $(OBJS_PATH)/ni_xcoder_scale $(OBJS_PATH)/ni_xcoder_scale.o $(LINK_OBJECTS) ${DEMO_LINK_OBJECTS} ${LDFLAGS}
 	${CC} -o $(OBJS_PATH)/ni_xcoder_transcode_filter $(OBJS_PATH)/ni_xcoder_transcode_filter.o $(LINK_OBJECTS) ${DEMO_LINK_OBJECTS} ${LDFLAGS}
 	${CC} -o $(OBJS_PATH)/ni_xcoder_multithread_transcode $(OBJS_PATH)/ni_xcoder_multithread_transcode.o $(LINK_OBJECTS) ${DEMO_LINK_OBJECTS} ${LDFLAGS}
 
@@ -213,7 +224,7 @@ clean:
 	${CC} ${CFLAGS} ${C_STANDARD} -c $< -o ${OBJS_PATH}/$@
 
 %.o : ${SRC_PATH}/examples/%.c
-	${CC} ${CFLAGS} -I${SRC_PATH} -I${SRC_PATH}/examples/common -c $< -o ${OBJS_PATH}/$@
+	${CC} ${CFLAGS} ${C_STANDARD} -I${SRC_PATH} -I${SRC_PATH}/examples/common -c $< -o ${OBJS_PATH}/$@
 
 %.o : ${SRC_PATH}/examples/common/%.c
-	${CC} ${CFLAGS} -I${SRC_PATH} -c $< -o ${OBJS_PATH}/$@
+	${CC} ${CFLAGS} ${C_STANDARD} -I${SRC_PATH} -c $< -o ${OBJS_PATH}/$@

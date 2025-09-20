@@ -74,6 +74,10 @@
 #include "ni_lat_meas.h"
 #include "ni_rsrc_priv.h"
 
+#if defined(__linux__) && defined(XCODER_ENABLE_CPU_AFFINITY)
+#include <numa.h>
+#endif
+
 //Map the gopPresetIdx to gopSize,
 //gopPresetIdx -1: Adaptive Gop, using the biggest gopsize 8
 //gopPresetIdx 0 : Custom Gop as defined by -xcoder-gop
@@ -830,7 +834,7 @@ static void decoder_dump_dir_open(ni_session_context_t *p_ctx)
 {
 #ifdef _WIN32
 #elif __linux__ || __APPLE__
-    FILE *fp;
+    FILE *fp = NULL;
     char dir_name[128] = {0};
     char file_name[512] = {0};
     ni_device_context_t *p_device_context;
@@ -853,7 +857,7 @@ static void decoder_dump_dir_open(ni_session_context_t *p_ctx)
 
     flock(p_device_context->lock, LOCK_EX);
 
-    strcpy(dir_name, &p_ctx->dev_xcoder_name[5]);
+    ni_strcpy(dir_name, sizeof(dir_name), &p_ctx->dev_xcoder_name[5]);
     if (0 != access(dir_name, F_OK))
     {
         if (0 != mkdir(dir_name, S_IRWXU | S_IRWXG | S_IRWXO))
@@ -977,7 +981,7 @@ static void decoder_dump_dir_open(ni_session_context_t *p_ctx)
     snprintf(file_name, sizeof(file_name), "%s/process_session_id.txt",
              p_ctx->stream_dir_name);
 
-    fp = fopen(file_name, "wb");
+    ni_fopen(&fp, file_name, "wb");
     if (fp)
     {
         char number[64] = {'\0'};
@@ -1017,12 +1021,12 @@ static int find_pci_address(const char *dev_name, char *pci_addr) {
         if (!p) break;
 
         char segment[MAX_BDF_LEN];
-        strncpy(segment, p + 1, MAX_BDF_LEN - 1);
+        ni_strncpy(segment, MAX_BDF_LEN, p + 1, (MAX_BDF_LEN-1));
         segment[MAX_BDF_LEN - 1] = '\0';
 
         unsigned domain, bus, dev, func;
         if (sscanf(segment, "%x:%x:%x.%x", &domain, &bus, &dev, &func) == 4) {
-            strncpy(pci_addr, segment, MAX_BDF_LEN);
+            ni_strncpy(pci_addr, MAX_BDF_LEN, segment, MAX_BDF_LEN - 1);
             pci_addr[MAX_BDF_LEN - 1] = '\0';
             free(real_sysfs_path);
             return 0;
@@ -1034,7 +1038,6 @@ static int find_pci_address(const char *dev_name, char *pci_addr) {
     free(real_sysfs_path);
     return -1;
 }
-#endif
 
 // open netint p2p driver and fill the pcie address to p_ctx
 static ni_retcode_t p2p_fill_pcie_address(ni_session_context_t *p_ctx)
@@ -1085,7 +1088,8 @@ static ni_retcode_t p2p_fill_pcie_address(ni_session_context_t *p_ctx)
                 p_dev + 5);
     syspath[ret] = '\0';
 
-    fp = fopen(syspath, "r");
+    FILE *fp = NULL;
+    ni_fopen(&fp, syspath, "r");
     if (fp == NULL)
     {
       ni_log2(p_ctx, NI_LOG_ERROR, "Failed to read address\n");
@@ -1151,6 +1155,7 @@ static ni_retcode_t p2p_fill_pcie_address(ni_session_context_t *p_ctx)
     return NI_RETCODE_SUCCESS;
 #endif
 }
+#endif
 
 #if __linux__ || __APPLE__
 #if !defined(_ANDROID) && !defined(__OPENHARMONY__)
@@ -1194,6 +1199,29 @@ ni_retcode_t ni_decoder_session_open(ni_session_context_t* p_ctx)
              __func__);
       retval = NI_RETCODE_INVALID_PARAM;
       LRETURN;
+  }
+
+  if (p_ctx->p_session_config)
+  {
+      p_param = (ni_xcoder_params_t *)p_ctx->p_session_config;
+      ni_params_print(p_param);
+
+      // Select the CPU based on the NUMA node.
+      if (p_param->enableCpuAffinity)
+      {
+#if defined(__linux__) && defined(XCODER_ENABLE_CPU_AFFINITY)
+          retval = ni_set_cpu_affinity(p_ctx);
+          if (NI_RETCODE_SUCCESS != retval)
+          {
+              ni_log2(p_ctx, NI_LOG_ERROR, "ERROR %s(): ni_set_cpu_affinity failed, ret=%d\n",
+                     __func__, retval);
+              LRETURN;
+          }
+#else
+          ni_log2(p_ctx, NI_LOG_INFO, "Warning %s(): not support enableCpuAffinity parameter, "
+                 "enable with [./build.sh -c] on linux\n", __func__);
+#endif
+      }
   }
 
   //Create the session if the create session flag is set
@@ -1393,20 +1421,16 @@ ni_retcode_t ni_decoder_session_open(ni_session_context_t* p_ctx)
   ni_timestamp_init(p_ctx, &p_ctx->pts_table, "dec_pts");
   ni_timestamp_init(p_ctx, &p_ctx->dts_queue, "dec_dts");
 
-  if (p_ctx->p_session_config)
+  if (p_param && p_param->ddr_priority_mode > NI_DDR_PRIORITY_NONE)
   {
-      p_param = (ni_xcoder_params_t *)p_ctx->p_session_config;
-      ni_params_print(p_param);
-
-      if (p_param->ddr_priority_mode > NI_DDR_PRIORITY_NONE)
+      retval = ni_device_set_ddr_configuration(p_ctx, p_param->ddr_priority_mode);
+      if (NI_RETCODE_SUCCESS != retval)
       {
-          retval = ni_device_set_ddr_configuration(p_ctx, p_param->ddr_priority_mode);
-          if (NI_RETCODE_SUCCESS != retval)
-          {
-              ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR %s(): ddr priority setting failure for %s\n",
-                     __func__, strerror(NI_ERRNO));
-              LRETURN;
-          }
+          char errmsg[NI_ERRNO_LEN] = {0};
+          ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
+          ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR %s(): ddr priority setting failure for %s\n",
+                 __func__, errmsg);
+          LRETURN;
       }
   }
 
@@ -1692,8 +1716,10 @@ ni_retcode_t ni_decoder_session_close(ni_session_context_t* p_ctx, int eos_recie
           retval = ni_device_set_ddr_configuration(p_ctx, NI_DDR_PRIORITY_RESET);
           if (NI_RETCODE_SUCCESS != retval)
           {
+              char errmsg[NI_ERRNO_LEN] = {0};
+              ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
               ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR %s(): ddr priority setting failure for %s\n",
-                     __func__, strerror(NI_ERRNO));
+                     __func__, errmsg);
               LRETURN;
           }
       }
@@ -1922,10 +1948,10 @@ int ni_decoder_session_write(ni_session_context_t* p_ctx, ni_packet_t* p_packet)
                retval, buf_info.buf_avail_size, packet_size, query_retry, p_ctx->max_retry_fail_count[0]);
 #ifdef XCODER_311
         if (query_retry > max_retry ||
-            sessionStatistic.ui32RdBufAvailSize > 0)
+            (sessionStatistic.ui32RdBufAvailSize > 0 && !p_ctx->required_buf_size))
 #else
         if (query_retry > NI_MAX_TX_RETRIES ||
-            sessionStatistic.ui32RdBufAvailSize > 0)
+            (sessionStatistic.ui32RdBufAvailSize > 0 && !p_ctx->required_buf_size))
 #endif
         {
             p_ctx->status = NI_RETCODE_NVME_SC_WRITE_BUFFER_FULL;
@@ -2036,7 +2062,9 @@ int ni_decoder_session_write(ni_session_context_t* p_ctx, ni_packet_t* p_packet)
             ((long)p_ctx->pkt_num % p_param->dec_input_params.nb_save_pkt) + 1;
         snprintf(dump_file, sizeof(dump_file), "%s/pkt-%04ld.bin",
                  p_ctx->stream_dir_name, curr_pkt_num);
-        FILE *f = fopen(dump_file, "wb");
+
+        FILE *f = NULL;
+        ni_fopen(&f, dump_file, "wb");
         if (f)
         {
             fwrite(p_packet->p_data, sent_size, 1, f);
@@ -2292,7 +2320,7 @@ int ni_decoder_session_read(ni_session_context_t* p_ctx, ni_frame_t* p_frame)
   int rx_size = 0;
   uint64_t frame_offset = 0;
   uint8_t *p_data_buffer = NULL;
-  int i = 0;
+  uint32_t i = 0;
   int is_planar;
   int retval = NI_RETCODE_SUCCESS;
   int metadata_hdr_size = NI_FW_META_DATA_SZ - NI_MAX_NUM_OF_DECODER_OUTPUTS * sizeof(niFrameSurface1_t);
@@ -2810,7 +2838,7 @@ start:
                               "decoder dts queue %d %ld success !\n",
                               __func__, i, tmp_dts);
                       if (prev_dts != INT64_MIN) {
-                          ts_diff += labs(tmp_dts - prev_dts);
+                          ts_diff += llabs(tmp_dts - prev_dts);
                           nb_diff++;
                       }
                       prev_dts = tmp_dts;
@@ -2865,7 +2893,7 @@ start:
 
       if (p_ctx->is_first_frame)
       {
-          for (i = 0; i < p_ctx->pic_reorder_delay; i++)
+          for (i = 0; (int)i < p_ctx->pic_reorder_delay; i++)
           {
               if (p_ctx->last_pts == NI_NOPTS_VALUE &&
                   p_ctx->last_dts == NI_NOPTS_VALUE)
@@ -2916,23 +2944,24 @@ start:
         // search for the pkt_offsets of received frame according to frame_offset.
         // here we get the index(i) which promises (p_ctx->pkt_offsets_index_min[i] <= frame_offset && p_ctx->pkt_offsets_index[i] > frame_offset)
         // i = -1 if not found
-        i = rotated_array_binary_search(p_ctx->pkt_offsets_index_min,
+        int j = 0;
+        j = rotated_array_binary_search(p_ctx->pkt_offsets_index_min,
                                         p_ctx->pkt_offsets_index, NI_FIFO_SZ,
                                         frame_offset);
-        if (i >= 0)
+        if (j >= 0)
         {
-            p_frame->pts = p_ctx->pts_offsets[i];
-            p_frame->flags = p_ctx->flags_array[i];
-            p_frame->pkt_pos = p_ctx->pkt_pos[i];
+            p_frame->pts = p_ctx->pts_offsets[j];
+            p_frame->flags = p_ctx->flags_array[j];
+            p_frame->pkt_pos = p_ctx->pkt_pos[j];
             ni_log2(p_ctx, NI_LOG_DEBUG,
                    "%s: (found pts) dts %" PRId64 " pts "
-                   "%" PRId64 " frame_offset %" PRIu64 " i %d "
+                   "%" PRId64 " frame_offset %" PRIu64 " j %d "
                    "pkt_offsets_index_min %" PRIu64 " pkt_offsets_index "
                    "%" PRIu64 " pkt_pos %" PRIu64 " \n",
-                   __func__, p_frame->dts, p_frame->pts, frame_offset, i,
-                   p_ctx->pkt_offsets_index_min[i],
-                   p_ctx->pkt_offsets_index[i],
-                   p_ctx->pkt_pos[i]);
+                   __func__, p_frame->dts, p_frame->pts, frame_offset, j,
+                   p_ctx->pkt_offsets_index_min[j],
+                   p_ctx->pkt_offsets_index[j],
+                   p_ctx->pkt_pos[j]);
 
             if (p_ctx->is_first_frame)
             {
@@ -2945,12 +2974,12 @@ start:
                     ts_diff > 0)
                 {
                     while (p_frame->dts < p_frame->pts &&
-                           labs(p_frame->pts - p_frame->dts) > ts_diff)
+                           llabs(p_frame->pts - p_frame->dts) > ts_diff)
                     {
-                        ni_log2(p_ctx, NI_LOG_DEBUG, "%s: First I frame pts %ld "
-                                "dts %ld diff. %ld > ts_diff %ld\n",
+                        ni_log2(p_ctx, NI_LOG_DEBUG, "%s: First I frame pts %lld "
+                                "dts %lld diff. %lld > ts_diff %lld\n",
                                 __func__, p_frame->pts, p_frame->dts,
-                                labs(p_frame->pts - p_frame->dts), ts_diff);
+                                llabs(p_frame->pts - p_frame->dts), ts_diff);
 
                         if (ni_timestamp_get_with_threshold(
                                 p_ctx->dts_queue, 0, (int64_t *)&p_frame->dts,
@@ -2964,8 +2993,8 @@ start:
                 }
             }
 
-            p_frame->p_custom_sei_set = p_ctx->pkt_custom_sei_set[i];
-            p_ctx->pkt_custom_sei_set[i] = NULL;
+            p_frame->p_custom_sei_set = p_ctx->pkt_custom_sei_set[j];
+            p_ctx->pkt_custom_sei_set[j] = NULL;
         } else
         {
             // backup solution pts
@@ -3026,7 +3055,8 @@ start:
     char dump_file[256];
     snprintf(dump_file, sizeof(dump_file), "%ld-%u-dec-fme/fme-%04ld.yuv",
              (long)getpid(), p_ctx->session_id, (long)p_ctx->frame_num);
-    FILE *f = fopen(dump_file, "wb");
+    FILE *f = NULL;
+    ni_fopen(&f, dump_file, "wb");
     fwrite(p_frame->p_buffer,
            p_frame->data_len[0] + p_frame->data_len[1] + p_frame->data_len[2],
            1, f);
@@ -3273,6 +3303,23 @@ ni_retcode_t ni_encoder_session_open(ni_session_context_t* p_ctx)
   ni_log2(p_ctx, NI_LOG_TRACE,  "%s(): enter hwframes = %d\n", __func__,
          p_param->hwframes);
 
+  // Select the CPU based on the NUMA node.
+  if (p_param->enableCpuAffinity)
+  {
+#if defined(__linux__) && defined(XCODER_ENABLE_CPU_AFFINITY)
+      retval = ni_set_cpu_affinity(p_ctx);
+      if (NI_RETCODE_SUCCESS != retval)
+      {
+          ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR %s(): ni_set_cpu_affinity failed, ret=%d\n",
+                 __func__, retval);
+          LRETURN;
+      }
+#else
+      ni_log2(p_ctx, NI_LOG_INFO, "Warning %s(): not support enableCpuAffinity parameter, "
+             "enable with [./build.sh -c] on linux\n", __func__);
+#endif
+  }
+
   // calculate encoder ROI map size: each QP info takes 8-bit, represent 8 x 8
   // pixel block
   max_cu_size = (NI_CODEC_FORMAT_H264 == p_ctx->codec_format) ? 16 : 64;
@@ -3494,8 +3541,10 @@ ni_retcode_t ni_encoder_session_open(ni_session_context_t* p_ctx)
         retval = ni_device_set_ddr_configuration(p_ctx, p_param->ddr_priority_mode);
         if (NI_RETCODE_SUCCESS != retval)
         {
+              char errmsg[NI_ERRNO_LEN] = {0};
+              ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
               ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR %s(): ddr priority setting failure for %s\n",
-                     __func__, strerror(NI_ERRNO));
+                     __func__, errmsg);
             LRETURN;
         }
     }
@@ -3850,8 +3899,10 @@ ni_retcode_t ni_encoder_session_close(ni_session_context_t* p_ctx, int eos_recie
           retval = ni_device_set_ddr_configuration(p_ctx, NI_DDR_PRIORITY_RESET);
           if (NI_RETCODE_SUCCESS != retval)
           {
+              char errmsg[NI_ERRNO_LEN] = {0};
+              ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
               ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR %s(): ddr priority setting failure for %s\n",
-                     __func__, strerror(NI_ERRNO));
+                     __func__, errmsg);
               LRETURN;
           }
       }
@@ -4560,7 +4611,8 @@ int ni_encoder_session_write(ni_session_context_t* p_ctx, ni_frame_t* p_frame)
       snprintf(dump_file, sizeof(dump_file), "%ld-%u-enc-fme/fme-%04ld.yuv",
                (long)getpid(), p_ctx->session_id, (long)p_ctx->frame_num);
 
-      FILE *f = fopen(dump_file, "wb");
+      FILE *f = NULL;
+      ni_fopen(&f, dump_file, "wb");
       fwrite(p_frame->p_buffer,
              p_frame->data_len[0] + p_frame->data_len[1] + p_frame->data_len[2],
              1, f);
@@ -4865,6 +4917,13 @@ int ni_encoder_session_read(ni_session_context_t* p_ctx, ni_packet_t* p_packet)
               p_meta->ui8StillImage, p_meta->ui8SceneChange);
       }
 
+      if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+                            "6sC") >= 0)
+      {
+        if (p_meta->pass1Cost)
+          ni_log2(p_ctx, NI_LOG_DEBUG,  "pkt_num %d pass1Cost %f\n", p_ctx->pkt_num, p_meta->pass1Cost);
+      }
+
       p_ctx->meta_size = p_meta->metadata_size;
 
       if (p_meta->ssimY != 0)
@@ -4945,7 +5004,8 @@ int ni_encoder_session_read(ni_session_context_t* p_ctx, ni_packet_t* p_packet)
     snprintf(dump_file, sizeof(dump_file), "%ld-%u-enc-pkt/pkt-%04ld.bin",
              (long)getpid(), p_ctx->session_id, (long)p_ctx->pkt_num);
 
-    FILE *f = fopen(dump_file, "wb");
+    FILE *f = NULL;
+    ni_fopen(&f, dump_file, "wb");
     fwrite((uint8_t *)p_packet->p_data + sizeof(ni_metadata_enc_bstream_t),
            p_packet->data_len - sizeof(ni_metadata_enc_bstream_t), 1, f);
     fflush(f);
@@ -5104,6 +5164,16 @@ int ni_scaler_session_open(ni_session_context_t* p_ctx)
     }
   }
 
+  if (p_ctx->scaler_operation == NI_SCALER_OPCODE_AI_ALIGN)
+  {
+    if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+                          "6sI") < 0)
+    {
+      ni_log2(p_ctx, NI_LOG_ERROR, "ERROR: Cannot use ai align filter on device with FW API version < 6.sI\n");
+      return NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION;
+    }
+  }
+
   if (p_ctx->session_id == NI_INVALID_SESSION_ID)
   {
     p_ctx->device_type = NI_DEVICE_TYPE_SCALER;
@@ -5242,7 +5312,7 @@ int ni_scaler_session_open(ni_session_context_t* p_ctx)
   p_ctx->active_video_height = 0;
   p_ctx->actual_video_width = 0;
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__APPLE__) && !defined(__OPEN_HARMONY__) && !defined(_ANDROID)
   if (p_ctx->isP2P)
   {
       retval = p2p_fill_pcie_address(p_ctx);
@@ -7271,6 +7341,9 @@ ni_retcode_t ni_config_instance_set_encoder_params(ni_session_context_t* p_ctx)
         LRETURN;
       }
       session_config->cfg_enc_params.customize_roi_qp_level -= 64;
+    } else if (session_config->cfg_enc_params.customize_roi_qp_level == 64) {
+      ni_log2(p_ctx, NI_LOG_INFO, "customizeQpMapFile is ignored since customizeQpLevel=0");
+      session_config->cfg_enc_params.customize_roi_qp_level = 0;
     }
   }
 
@@ -9133,6 +9206,12 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
         p_cfg->ui8compressor = 3;
         ni_log(NI_LOG_INFO, "Warning reconstructed frames only supported for YUV420P, NV12\n");
       }
+      if (p_enc->crop_width || p_enc->crop_height)
+      {
+        p_cfg->ui8compressor = 3;
+        p_enc->get_psnr_mode = 3;
+        ni_log(NI_LOG_INFO, "Warning reconstructed frames feature is not supported when cropWidth x cropHeight are set\n");
+      }
     }
     else
     {
@@ -9342,7 +9421,7 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
       p_cfg->ui8tuneBframeVisual = p_enc->tune_bframe_visual;
   }
 
-  if (p_enc->customize_roi_qp_level != 0) {
+  if (p_enc->customize_roi_qp_level != NI_CUS_ROI_DISABLE) {
       p_cfg->u8customizeRoiQpLevel = p_enc->customize_roi_qp_level;
   }
 
@@ -9402,7 +9481,17 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
     {
       p_cfg->i32spatialLayerBitrate[i] = p_enc->spatialLayerBitrate[i];
     }
+    if (p_enc->av1OpLevel[i] != 0)
+    {
+      p_cfg->ui8av1OpLevel[i] = p_enc->av1OpLevel[i];
+    }
   }
+
+  if (p_enc->disableAv1TimingInfo != 0)
+  {
+      p_cfg->ui8disableAv1TimingInfo = p_enc->disableAv1TimingInfo;
+  }
+
 
   ni_log2(p_ctx, NI_LOG_DEBUG, "lowDelay=%d\n", p_src->low_delay_mode);
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui8bitstreamFormat=%d\n", p_cfg->ui8bitstreamFormat);
@@ -9721,6 +9810,9 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui8linkFrameMaxIntraRatio=%u\n", p_cfg->ui8linkFrameMaxIntraRatio);
   ni_log2(p_ctx, NI_LOG_DEBUG, "i32spatialLayerBitrate=%d,%d,%d,%d\n", p_cfg->i32spatialLayerBitrate[0],
           p_cfg->i32spatialLayerBitrate[1], p_cfg->i32spatialLayerBitrate[2], p_cfg->i32spatialLayerBitrate[3]);
+  ni_log2(p_ctx, NI_LOG_DEBUG, "ui8disableAv1TimingInfo=%u\n", p_cfg->ui8disableAv1TimingInfo);
+  ni_log2(p_ctx, NI_LOG_DEBUG, "ui8av1OpLevel=%u,%u,%u,%u\n", p_cfg->ui8av1OpLevel[0],
+          p_cfg->ui8av1OpLevel[1], p_cfg->ui8av1OpLevel[2], p_cfg->ui8av1OpLevel[3]);
 }
 
 /*!******************************************************************************
@@ -10090,7 +10182,7 @@ void ni_set_default_template(ni_session_context_t* p_ctx, ni_encoder_config_t* p
   p_config->i32forceBframeQpFactor = (int32_t)(-1.0 * 1000) + 1000; // for old libxcoder backward compatibility, use 1000 to represent 0
   p_config->ui8tuneBframeVisual = 0;
   p_config->ui8EnableAcqLimit = 0;
-  p_config->u8customizeRoiQpLevel = 0;
+  p_config->u8customizeRoiQpLevel = NI_CUS_ROI_DISABLE;
   p_config->ui32cropWidth = 0;
   p_config->ui32cropHeight = 0;
   p_config->ui32horOffset = 0;
@@ -10112,7 +10204,9 @@ void ni_set_default_template(ni_session_context_t* p_ctx, ni_encoder_config_t* p
   for (i = 0; i < NI_MAX_SPATIAL_LAYERS; i++)
   {
     p_config->i32spatialLayerBitrate[i] = 0;
+    p_config->ui8av1OpLevel[i] = 0;
   }
+  p_config->ui8disableAv1TimingInfo = 0;
 }
 
 /*!******************************************************************************
@@ -10159,7 +10253,7 @@ ni_retcode_t ni_validate_custom_dec_template(ni_xcoder_params_t *p_src,
 
   //if (p_cfg->i32bitRate > NI_MAX_BITRATE)
   //{
-  //  strncpy(p_param_err, "Invalid i32bitRate: too big", max_err_len);
+  //  ni_strncpy(p_param_err, max_err_len, "Invalid i32bitRate: too big", max_err_len - 1);
   //  param_ret = NI_RETCODE_PARAM_ERROR_BRATE;
   //  LRETURN;
   //}
@@ -10167,7 +10261,7 @@ ni_retcode_t ni_validate_custom_dec_template(ni_xcoder_params_t *p_src,
   if (p_cfg->ui8HWFrame == 0 &&
     (p_cfg->asOutputConfig[1].ui8Enabled || p_cfg->asOutputConfig[2].ui8Enabled))
   {
-    strncpy(p_param_err, "Incompatible output format: hw frame must be used if out1 or out2 used", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Incompatible output format: hw frame must be used if out1 or out2 used", max_err_len - 1);
     param_ret = NI_RETCODE_INVALID_PARAM;
     LRETURN;
   }
@@ -10177,8 +10271,8 @@ ni_retcode_t ni_validate_custom_dec_template(ni_xcoder_params_t *p_src,
       if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
                             "6e") < 0)
       {
-          strncpy(p_param_err, "ddr_priority_mode not supported on device with FW api version < 6.e",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "ddr_priority_mode not supported on device with FW api version < 6.e",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION;
           LRETURN;
       }
@@ -10186,8 +10280,8 @@ ni_retcode_t ni_validate_custom_dec_template(ni_xcoder_params_t *p_src,
 
   if ((p_ctx->codec_format == NI_CODEC_FORMAT_JPEG || p_ctx->codec_format == NI_CODEC_FORMAT_VP9)  && (p_cfg->ui8DisablePictureReordering))
   {
-      strncpy(p_param_err, "LowDelay is not supported on jpeg/vp9 decoder",
-              max_err_len);
+      ni_strncpy(p_param_err, max_err_len, "LowDelay is not supported on jpeg/vp9 decoder",
+              max_err_len - 1);
       param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
       LRETURN;
   }
@@ -10200,28 +10294,28 @@ ni_retcode_t ni_validate_custom_dec_template(ni_xcoder_params_t *p_src,
       if (NI_MINIMUM_CROPPED_LENGTH > w - p_cfg->asOutputConfig[i].sCroppingRectable.ui16X ||
         NI_MINIMUM_CROPPED_LENGTH > h - p_cfg->asOutputConfig[i].sCroppingRectable.ui16Y)
       {
-        strncpy(p_param_err, "Invalid crop offset: extends past 48x48 minimum window", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Invalid crop offset: extends past 48x48 minimum window", max_err_len - 1);
         param_ret = NI_RETCODE_PARAM_ERROR_OOR;
         LRETURN;
       }
       if (NI_MINIMUM_CROPPED_LENGTH > p_cfg->asOutputConfig[i].sCroppingRectable.ui16W ||
         NI_MINIMUM_CROPPED_LENGTH > p_cfg->asOutputConfig[i].sCroppingRectable.ui16H)
       {
-        strncpy(p_param_err, "Invalid crop w or h: must be at least 48x48 minimum window", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Invalid crop w or h: must be at least 48x48 minimum window", max_err_len - 1);
         param_ret = NI_RETCODE_PARAM_ERROR_TOO_SMALL;
         LRETURN;
       }
       if (p_cfg->asOutputConfig[i].sCroppingRectable.ui16W > w ||
         p_cfg->asOutputConfig[i].sCroppingRectable.ui16H > h)
       {
-        strncpy(p_param_err, "Invalid crop w or h: must be smaller than input", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Invalid crop w or h: must be smaller than input", max_err_len - 1);
         param_ret = NI_RETCODE_PARAM_ERROR_OOR;
         LRETURN;
       }
       if (p_cfg->asOutputConfig[i].sCroppingRectable.ui16W + p_cfg->asOutputConfig[i].sCroppingRectable.ui16X > w ||
         p_cfg->asOutputConfig[i].sCroppingRectable.ui16H + p_cfg->asOutputConfig[i].sCroppingRectable.ui16Y > h)
       {
-        strncpy(p_param_err, "Invalid crop rect: must fit in input", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Invalid crop rect: must fit in input", max_err_len - 1);
         param_ret = NI_RETCODE_PARAM_ERROR_OOR;
         LRETURN;
       }
@@ -10230,13 +10324,13 @@ ni_retcode_t ni_validate_custom_dec_template(ni_xcoder_params_t *p_src,
         p_cfg->asOutputConfig[i].sCroppingRectable.ui16W & 1 ||
         p_cfg->asOutputConfig[i].sCroppingRectable.ui16H & 1)
       {
-        strncpy(p_param_err, "Invalid crop value: even values only", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Invalid crop value: even values only", max_err_len - 1);
         param_ret = NI_RETCODE_PARAM_INVALID_VALUE;
         LRETURN;
       }
       if (p_cfg->asOutputConfig[i].ui8Enabled == 0)
       {
-        strncpy(p_param_warn, "crop param used but output not enabled!", max_err_len);
+        ni_strncpy(p_param_warn, max_err_len, "crop param used but output not enabled!", max_err_len - 1);
         warning = NI_RETCODE_PARAM_WARN;
       }
 
@@ -10251,7 +10345,7 @@ ni_retcode_t ni_validate_custom_dec_template(ni_xcoder_params_t *p_src,
         if (p_cfg->asOutputConfig[i].ui8EnablePpuScaleAdapt)
         {
           //may need to revisit if based on cropped input or base input for w/h limit
-          strncpy(p_param_err, "Invalid scale dimensions: zero", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "Invalid scale dimensions: zero", max_err_len - 1);
           param_ret = NI_RETCODE_PARAM_ERROR_TOO_SMALL;
           LRETURN;
         }
@@ -10259,7 +10353,7 @@ ni_retcode_t ni_validate_custom_dec_template(ni_xcoder_params_t *p_src,
       if (p_cfg->asOutputConfig[i].sOutputPictureSize.ui16Height & 1 ||
         p_cfg->asOutputConfig[i].sOutputPictureSize.ui16Width & 1 )
       {
-        strncpy(p_param_err, "Invalid scale value: even values only", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Invalid scale value: even values only", max_err_len - 1);
         param_ret = NI_RETCODE_PARAM_INVALID_VALUE;
         LRETURN;
       }
@@ -10269,7 +10363,7 @@ ni_retcode_t ni_validate_custom_dec_template(ni_xcoder_params_t *p_src,
         if (p_cfg->asOutputConfig[i].sOutputPictureSize.ui16Width > w ||
           p_cfg->asOutputConfig[i].sOutputPictureSize.ui16Height > h)
         {
-            strncpy(p_param_err, "Invalid scale value: downscale only", max_err_len);
+            ni_strncpy(p_param_err, max_err_len, "Invalid scale value: downscale only", max_err_len - 1);
             param_ret = NI_RETCODE_PARAM_INVALID_VALUE;
             LRETURN;
         }
@@ -10281,14 +10375,14 @@ ni_retcode_t ni_validate_custom_dec_template(ni_xcoder_params_t *p_src,
         if (p_cfg->asOutputConfig[i].sOutputPictureSize.ui16Height > p_cfg->asOutputConfig[i].sCroppingRectable.ui16H ||
           p_cfg->asOutputConfig[i].sOutputPictureSize.ui16Width > p_cfg->asOutputConfig[i].sCroppingRectable.ui16W)
         {
-          strncpy(p_param_err, "Invalid scale dimensions: downscale only after cropping", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "Invalid scale dimensions: downscale only after cropping", max_err_len - 1);
           param_ret = NI_RETCODE_PARAM_ERROR_OOR;
           LRETURN;
         }
       }
       if (p_cfg->asOutputConfig[i].ui8Enabled == 0)
       {
-        strncpy(p_param_warn, "scale param used but output not enabled!", max_err_len);
+        ni_strncpy(p_param_warn, max_err_len, "scale param used but output not enabled!", max_err_len - 1);
         warning = NI_RETCODE_PARAM_WARN;
       }
     }
@@ -10296,7 +10390,7 @@ ni_retcode_t ni_validate_custom_dec_template(ni_xcoder_params_t *p_src,
     {
       if (p_cfg->asOutputConfig[i].ui8Force8Bit || p_cfg->asOutputConfig[i].ui8SemiPlanarEnabled)
       {
-        strncpy(p_param_warn, "force8bit or semiPlanar used but output not enabled!", max_err_len);
+        ni_strncpy(p_param_warn, max_err_len, "force8bit or semiPlanar used but output not enabled!", max_err_len - 1);
         warning = NI_RETCODE_PARAM_WARN;
       }
     }
@@ -10310,16 +10404,16 @@ ni_retcode_t ni_validate_custom_dec_template(ni_xcoder_params_t *p_src,
       }
       if (p_cfg->ui8HWFrame == 0)
       {
-        strncpy(p_param_err,
+        ni_strncpy(p_param_err, max_err_len,
                 "Invalid pairing: out=HW must be set with tiled format",
-                max_err_len);
+                max_err_len - 1);
         param_ret = NI_RETCODE_PARAM_INVALID_VALUE;
         LRETURN;
       }
       if (p_ctx->codec_format == NI_CODEC_FORMAT_VP9)
       {
-        strncpy(p_param_err, "Invalid pairing: VP9 not compatible with tiled format",
-                max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Invalid pairing: VP9 not compatible with tiled format",
+                max_err_len - 1);
         param_ret = NI_RETCODE_PARAM_INVALID_VALUE;
         LRETURN;
       }
@@ -10329,9 +10423,9 @@ ni_retcode_t ni_validate_custom_dec_template(ni_xcoder_params_t *p_src,
         if (p_cfg->asOutputConfig[i].sOutputPictureSize.ui16Height % 4 ||
           p_cfg->asOutputConfig[i].sOutputPictureSize.ui16Height < 128)
         {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "Invalid scale height: mult of 4 only, >= 128",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_PARAM_INVALID_VALUE;
           LRETURN;
         }
@@ -10339,9 +10433,9 @@ ni_retcode_t ni_validate_custom_dec_template(ni_xcoder_params_t *p_src,
           p_cfg->asOutputConfig[i].sOutputPictureSize.ui16Width < NI_MIN_WIDTH)
         {
           //minimum supported dec is 128 but min enc is 144 so round up
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "Invalid scale width: mult of 128 only, >= 144",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_PARAM_INVALID_VALUE;
           LRETURN;
         }
@@ -10351,9 +10445,9 @@ ni_retcode_t ni_validate_custom_dec_template(ni_xcoder_params_t *p_src,
         if (p_cfg->asOutputConfig[i].sCroppingRectable.ui16H % 4 ||
           p_cfg->asOutputConfig[i].sCroppingRectable.ui16H < 128)
         {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "Invalid crop height: mult of 4 only, >= 128",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_PARAM_INVALID_VALUE;
           LRETURN;
         }
@@ -10361,17 +10455,16 @@ ni_retcode_t ni_validate_custom_dec_template(ni_xcoder_params_t *p_src,
             p_cfg->asOutputConfig[i].sCroppingRectable.ui16W < NI_MIN_WIDTH)
         {
           //minimum supported dec is 128 but min enc is 144 so round up
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "Invalid crop width: mult of 128 only, >= 144",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_PARAM_INVALID_VALUE;
           LRETURN;
         }
       }
       if (p_cfg->asOutputConfig[i].ui8Force8Bit)
       {
-        strncpy(p_param_err, "Force 8 bit: not supported with tiled format\n",
-                max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Force 8 bit: not supported with tiled format\n", max_err_len - 1);
         param_ret = NI_RETCODE_PARAM_INVALID_VALUE;
         LRETURN;
       }
@@ -10381,7 +10474,7 @@ ni_retcode_t ni_validate_custom_dec_template(ni_xcoder_params_t *p_src,
   if (warning == NI_RETCODE_PARAM_WARN && param_ret == NI_RETCODE_SUCCESS)
   {
     param_ret = NI_RETCODE_PARAM_WARN;
-    strncpy(p_param_err, p_param_warn, max_err_len);
+    ni_strncpy(p_param_err, max_err_len, p_param_warn, max_err_len - 1);
   }
 
 END:
@@ -10397,7 +10490,7 @@ static ni_retcode_t ni_check_level(int level, int codec_id)
                                 40, 41, 42, 50, 51, 52, 60, 61, 62, 0};
     const int l_levels_265[] = {10, 20, 21, 30, 31, 40, 41,
                                 50, 51, 52, 60, 61, 62, 0};
-    const int l_levels_av1[] = {20, 21, 30, 31, 40, 41, 50, 51, 0};
+    const int l_levels_av1[] = {20, 21, 30, 31, 40, 41, 50, 51, 52, 53, 60, 61, 62, 63, 0};
     const int *l_levels = l_levels_264;
 
     if (level == 0)
@@ -10459,7 +10552,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
 
   if (0 == p_cfg->i32frameRateInfo)
   {
-    strncpy(p_param_err, "Invalid frame_rate of 0 value", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Invalid frame_rate of 0 value", max_err_len - 1);
     param_ret = NI_RETCODE_PARAM_ERROR_FRATE;
     LRETURN;
   }
@@ -10467,56 +10560,56 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
   if (((p_cfg->i32frameRateInfo + p_cfg->i32frameRateDenominator - 1) /
        p_cfg->i32frameRateDenominator) > NI_MAX_FRAMERATE)
   {
-      strncpy(p_param_err, "Invalid i32frameRateInfo: too big", max_err_len);
+      ni_strncpy(p_param_err, max_err_len, "Invalid i32frameRateInfo: too big", max_err_len - 1);
       param_ret = NI_RETCODE_PARAM_ERROR_FRATE;
       LRETURN;
   }
 
   if (p_cfg->i32bitRate <= p_cfg->i32frameRateInfo)
   {
-    strncpy(p_param_err, "Invalid i32bitRate: smaller than or equal to frame rate", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Invalid i32bitRate: smaller than or equal to frame rate", max_err_len - 1);
     param_ret = NI_RETCODE_PARAM_ERROR_BRATE;
     LRETURN;
   }
 
   if (p_cfg->i32bitRate > NI_MAX_BITRATE)
   {
-    strncpy(p_param_err, "Invalid i32bitRate: too big", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Invalid i32bitRate: too big", max_err_len - 1);
     param_ret = NI_RETCODE_PARAM_ERROR_BRATE;
     LRETURN;
   }
 
   if (p_cfg->i32bitRate < NI_MIN_BITRATE )
   {
-    strncpy(p_param_err, "Invalid i32bitRate: too low", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Invalid i32bitRate: too low", max_err_len - 1);
     param_ret = NI_RETCODE_PARAM_ERROR_BRATE;
     LRETURN;
   }
 
   if (p_src->source_width < XCODER_MIN_ENC_PIC_WIDTH)
   {
-    strncpy(p_param_err, "Invalid Picture Width: too small", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Invalid Picture Width: too small", max_err_len - 1);
     param_ret = NI_RETCODE_PARAM_ERROR_PIC_WIDTH;
     LRETURN;
   }
 
   if (p_src->source_width > XCODER_MAX_ENC_PIC_WIDTH)
   {
-    strncpy(p_param_err, "Invalid Picture Width: too big", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Invalid Picture Width: too big", max_err_len - 1);
     param_ret = NI_RETCODE_PARAM_ERROR_PIC_WIDTH;
     LRETURN;
   }
 
   if (p_src->source_height < XCODER_MIN_ENC_PIC_HEIGHT)
   {
-    strncpy(p_param_err, "Invalid Picture Height: too small", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Invalid Picture Height: too small", max_err_len - 1);
     param_ret = NI_RETCODE_PARAM_ERROR_PIC_HEIGHT;
     LRETURN;
   }
 
   if (p_src->source_height > XCODER_MAX_ENC_PIC_HEIGHT)
   {
-    strncpy(p_param_err, "Invalid Picture Height: too big", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Invalid Picture Height: too big", max_err_len - 1);
     param_ret = NI_RETCODE_PARAM_ERROR_PIC_HEIGHT;
     LRETURN;
   }
@@ -10610,18 +10703,24 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         LRETURN;
       }
 
-      if (p_src->source_width < (p_cfg->ui32horOffset + p_cfg->ui32cropWidth))
+      if (p_src->source_width < (int)(p_cfg->ui32horOffset + p_cfg->ui32cropWidth))
       {
         snprintf(p_param_err, max_err_len, "Invalid Crop Width: offset %u + crop width %u too big > %d",
                          p_cfg->ui32horOffset, p_cfg->ui32cropWidth, p_src->source_width);
         param_ret = NI_RETCODE_PARAM_ERROR_PIC_WIDTH;
         LRETURN;
       }
-      if (p_src->source_height < (p_cfg->ui32verOffset + p_cfg->ui32cropHeight))
+      if (p_src->source_height < (int)(p_cfg->ui32verOffset + p_cfg->ui32cropHeight))
       {
         snprintf(p_param_err, max_err_len, "Invalid Crop Height: offset %u + crop height %u too big > %d",
                          p_cfg->ui32verOffset, p_cfg->ui32cropHeight, p_src->source_height);
         param_ret = NI_RETCODE_PARAM_ERROR_PIC_HEIGHT;
+        LRETURN;
+      }
+      if (p_enc->roi_enable)
+      {
+        snprintf(p_param_err, max_err_len, "roiEnable must disabled when Crop Width > 0 || Crop Height > 0");
+        param_ret = NI_RETCODE_INVALID_PARAM;
         LRETURN;
       }
   }
@@ -10655,7 +10754,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
 
   if (p_cfg->ui8planarFormat >= NI_PIXEL_PLANAR_MAX)
   {
-      strncpy(p_param_err, "Invalid input planar format: out of range", max_err_len);
+      ni_strncpy(p_param_err, max_err_len, "Invalid input planar format: out of range", max_err_len - 1);
       param_ret = NI_RETCODE_PARAM_ERROR_OOR;
       LRETURN;
   }
@@ -10664,33 +10763,33 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
                             "68") < 0)
       {
-          strncpy(p_param_err, "Invalid input planar format for device with FW api version < 6.8",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "Invalid input planar format for device with FW api version < 6.8",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION;
           LRETURN;
       }
       if (p_ctx->auto_dl_handle)
       {
-          strncpy(p_param_err, "Invalid Encoder Selected: Tiled format must be on same device",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "Invalid Encoder Selected: Tiled format must be on same device",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_INVALID_HANDLE;
           LRETURN;
       }
       if (p_src->source_height % 4 != 0)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "Invalid Picture Height: tiled format only supports "
                   "multiples of 4",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_PARAM_ERROR_PIC_HEIGHT;
           LRETURN;
       }
       if (p_src->source_width % 4 != 0)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "Invalid Picture Width: tiled format only supports "
                   "multiples of 4",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_PARAM_ERROR_PIC_WIDTH;
           LRETURN;
       }
@@ -10703,7 +10802,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
   {
       if (p_src->zerocopy_mode == 0)
       {
-          strncpy(p_param_err, "zeroCopyMode must not be disabled for RGBA / BGRA / ABGR / ARGB pixel formats", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "zeroCopyMode must not be disabled for RGBA / BGRA / ABGR / ARGB pixel formats", max_err_len - 1);
           param_ret = NI_RETCODE_INVALID_PARAM;
           LRETURN;
       }
@@ -10713,8 +10812,8 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
           if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
                                 "6Y") < 0)
           {
-              strncpy(p_param_err, "RGBA / BGRA pixel formats not supported on device with FW api version < 6.Y",
-                      max_err_len);
+              ni_strncpy(p_param_err, max_err_len, "RGBA / BGRA pixel formats not supported on device with FW api version < 6.Y",
+                      max_err_len - 1);
               param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION;
               LRETURN;
           }
@@ -10737,8 +10836,8 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
                             "6e") < 0)
       {
-          strncpy(p_param_err, "ddr_priority_mode not supported on device with FW api version < 6.e",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "ddr_priority_mode not supported on device with FW api version < 6.e",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION;
           LRETURN;
       }
@@ -10747,7 +10846,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
   if (NI_RETCODE_SUCCESS !=
       ni_check_level(p_src->cfg_enc_params.level_idc, p_ctx->codec_format))
   {
-      strncpy(p_param_err, "Invalid Encoder Level: out of range", max_err_len);
+      ni_strncpy(p_param_err, max_err_len, "Invalid Encoder Level: out of range", max_err_len - 1);
       param_ret = NI_RETCODE_PARAM_ERROR_OOR;
       LRETURN;
   }
@@ -10757,8 +10856,8 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       (NI_CODEC_FORMAT_H264 == p_ctx->codec_format &&
        p_src->cfg_enc_params.intra_mb_refresh_mode == 4))
   {
-      strncpy(p_param_err, "Invalid intra_mb_refresh_mode: out of range",
-              max_err_len);
+      ni_strncpy(p_param_err, max_err_len, "Invalid intra_mb_refresh_mode: out of range",
+              max_err_len - 1);
       param_ret = NI_RETCODE_PARAM_ERROR_OOR;
       LRETURN;
   }
@@ -10769,14 +10868,14 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     {
       if (p_cfg->niParamT408.custom_gop_params.custom_gop_size < 1)
       {
-        strncpy(p_param_err, "Invalid custom GOP paramaters: custom_gop_size too small", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Invalid custom GOP paramaters: custom_gop_size too small", max_err_len - 1);
         param_ret = NI_RETCODE_PARAM_ERROR_CUSTOM_GOP;
         LRETURN;
       }
       if (p_cfg->niParamT408.custom_gop_params.custom_gop_size >
         NI_MAX_GOP_NUM)
       {
-        strncpy(p_param_err, "Invalid custom GOP paramaters: custom_gop_size too big", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Invalid custom GOP paramaters: custom_gop_size too big", max_err_len - 1);
         param_ret = NI_RETCODE_PARAM_ERROR_CUSTOM_GOP;
         LRETURN;
       }
@@ -10788,9 +10887,9 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       {
           if (!p_cfg->niParamT408.custom_gop_params.custom_gop_size)
           {
-              strncpy(p_param_err,
+              ni_strncpy(p_param_err, max_err_len,
                       "Invalid custom GOP paramaters: custom gop size must > 0",
-                      max_err_len);
+                      max_err_len - 1);
               param_ret = NI_RETCODE_PARAM_ERROR_CUSTOM_GOP;
               LRETURN;
           }
@@ -10800,23 +10899,23 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         if (GOP_PRESET_IDX_CUSTOM != p_cfg->niParamT408.gop_preset_index &&
             GOP_PRESET_IDX_DEFAULT != p_cfg->niParamT408.gop_preset_index)
         {
-            strncpy(p_param_err,
+            ni_strncpy(p_param_err, max_err_len,
                     "Invalid custom GOP paramaters: selected gopPresetIdx is "
                     "not compatible with custom gop",
-                    max_err_len);
+                    max_err_len - 1);
             param_ret = NI_RETCODE_PARAM_ERROR_CUSTOM_GOP;
             LRETURN;
         }
       if (p_cfg->niParamT408.custom_gop_params.custom_gop_size < 1)
       {
-        strncpy(p_param_err, "Invalid custom GOP paramaters: custom_gop_size too small", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Invalid custom GOP paramaters: custom_gop_size too small", max_err_len - 1);
         param_ret = NI_RETCODE_PARAM_ERROR_CUSTOM_GOP;
         LRETURN;
       }
       if (p_cfg->niParamT408.custom_gop_params.custom_gop_size >
         NI_MAX_GOP_NUM)
       {
-        strncpy(p_param_err, "Invalid custom GOP paramaters: custom_gop_size too big", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Invalid custom GOP paramaters: custom_gop_size too big", max_err_len - 1);
         param_ret = NI_RETCODE_PARAM_ERROR_CUSTOM_GOP;
         LRETURN;
       }
@@ -10826,8 +10925,8 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         if (p_cfg->niParamT408.custom_gop_params.pic_param[i].poc_offset >
               p_cfg->niParamT408.custom_gop_params.custom_gop_size)
         {
-          strncpy(p_param_err, "Invalid custom gop parameters: poc_offset larger"
-                  " than GOP size", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "Invalid custom gop parameters: poc_offset larger"
+                  " than GOP size", max_err_len - 1);
           param_ret = NI_RETCODE_PARAM_ERROR_CUSTOM_GOP;
           LRETURN;
         }
@@ -10839,7 +10938,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         if (NI_CODEC_FORMAT_H264 != p_ctx->codec_format)
         {
             p_cfg->ui8useLowDelayPocType = 0;
-            strncpy(p_param_warn, "useLowDelayPocType is only supported for H.264. Change useLowDelayPocType to 0", max_err_len);
+            ni_strncpy(p_param_warn, max_err_len, "useLowDelayPocType is only supported for H.264. Change useLowDelayPocType to 0", max_err_len - 1);
             warning = NI_RETCODE_PARAM_WARN;
         }
     }
@@ -10847,9 +10946,9 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     {
         if (NI_CODEC_FORMAT_H264 != p_ctx->codec_format)
         {
-            strncpy(p_param_err,
+            ni_strncpy(p_param_err, max_err_len,
                     "entropyCodingMode is only supported for H.264.",
-                    max_err_len);
+                    max_err_len - 1);
             param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
             LRETURN;
         }
@@ -10858,9 +10957,9 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     {
         if (NI_CODEC_FORMAT_AV1 != p_ctx->codec_format)
         {
-            strncpy(p_param_err,
+            ni_strncpy(p_param_err, max_err_len,
                     "av1ErrorResilientMode is only supported for AV1.",
-                    max_err_len);
+                    max_err_len - 1);
             param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
             LRETURN;
         }
@@ -10879,8 +10978,8 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     {
         if (NI_CODEC_FORMAT_JPEG != p_ctx->codec_format)
         {
-          strncpy(p_param_err, "qLevel is only supported for JPEG.",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "qLevel is only supported for JPEG.",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
         }
@@ -10892,8 +10991,8 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
                               "62") < 0 || NI_CODEC_FORMAT_AV1 == p_ctx->codec_format)
         {
             p_cfg->ui8enableSSIM = 0;
-            strncpy(p_param_warn, "enableSSIM only supported on device with FW api version < 6.2 "
-                    "and the encoder is not av1_ni_quadra_enc. Reported ssim will be 0.", max_err_len);
+            ni_strncpy(p_param_warn, max_err_len, "enableSSIM only supported on device with FW api version < 6.2 "
+                    "and the encoder is not av1_ni_quadra_enc. Reported ssim will be 0.", max_err_len - 1);
             warning = NI_RETCODE_PARAM_WARN;
         }
     }
@@ -10902,8 +11001,8 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     {
         if (NI_CODEC_FORMAT_JPEG == p_ctx->codec_format || NI_CODEC_FORMAT_AV1 == p_ctx->codec_format)
         {
-          strncpy(p_param_err, "sliceMode/sliceArg is only supported for H.264 or H.265.",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "sliceMode/sliceArg is only supported for H.264 or H.265.",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
         }
@@ -10926,8 +11025,8 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     {
         if (NI_CODEC_FORMAT_H264 != p_ctx->codec_format)
         {
-            strncpy(p_param_err, "useLowDelayPocType is only supported for H.264.",
-                    max_err_len);
+            ni_strncpy(p_param_err, max_err_len, "useLowDelayPocType is only supported for H.264.",
+                    max_err_len - 1);
             param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
             LRETURN;
         }
@@ -10939,8 +11038,8 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
             NI_CODEC_FORMAT_AV1 == p_ctx->codec_format || p_cfg->ui16maxFrameSize == 0)
         {
             p_cfg->ui8enableCompensateQp = 0;
-            strncpy(p_param_warn, "ui8enableCompensateQp only supported when device with FW api version < 6rt "
-                    "and the encoder is not av1_ni_quadra_enc and ui16maxFrameSize > 0. Reported enableCompensateQp will be 0.", max_err_len);
+            ni_strncpy(p_param_warn, max_err_len, "ui8enableCompensateQp only supported when device with FW api version < 6rt "
+                    "and the encoder is not av1_ni_quadra_enc and ui16maxFrameSize > 0. Reported enableCompensateQp will be 0.", max_err_len - 1);
             warning = NI_RETCODE_PARAM_WARN;
         }
     }
@@ -10952,12 +11051,12 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
             p_cfg->ui8enableTimecode = 0;
             if (NI_CODEC_FORMAT_H265 == p_ctx->codec_format)
             {
-                strncpy(p_param_warn, "enableTimecode does not need to be set for H.265. Use ni_enc_insert_timecode API"
-                        "from libxcoder directly to insert time code SEI", max_err_len);
+                ni_strncpy(p_param_warn, max_err_len, "enableTimecode does not need to be set for H.265. Use ni_enc_insert_timecode API"
+                        "from libxcoder directly to insert time code SEI", max_err_len - 1);
             }
             else
             {
-                strncpy(p_param_warn, "enableTimecode not supported for the codec used. Forcing value to 0.", max_err_len);
+                ni_strncpy(p_param_warn, max_err_len, "enableTimecode not supported for the codec used. Forcing value to 0.", max_err_len - 1);
             }
             warning = NI_RETCODE_PARAM_WARN;
         }
@@ -10974,9 +11073,9 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
               10 == p_cfg->niParamT408.gop_preset_index ||
               15 == p_cfg->niParamT408.gop_preset_index)
           {
-              strncpy(p_param_err,
+              ni_strncpy(p_param_err, max_err_len,
                       "this gopPreset is not supported for lookahead and/or CRF",
-                      max_err_len);
+                      max_err_len - 1);
               param_ret = NI_RETCODE_PARAM_ERROR_GOP_PRESET;
               LRETURN;
           }
@@ -11003,8 +11102,8 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
             }
             if (bIsgopLowdelay)
             {
-              strncpy(p_param_err, "B-frames low delay custom gop is not supported for "
-                       "lookahead and/or CRF", max_err_len);
+              ni_strncpy(p_param_err, max_err_len, "B-frames low delay custom gop is not supported for "
+                       "lookahead and/or CRF", max_err_len - 1);
               param_ret = NI_RETCODE_INVALID_PARAM;
               LRETURN;
             }
@@ -11012,9 +11111,9 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
 
           if (p_enc->bitrateMode != -1)
           {
-              strncpy(p_param_err,
+              ni_strncpy(p_param_err, max_err_len,
                       "bitrateMode is invalid when lookahead is enabled (or in CRF mode)",
-                      max_err_len);
+                      max_err_len - 1);
               param_ret = NI_RETCODE_PARAM_ERROR_PIC_WIDTH;
               LRETURN;
           }
@@ -11024,16 +11123,16 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       {
           if (p_cfg->ui8LookAheadDepth == 0 || p_cfg->ui8LookAheadDepth == 1)
           {
-              strncpy(p_param_err,
+              ni_strncpy(p_param_err, max_err_len,
                       "totalCuTreeDepth is invalid without lookahead",
-                      max_err_len);
+                      max_err_len - 1);
               param_ret = NI_RETCODE_PARAM_ERROR_LOOK_AHEAD_DEPTH;
               LRETURN;
           }
 
           if (p_cfg->ui8totalCuTreeDepth <= p_cfg->ui8LookAheadDepth)
           {
-              strncpy(p_param_warn, "totalCuTreeDepth does not take effects when its value <= lookahead depth", max_err_len);
+              ni_strncpy(p_param_warn, max_err_len, "totalCuTreeDepth does not take effects when its value <= lookahead depth", max_err_len - 1);
               warning = NI_RETCODE_PARAM_WARN;
               p_cfg->ui8totalCuTreeDepth = 0;
           }
@@ -11041,9 +11140,9 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
           {
               if (p_cfg->ui8multicoreJointMode != 0)
               {
-                  strncpy(p_param_err,
+                  ni_strncpy(p_param_err, max_err_len,
                           "totalCuTreeDepth is not supported in multicoreJointMode",
-                          max_err_len);
+                          max_err_len - 1);
                   param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
                   LRETURN;
               }
@@ -11065,10 +11164,10 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       }
       if (2 == p_cfg->niParamT408.gop_preset_index)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "gopPresetIdx 2 is obsolete, suggest to use gopPresetIdx 9 "
                   "instead",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_PARAM_ERROR_GOP_PRESET;
           LRETURN;
       }
@@ -11089,10 +11188,10 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       }
       if (6 == p_cfg->niParamT408.gop_preset_index)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "gopPresetIdx 6 is obsolete, suggest to use gopPresetIdx 7 "
                   "instead",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_PARAM_ERROR_GOP_PRESET;
           LRETURN;
       }
@@ -11138,6 +11237,11 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
               ni_log2(p_ctx, NI_LOG_DEBUG,  "Set newRcEnable to 0 in non low delay gop preset\n");
               p_cfg->ui8NewRCEnable = 0;
           }
+          else if (p_cfg->i32spatialLayerBitrate[0] > 0)
+          {
+              ni_log2(p_ctx, NI_LOG_DEBUG,  "Set newRcEnable to 0 in spatial layer separated rate control mode\n");
+              p_cfg->ui8NewRCEnable = 0;
+          }
           else if (p_cfg->niParamT408.intra_period == 1 || p_cfg->niParamT408.avcIdrPeriod == 1)
           {
               ni_log2(p_ctx, NI_LOG_DEBUG,  "Set newRcEnable to 0 in intra only mode\n");
@@ -11148,19 +11252,19 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       if ((p_cfg->ui8stillImageDetectLevel != 0 || p_cfg->ui8sceneChangeDetectLevel != 0) &&
           (p_cfg->niParamT408.gop_preset_index != 9 || ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6rm") < 0))
       {
-        strncpy(p_param_warn, "StillImageDetect or SceneChangeDetect only support gopPresetIdx=9 with FW > 6rm\n", max_err_len);
+        ni_strncpy(p_param_warn, max_err_len, "StillImageDetect or SceneChangeDetect only support gopPresetIdx=9 with FW > 6rm\n", max_err_len - 1);
         warning = NI_RETCODE_PARAM_WARN;
         p_cfg->ui8stillImageDetectLevel  = 0;
         p_cfg->ui8sceneChangeDetectLevel = 0;
       }
 
-      if (p_cfg->ui8spatialLayersMinusOne > 0)
+      if (p_cfg->ui8spatialLayersMinusOne > 0 || p_cfg->i32spatialLayerBitrate[0] > 0)
       {
         if (p_cfg->niParamT408.gop_preset_index != GOP_PRESET_IDX_DEFAULT)
         {
-          strncpy(p_param_err,
-                  "currently do not support gop preset in multi spatial layers encode",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len,
+                  "currently do not support gop preset in multi spatial layers encode or spatial layer separated rate control mode",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_PARAM_ERROR_GOP_PRESET;
           LRETURN;
         }
@@ -11172,9 +11276,9 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       {
         if (p_cfg->ui8spatialLayersMinusOne == 0)
         {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "higher spatial layers referencing base layer is only supported in multi spatial layers encode",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_PARAM_ERROR_GOP_PRESET;
           LRETURN;
         }
@@ -11189,22 +11293,52 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       }
       if (i > 0)
       {
-        if (p_cfg->ui8spatialLayersMinusOne == 0)
+        if (p_cfg->ui8spatialLayersMinusOne + 1 != i)
         {
-          strncpy(p_param_err, "spatialLayerBitrate should only be used in multi spatial layers encode", max_err_len);
-          param_ret = NI_RETCODE_INVALID_PARAM;
-          LRETURN;
-        }
-        else if (p_cfg->ui8spatialLayersMinusOne + 1 != i)
-        {
-          strncpy(p_param_err, "number of values specified in spatialLayerBitrate must match the total number of spatial layers", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "number of values specified in spatialLayerBitrate must match the total number of spatial layers", max_err_len - 1);
           param_ret = NI_RETCODE_INVALID_PARAM;
           LRETURN;
         }
         if (p_cfg->ui8multicoreJointMode != 0)
         {
-          strncpy(p_param_err, "spatialLayerBitrate is not supported in multicoreJointMode", max_err_len);
-          param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
+          if (ni_cmp_fw_api_ver(
+                  (char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+                  "6sD") < 0)
+          {
+              ni_strncpy(p_param_err, max_err_len, "spatialLayerBitrate is not supported in multicoreJointMode for FW api version < 6sD", max_err_len - 1);
+              param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
+              LRETURN;
+          }
+        }
+      }
+
+      for (i = 0; i < NI_MAX_SPATIAL_LAYERS; i++)
+      {
+        if (p_cfg->ui8av1OpLevel[i] == 0)
+        {
+          break;
+        }
+        else if (NI_RETCODE_SUCCESS !=
+          ni_check_level((int)p_cfg->ui8av1OpLevel[i], p_ctx->codec_format))
+        {
+            ni_strncpy(p_param_err, max_err_len, "Invalid av1OpLevel: out of range", max_err_len - 1);
+            param_ret = NI_RETCODE_PARAM_ERROR_OOR;
+            LRETURN;
+        }
+      }
+      if (i > 0)
+      {
+        if (p_cfg->niParamT408.level != 0)
+        {
+          ni_strncpy(p_param_err, max_err_len, "av1OpLevel and level cannot be both specified", max_err_len - 1);
+          param_ret = NI_RETCODE_INVALID_PARAM;
+          LRETURN;
+        }
+
+        if (p_cfg->ui8spatialLayersMinusOne + 1 != i)
+        {
+          ni_strncpy(p_param_err, max_err_len, "number of values specified in av1OpLevel must match the total number of spatial layers", max_err_len - 1);
+          param_ret = NI_RETCODE_INVALID_PARAM;
           LRETURN;
         }
       }
@@ -11213,9 +11347,9 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       {
         if (p_cfg->i8crf < 0 || p_cfg->i32vbvBufferSize == 0 || p_cfg->ui8LookAheadDepth == 0)
         {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "crfMaxIframeEnable is only supported in Capped CRF mode with lookahead enabled",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_INVALID_PARAM;
           LRETURN;
         }
@@ -11230,8 +11364,8 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       {
         if (p_cfg->niParamT408.profile != 5)
         {
-          strncpy(p_param_err, "Invalid profile: must be 5 (high10)",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "Invalid profile: must be 5 (high10)",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_INVALID_PARAM;
           LRETURN;
         }
@@ -11240,8 +11374,8 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       {
         if (p_cfg->niParamT408.profile < 1 || p_cfg->niParamT408.profile > 5)
         {
-          strncpy(p_param_err, "Invalid profile: must be 1 (baseline), 2 (main),"
-                  " 3 (extended), 4 (high), or 5 (high10)", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "Invalid profile: must be 1 (baseline), 2 (main),"
+                  " 3 (extended), 4 (high), or 5 (high10)", max_err_len - 1);
           param_ret = NI_RETCODE_INVALID_PARAM;
           LRETURN;
         }
@@ -11252,8 +11386,8 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
              2 == p_cfg->niParamT408.gop_preset_index ||
              6 == p_cfg->niParamT408.gop_preset_index))
       {
-        strncpy(p_param_err, "Invalid gopPresetIdx for H.264 baseline profile:"
-                " must be 1, 2, 6 or 0 (custom with no B frames)", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Invalid gopPresetIdx for H.264 baseline profile:"
+                " must be 1, 2, 6 or 0 (custom with no B frames)", max_err_len - 1);
         param_ret = NI_RETCODE_INVALID_PARAM;
         LRETURN;
       }
@@ -11265,8 +11399,8 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         {
           if (2 == p_cfg->niParamT408.custom_gop_params.pic_param[i].pic_type)
           {
-            strncpy(p_param_err, "H.264 baseline profile: custom GOP can not "
-                    "have B frames", max_err_len);
+            ni_strncpy(p_param_err, max_err_len, "H.264 baseline profile: custom GOP can not "
+                    "have B frames", max_err_len - 1);
             param_ret = NI_RETCODE_INVALID_PARAM;
             LRETURN;
           }
@@ -11277,14 +11411,14 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     {
       if (p_cfg->niParamT408.profile < 1 || p_cfg->niParamT408.profile > 5 || p_cfg->niParamT408.profile == 3)
       {
-        strncpy(p_param_err, "Invalid profile: must be 1 (baseline), 2 (main),"
-                " 4 (high), or 5 (high10)", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Invalid profile: must be 1 (baseline), 2 (main),"
+                " 4 (high), or 5 (high10)", max_err_len - 1);
         param_ret = NI_RETCODE_INVALID_PARAM;
         LRETURN;
       }
       if (10 == p_ctx->src_bit_depth && p_cfg->niParamT408.profile != 5)
       {
-        strncpy(p_param_warn, "AVC Baseline/Main/High Profile do not support 10-bit, auto convert to 8-bit", max_err_len);
+        ni_strncpy(p_param_warn, max_err_len, "AVC Baseline/Main/High Profile do not support 10-bit, auto convert to 8-bit", max_err_len - 1);
         warning = NI_RETCODE_PARAM_WARN;
       }
       if (1 == p_cfg->niParamT408.profile)
@@ -11295,8 +11429,8 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
           {
             if (2 == p_cfg->niParamT408.custom_gop_params.pic_param[i].pic_type)
             {
-              strncpy(p_param_err, "H.264 baseline profile: custom GOP can not "
-                      "have B frames", max_err_len);
+              ni_strncpy(p_param_err, max_err_len, "H.264 baseline profile: custom GOP can not "
+                      "have B frames", max_err_len - 1);
               param_ret = NI_RETCODE_INVALID_PARAM;
               LRETURN;
             }
@@ -11310,10 +11444,10 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
                 p_cfg
                     ->ui8gopLowdelay)   // if gopSize is 0 (default / adapative gop), autoset to 1
             {
-                strncpy(p_param_err,
+                ni_strncpy(p_param_err, max_err_len,
                         "Must use gopPresetIdx 1,9,10 (no "
                         "B frames) for profile 1",
-                        max_err_len);
+                        max_err_len - 1);
                 param_ret = NI_RETCODE_INVALID_PARAM;
                 LRETURN;
             }
@@ -11322,15 +11456,29 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       }
       if (p_cfg->niParamT408.tier)
       {
-          strncpy(p_param_err, "Tier is not supported for H.264", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "Tier is not supported for H.264", max_err_len - 1);
           param_ret = NI_RETCODE_INVALID_PARAM;
           LRETURN;
       }
       if (p_cfg->ui8spatialLayersMinusOne > 0)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "spatialLayers is not supported for h.264 encode",
-                  max_err_len);
+                  max_err_len - 1);
+          param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
+          LRETURN;
+      }
+      if (p_cfg->ui8disableAv1TimingInfo != 0)
+      {
+          ni_strncpy(p_param_err, max_err_len, "disableAv1TimingInfo is not supported for h.264",
+                  max_err_len - 1);
+          param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
+          LRETURN;
+      }
+      if (p_cfg->ui8av1OpLevel[0] != 0)
+      {
+          ni_strncpy(p_param_err, max_err_len, "av1OpLevel is not supported for h.264",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
@@ -11344,8 +11492,8 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       {
         if (p_cfg->niParamT408.profile != 2)
         {
-          strncpy(p_param_err, "Invalid profile: must be 2 (main10)",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "Invalid profile: must be 2 (main10)",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_INVALID_PARAM;
           LRETURN;
         }
@@ -11354,8 +11502,8 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       {
         if (p_cfg->niParamT408.profile < 1 || p_cfg->niParamT408.profile > 2)
         {
-          strncpy(p_param_err, "Invalid profile: must be 1 (main) or 2 (main10)",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "Invalid profile: must be 1 (main) or 2 (main10)",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_INVALID_PARAM;
           LRETURN;
         }
@@ -11365,21 +11513,35 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     {
       if (p_cfg->niParamT408.profile < 1 || p_cfg->niParamT408.profile > 2)
       {
-        strncpy(p_param_err, "Invalid profile: must be 1 (main) or 2 (main10)",
-                max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Invalid profile: must be 1 (main) or 2 (main10)",
+                max_err_len - 1);
         param_ret = NI_RETCODE_INVALID_PARAM;
         LRETURN;
       }
       if (10 == p_ctx->src_bit_depth && p_cfg->niParamT408.profile != 2)
       {
-        strncpy(p_param_warn, "HEVC Main Profile does not support 10-bit, auto convert to 8-bit", max_err_len);
+        ni_strncpy(p_param_warn, max_err_len, "HEVC Main Profile does not support 10-bit, auto convert to 8-bit", max_err_len - 1);
         warning = NI_RETCODE_PARAM_WARN;
       }
       if (p_cfg->ui8spatialLayersMinusOne > 0)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "spatialLayers is not supported for h.265 encode",
-                  max_err_len);
+                  max_err_len - 1);
+          param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
+          LRETURN;
+      }
+      if (p_cfg->ui8disableAv1TimingInfo != 0)
+      {
+          ni_strncpy(p_param_err, max_err_len, "disableAv1TimingInfo is not supported for h.265",
+                  max_err_len - 1);
+          param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
+          LRETURN;
+      }
+      if (p_cfg->ui8av1OpLevel[0] != 0)
+      {
+          ni_strncpy(p_param_err, max_err_len, "av1OpLevel is not supported for h.265",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
@@ -11388,14 +11550,14 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
   {
       if (p_cfg->ui8tuneBframeVisual == TUNE_BFRAME_VISUAL_MEDIUM)
       {
-          strncpy(p_param_err, "TuneBframeVisual MEDIUM is not supported for AV1", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "TuneBframeVisual MEDIUM is not supported for AV1", max_err_len - 1);
           param_ret = NI_RETCODE_INVALID_PARAM;
           LRETURN;
       }
       if (p_cfg->niParamT408.profile != 1)
       {
-          strncpy(p_param_err, "Invalid profile: must be 1 (main)",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "Invalid profile: must be 1 (main)",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_INVALID_PARAM;
           LRETURN;
       }
@@ -11404,16 +11566,16 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
           if (p_cfg->niParamT408.level < 20)
           {
               p_cfg->niParamT408.level = 20;
-              strncpy(p_param_warn,
+              ni_strncpy(p_param_warn, max_err_len,
                       "AV1 level < 2.0 is not supported, change to level 2.0",
-                      max_err_len);
+                      max_err_len - 1);
               warning = NI_RETCODE_PARAM_WARN;
-          } else if (p_cfg->niParamT408.level > 51)
+          } else if (p_cfg->niParamT408.level > 63)
           {
-              p_cfg->niParamT408.level = 51;
-              strncpy(p_param_warn,
-                      "AV1 level > 5.1 is not supported, change to level 5.1",
-                      max_err_len);
+              p_cfg->niParamT408.level = 63;
+              ni_strncpy(p_param_warn, max_err_len,
+                      "AV1 level > 6.3 is not supported, change to level 6.3",
+                      max_err_len - 1);
               warning = NI_RETCODE_PARAM_WARN;
           }
       }
@@ -11422,100 +11584,99 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       {
           p_cfg->niParamT408.conf_win_top = p_src->cfg_enc_params.conf_win_top =
               0;
-          strncpy(p_param_warn, "confWinTop is not supported in AV1",
-                  max_err_len);
+          ni_strncpy(p_param_warn, max_err_len, "confWinTop is not supported in AV1",
+                  max_err_len - 1);
           warning = NI_RETCODE_PARAM_WARN;
       }
       if (p_cfg->niParamT408.conf_win_bottom != 0)
       {
           p_cfg->niParamT408.conf_win_bottom =
               p_src->cfg_enc_params.conf_win_bottom = 0;
-          strncpy(p_param_warn, "confWinBottom is not supported in AV1",
-                  max_err_len);
+          ni_strncpy(p_param_warn, max_err_len, "confWinBottom is not supported in AV1",
+                  max_err_len - 1);
           warning = NI_RETCODE_PARAM_WARN;
       }
       if (p_cfg->niParamT408.conf_win_left != 0)
       {
           p_cfg->niParamT408.conf_win_left =
               p_src->cfg_enc_params.conf_win_left = 0;
-          strncpy(p_param_warn, "confWinLeft is not supported in AV1",
-                  max_err_len);
+          ni_strncpy(p_param_warn, max_err_len, "confWinLeft is not supported in AV1",
+                  max_err_len - 1);
           warning = NI_RETCODE_PARAM_WARN;
       }
       if (p_cfg->niParamT408.conf_win_right != 0)
       {
           p_cfg->niParamT408.conf_win_right =
               p_src->cfg_enc_params.conf_win_right = 0;
-          strncpy(p_param_warn, "confWinRight is not supported in AV1",
-                  max_err_len);
+          ni_strncpy(p_param_warn, max_err_len, "confWinRight is not supported in AV1",
+                  max_err_len - 1);
           warning = NI_RETCODE_PARAM_WARN;
       }
       if (p_cfg->ui8hdr10_enable)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "masterDisplay not supported for AV1",
-                  max_err_len);
+                  max_err_len - 1);
           warning = NI_RETCODE_PARAM_WARN;
       }
       if (p_cfg->ui8hrdEnable)
       {
-          strncpy(p_param_err, "hrdEnable is not supported on av1 encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "hrdEnable is not supported on av1 encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8EnableAUD)
       {
-          strncpy(p_param_err, "enableAUD is not supported on av1 encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "enableAUD is not supported on av1 encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8HDR10CLLEnable)
       {
-          strncpy(p_param_err, "maxCLL is not supported on av1 encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "maxCLL is not supported on av1 encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8repeatHeaders)
       {
-          strncpy(p_param_err, "repeatHeaders is not supported on av1 encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "repeatHeaders is not supported on av1 encoder",
+                  max_err_len - 1);
           warning = NI_RETCODE_PARAM_WARN;
       }
       if (p_cfg->ui8enableSSIM)
       {
-          strncpy(p_param_err, "enableSSIM is not supported on av1 encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "enableSSIM is not supported on av1 encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8EnableRdoQuant)
       {
-          strncpy(p_param_err, "EnableRdoQuant is not supported on av1 encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "EnableRdoQuant is not supported on av1 encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8fillerEnable)
       {
-          strncpy(p_param_err, "fillerEnable is not supported on av1 encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "fillerEnable is not supported on av1 encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->i8ppsInitQp)
       {
-          strncpy(p_param_err, "ppsInitQp is not supported for av1 encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "ppsInitQp is not supported for av1 encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8vbvBufferReencode && p_cfg->ui8multicoreJointMode)
       {
-          strncpy(p_param_err, "vbvBufferReencode is not supported for av1 multicoreJointMode",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "vbvBufferReencode is not supported for av1 multicoreJointMode", max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
@@ -11523,434 +11684,464 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
   {
       if (p_cfg->ui32cropWidth || p_cfg->ui32cropHeight || p_cfg->ui32horOffset || p_cfg->ui32verOffset)
       {
-          strncpy(p_param_err, "crop Parameters not supported for JPEG", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "crop Parameters not supported for JPEG", max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->niParamT408.tier)
       {
-          strncpy(p_param_err, "Tier is not supported for JPEG", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "Tier is not supported for JPEG", max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8tuneBframeVisual)
       {
-          strncpy(p_param_err, "TuneBframeVisual is not supported for JPEG", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "TuneBframeVisual is not supported for JPEG", max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8hdr10_enable)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "masterDisplay not supported for jpeg",
-                  max_err_len);
+                  max_err_len - 1);
           warning = NI_RETCODE_PARAM_WARN;
       }
       if (p_cfg->niParamT408.conf_win_top != 0)
       {
-          strncpy(p_param_err, "confWinTop is not supported in jpeg",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "confWinTop is not supported in jpeg",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->niParamT408.conf_win_bottom != 0)
       {
-          strncpy(p_param_err, "confWinBottom is not supported in jpeg",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "confWinBottom is not supported in jpeg",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->niParamT408.conf_win_left != 0)
       {
-          strncpy(p_param_err, "confWinLeft is not supported in jpeg",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "confWinLeft is not supported in jpeg",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->niParamT408.conf_win_right != 0)
       {
-          strncpy(p_param_err, "confWinRight is not supported in jpeg",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "confWinRight is not supported in jpeg",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8hrdEnable)
       {
-          strncpy(p_param_err, "hrdEnable is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "hrdEnable is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8EnableAUD)
       {
-          strncpy(p_param_err, "enableAUD is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "enableAUD is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8repeatHeaders)
       {
-          strncpy(p_param_err, "repeatHeaders is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "repeatHeaders is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_src->cfg_enc_params.preferred_transfer_characteristics != -1)
       {
-          strncpy(p_param_err, "prefTRC is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "prefTRC is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8HDR10CLLEnable)
       {
-          strncpy(p_param_err, "maxCLL is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "maxCLL is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8colorPrimaries != 2)
       {
-          strncpy(p_param_err, "colorPri is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "colorPri is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8colorTrc != 2)
       {
-          strncpy(p_param_err, "colorTrc is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "colorTrc is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8colorSpace != 2)
       {
-          strncpy(p_param_err, "colorSpc is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "colorSpc is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_src->sar_num)
       {
-          strncpy(p_param_err, "sarNum is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "sarNum is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_src->sar_denom != 1)
       {
-          strncpy(p_param_err, "sarDenom is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "sarDenom is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_src->video_full_range_flag != -1)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "videoFullRangeFlag is not supported on jpeg encoder",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8temporalLayersEnable)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "temporalLayersEnable is not supported on jpeg encoder",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8spatialLayersMinusOne > 0)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "spatialLayers is not supported for jpeg encode",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8LowDelay)
       {
-          strncpy(p_param_err, "LowDelay is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "LowDelay is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8rdoLevel)
       {
-          strncpy(p_param_err, "rdoLevel is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "rdoLevel is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8EnableRdoQuant)
       {
-          strncpy(p_param_err, "EnableRdoQuant is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "EnableRdoQuant is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8enable2PassGopPatern)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "enable2PassGop is not supported on jpeg encoder",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8LookAheadDepth)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "lookAheadDepth is not supported on jpeg encoder",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (GOP_PRESET_IDX_DEFAULT != p_cfg->niParamT408.gop_preset_index)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "gopPresetIdx is not supported on jpeg encoder",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->niParamT408.roiEnable)
       {
-          strncpy(p_param_err, "roiEnable is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "roiEnable is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if(p_src->roi_demo_mode)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "RoiDemoMode is not supported on jpeg encoder",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_src->cacheRoi)
       {
-          strncpy(p_param_err, "cacheRoi is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "cacheRoi is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_src->reconf_demo_mode != XCODER_TEST_RECONF_OFF)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "ReconfDemoMode is not supported on jpeg encoder",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->niParamT408.intraRefreshMode)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "intraRefreshMode is not supported on jpeg encoder",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->niParamT408.intraRefreshArg)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "intraRefreshArg is not supported on jpeg encoder",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->niParamT408.intra_period != 120)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "intraPeriod is not supported on jpeg encoder",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8intraResetRefresh)
       {
-          strncpy(
-              p_param_err,
+          ni_strncpy(
+              p_param_err, max_err_len,
               "IntraRefreshResetOnForceIDR is not supported on jpeg encoder",
-              max_err_len);
+              max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->niParamT408.useLongTerm)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "longTermReferenceEnable is not supported on jpeg encoder",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui32setLongTermInterval)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "longTermReferenceInterval is not supported on jpeg encoder",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8setLongTermCount != 2)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "longTermReferenceCount is not supported on jpeg encoder",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8multicoreJointMode)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "multicoreJointMode is not supported on jpeg encoder",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8enableSSIM)
       {
-          strncpy(p_param_err, "enableSSIM is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "enableSSIM is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_enc->rc.vbv_buffer_size != -1)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "vbvBufferSize is not supported on jpeg encoder",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8fillerEnable)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "fillerEnable is not supported on jpeg encoder",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8picSkipEnable)
       {
-          strncpy(p_param_err, "picSkip is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "picSkip is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui16maxFrameSize)
       {
-          strncpy(p_param_err, "maxFrameSize is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "maxFrameSize is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->niParamT408.enable_cu_level_rate_control)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "cuLevelRCEnable is not supported on jpeg encoder",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->niParamT408.enable_hvs_qp)
       {
-          strncpy(p_param_err, "hvsQPEnable is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "hvsQPEnable is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->niParamT408.profile)
       {
-          strncpy(p_param_err, "profile is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "profile is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->niParamT408.intra_mb_refresh_mode || p_cfg->niParamT408.intra_mb_refresh_arg)
       {
-          strncpy(p_param_err, "intraRefreshMode or intraRefreshArg is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "intraRefreshMode or intraRefreshArg is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->i8crf != -1)
       {
-          strncpy(p_param_err, "crf is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "crf is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->i32tolCtbRcInter != (int32_t)(0.1 * 1000))
       {
-          strncpy(p_param_err, "tolCtbRcInter is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "tolCtbRcInter is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->i32tolCtbRcIntra != (int32_t)(0.1 * 1000))
       {
-          strncpy(p_param_err, "tolCtbRcIntra is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "tolCtbRcIntra is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8rcQpDeltaRange != 10)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "rcQpDeltaRange is not supported on jpeg encoder",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->i16bitrateWindow != -255)
       {
-          strncpy(p_param_err, "bitrateWindow is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "bitrateWindow is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->i16ctbRowQpStep)
       {
-          strncpy(p_param_err, "ctbRowQpStep is not supported on jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "ctbRowQpStep is not supported on jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8AiEnhanceMode)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "enableAIEnhance is not supported on jpeg encoder",
-                  max_err_len);
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->i8ppsInitQp)
       {
-          strncpy(p_param_err, "ppsInitQp is not supported for jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "ppsInitQp is not supported for jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->i8pass1Qp)
       {
-          strncpy(p_param_err, "pass1Qp is not supported for jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "pass1Qp is not supported for jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_enc->bitrateMode != -1)
       {
-          strncpy(p_param_err, "bitrateMode is not supported for jpeg encoder",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "bitrateMode is not supported for jpeg encoder",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
       if (p_cfg->ui8vbvBufferReencode)
       {
-          strncpy(p_param_err,
+          ni_strncpy(p_param_err, max_err_len,
                   "vbvBufferReencode is not supported on jpeg encoder",
-                  max_err_len);
+                  max_err_len - 1);
+          param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
+          LRETURN;
+      }
+      if (p_enc->get_psnr_mode != 3)
+      {
+          ni_strncpy(p_param_err, max_err_len,
+                  "getPsnrMode or getReconstructedMode is not supported on jpeg encoder",
+                  max_err_len - 1);
+          param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
+          LRETURN;
+      }
+      if (p_cfg->ui8spatialLayersMinusOne > 0)
+      {
+          ni_strncpy(p_param_err, max_err_len,
+                  "spatialLayers is not supported for Jpeg encode",
+                  max_err_len - 1);
+          param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
+          LRETURN;
+      }
+      if (p_cfg->ui8disableAv1TimingInfo != 0)
+      {
+          ni_strncpy(p_param_err, max_err_len, "disableAv1TimingInfo is not supported for Jpeg",
+                  max_err_len - 1);
+          param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
+          LRETURN;
+      }
+      if (p_cfg->ui8av1OpLevel[0] != 0)
+      {
+          ni_strncpy(p_param_err, max_err_len, "av1OpLevel is not supported for Jpeg",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
@@ -11958,16 +12149,16 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
 
   if (p_src->force_frame_type != 0 && p_src->force_frame_type != 1)
   {
-      strncpy(p_param_err, "Invalid forceFrameType: out of range",
-              max_err_len);
+      ni_strncpy(p_param_err, max_err_len, "Invalid forceFrameType: out of range",
+              max_err_len - 1);
       param_ret = NI_RETCODE_INVALID_PARAM;
       LRETURN;
   }
 
   if (p_cfg->niParamT408.forcedHeaderEnable > 2)
   {
-      strncpy(p_param_err, "Invalid forcedHeaderEnable: out of range",
-              max_err_len);
+      ni_strncpy(p_param_err, max_err_len, "Invalid forcedHeaderEnable: out of range",
+              max_err_len - 1);
       param_ret = NI_RETCODE_PARAM_INVALID_VALUE;
       LRETURN;
   }
@@ -11975,7 +12166,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
   if (p_cfg->niParamT408.decoding_refresh_type < 0 ||
     p_cfg->niParamT408.decoding_refresh_type > 2)
   {
-    strncpy(p_param_err, "Invalid decoding_refresh_type: out of range", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Invalid decoding_refresh_type: out of range", max_err_len - 1);
     param_ret = NI_RETCODE_PARAM_ERROR_DECODING_REFRESH_TYPE;
     LRETURN;
   }
@@ -11985,7 +12176,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     if (p_cfg->niParamT408.gop_preset_index < 0 ||
       p_cfg->niParamT408.gop_preset_index > 8)
     {
-      strcpy(p_param_err, "Invalid gop_preset_index: out of range");
+      ni_strcpy(p_param_err, max_err_len, "Invalid gop_preset_index: out of range");
       param_ret = NI_RETCODE_PARAM_ERROR_GOP_PRESET;
       LRETURN;
     }
@@ -11998,7 +12189,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         !(0 == p_cfg->niParamT408.gop_preset_index &&
           1 == p_cfg->niParamT408.custom_gop_params.custom_gop_size))
     {
-      strcpy(p_param_err, "GOP size must be 1 when lowDelay is enabled");
+      ni_strcpy(p_param_err, max_err_len, "GOP size must be 1 when lowDelay is enabled");
       param_ret = NI_RETCODE_PARAM_ERROR_GOP_PRESET;
       LRETURN;
     }
@@ -12007,7 +12198,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
   {
     if (p_cfg->ui8gopSize > 16)
     {
-      strncpy(p_param_err, "Invalid gopSize out of range", max_err_len);
+      ni_strncpy(p_param_err, max_err_len, "Invalid gopSize out of range", max_err_len - 1);
       param_ret = NI_RETCODE_PARAM_ERROR_GOP_PRESET;
       LRETURN;
     }
@@ -12015,7 +12206,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     if (p_cfg->ui8gopLowdelay &&
         p_cfg->ui8gopSize > 4)
     {
-      strncpy(p_param_err, "GOP size must be <= 4 for low delay GOP", max_err_len);
+      ni_strncpy(p_param_err, max_err_len, "GOP size must be <= 4 for low delay GOP", max_err_len - 1);
       param_ret = NI_RETCODE_PARAM_ERROR_GOP_PRESET;
       LRETURN;
     }
@@ -12024,26 +12215,26 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     {
       if (p_cfg->ui8LookAheadDepth < 4 || p_cfg->ui8LookAheadDepth > 40)
       {
-        strncpy(p_param_err, "Invalid LookAheadDepth: out of range. <[4-40]>", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Invalid LookAheadDepth: out of range. <[4-40]>", max_err_len - 1);
         param_ret = NI_RETCODE_PARAM_ERROR_LOOK_AHEAD_DEPTH;
         LRETURN;
       }
       if (p_cfg->ui8gopLowdelay)
       {
-        strncpy(p_param_err, "2-pass encode does not support low delay GOP", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "2-pass encode does not support low delay GOP", max_err_len - 1);
         param_ret = NI_RETCODE_PARAM_ERROR_GOP_PRESET;
         LRETURN;
       }
       if (p_cfg->ui8planarFormat == NI_PIXEL_PLANAR_FORMAT_TILED4X4)
       {
-          strncpy(p_param_err, "2-pass encode does not support tile4x4 format",
-                  max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "2-pass encode does not support tile4x4 format",
+                  max_err_len - 1);
           param_ret = NI_RETCODE_PARAM_ERROR_LOOK_AHEAD_DEPTH;
           LRETURN;
       }
       if (p_cfg->ui8spatialLayersMinusOne > 0)
       {
-        strncpy(p_param_err, "currently do not support lookahead encode with multi spatial layers", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "currently do not support lookahead encode with multi spatial layers", max_err_len - 1);
         param_ret = NI_RETCODE_PARAM_ERROR_LOOK_AHEAD_DEPTH;
         LRETURN;
       }
@@ -12058,9 +12249,9 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
           if (p_cfg->niParamT408.custom_gop_params.pic_param[i].poc_offset != (i+1))
           {
             if (p_src->low_delay_mode)
-              strncpy(p_param_err, "Custom GOP must not include backward prediction when lowDelay is enabled", max_err_len);
+              ni_strncpy(p_param_err, max_err_len, "Custom GOP must not include backward prediction when lowDelay is enabled", max_err_len - 1);
             else
-              strncpy(p_param_err, "Custom GOP must not include backward prediction when picSkip is enabled", max_err_len);
+              ni_strncpy(p_param_err, max_err_len, "Custom GOP must not include backward prediction when picSkip is enabled", max_err_len - 1);
             param_ret = NI_RETCODE_INVALID_PARAM;
             LRETURN;
           }
@@ -12073,23 +12264,23 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         {
           if (p_cfg->ui8spatialLayersMinusOne == 0)
           {
-            strncpy(p_param_err, "Must use low delay GOP (gopPresetIdx 1,3,7,9,10) when lowDelay is enabled", max_err_len);
+            ni_strncpy(p_param_err, max_err_len, "Must use low delay GOP (gopPresetIdx 1,3,7,9,10) when lowDelay is enabled", max_err_len - 1);
             param_ret = NI_RETCODE_PARAM_ERROR_GOP_PRESET;
             LRETURN;
           }
         }
         else
         {
-          strncpy(p_param_err, "Must use low delay GOP (gopPresetIdx 1,3,7,9,10) when picSkip is enabled", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "Must use low delay GOP (gopPresetIdx 1,3,7,9,10) when picSkip is enabled", max_err_len - 1);
           param_ret = NI_RETCODE_PARAM_ERROR_GOP_PRESET;
           LRETURN;
         }
       } else if ((p_cfg->ui8LookAheadDepth != 0) && (!p_cfg->ui8useLowDelayPocType))
       {
         if (p_src->low_delay_mode)
-          strncpy(p_param_err, "lookAheadDepth must be 0 when lowDelay is enabled", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "lookAheadDepth must be 0 when lowDelay is enabled", max_err_len - 1);
         else
-          strncpy(p_param_err, "lookAheadDepth must be 0 when picSkip is enabled", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "lookAheadDepth must be 0 when picSkip is enabled", max_err_len - 1);
         param_ret = NI_RETCODE_INVALID_PARAM;
         LRETURN;
       }
@@ -12097,13 +12288,13 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       if (p_cfg->ui8multicoreJointMode)
       {
           if (p_src->low_delay_mode)
-            strncpy(p_param_err,
+            ni_strncpy(p_param_err, max_err_len,
                     "Cannot use multicoreJointMode when lowDelay is enabled",
-                    max_err_len);
+                    max_err_len - 1);
           else
-            strncpy(p_param_err,
+            ni_strncpy(p_param_err, max_err_len,
                     "Cannot use multicoreJointMode when picSkip is enabled",
-                    max_err_len);
+                    max_err_len - 1);
           param_ret = NI_RETCODE_INVALID_PARAM;
           LRETURN;
       }
@@ -12111,13 +12302,13 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       if (p_src->minFramesDelay)
       {
           if (p_src->low_delay_mode)
-            strncpy(p_param_err,
+            ni_strncpy(p_param_err, max_err_len,
                     "Cannot enable minFramesDelay when lowDelay is enabled",
-                    max_err_len);
+                    max_err_len - 1);
           else
-            strncpy(p_param_err,
+            ni_strncpy(p_param_err, max_err_len,
                     "Cannot enable minFramesDelay when picSkip is enabled",
-                    max_err_len);
+                    max_err_len - 1);
           param_ret = NI_RETCODE_INVALID_PARAM;
           LRETURN;
       }
@@ -12133,13 +12324,13 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     {
       if (p_cfg->niParamT408.custom_gop_params.custom_gop_size > 1)
       {
-        strncpy(p_param_err, "Custom GOP size must be 1 when useLowDelayPocType is enabled", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Custom GOP size must be 1 when useLowDelayPocType is enabled", max_err_len - 1);
         param_ret = NI_RETCODE_INVALID_PARAM;
         LRETURN;
       } else if (1 != p_cfg->ui8gopSize && !p_cfg->ui8gopLowdelay &&
                  p_cfg->niParamT408.intra_period != 1)
       {
-        strncpy(p_param_err, "Must use GOP with all frames as reference frames (gopPresetIdx 1,3,7,9) when useLowDelayPocType is enabled", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Must use GOP with all frames as reference frames (gopPresetIdx 1,3,7,9) when useLowDelayPocType is enabled", max_err_len - 1);
         param_ret = NI_RETCODE_PARAM_ERROR_GOP_PRESET;
         LRETURN;
       }
@@ -12184,7 +12375,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     {
       if (p_cfg->ui16maxFrameSize != 0 || p_enc->maxFrameSizeRatio > 0)
       {
-          strncpy(p_param_err, "maxFrameSize can only be used when lowDelay is enabled", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "maxFrameSize can only be used when lowDelay is enabled", max_err_len - 1);
           param_ret = NI_RETCODE_INVALID_PARAM;
           LRETURN;
       }
@@ -12201,7 +12392,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         {
           if (2 == p_cfg->niParamT408.custom_gop_params.pic_param[i].pic_type)
           {
-            strncpy(p_param_err, "Custom GOP can not have B frames for intra refresh", max_err_len);
+            ni_strncpy(p_param_err, max_err_len, "Custom GOP can not have B frames for intra refresh", max_err_len - 1);
             param_ret = NI_RETCODE_INVALID_PARAM;
             LRETURN;
           }
@@ -12211,28 +12402,28 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       {
           if (p_cfg->niParamT408.gop_preset_index != GOP_PRESET_IDX_DEFAULT)
           {
-              strncpy(p_param_err,
+              ni_strncpy(p_param_err, max_err_len,
                       "Must use gopPresetIdx 9 (consecutive P frame) for intra refresh",
-                      max_err_len);
+                      max_err_len - 1);
               param_ret = NI_RETCODE_INVALID_PARAM;
               LRETURN;
           }
-        strncpy(p_param_warn, "GOP size forced to 1 and low delay GOP force disabled (no B frames) for intra refresh", max_err_len);
+        ni_strncpy(p_param_warn, max_err_len, "GOP size forced to 1 and low delay GOP force disabled (no B frames) for intra refresh", max_err_len - 1);
         warning = NI_RETCODE_PARAM_WARN;
         p_cfg->ui8gopSize = 1;
         p_cfg->ui8gopLowdelay = 0;
       }
       if (p_cfg->ui16gdrDuration == 1)
       {
-        strncpy(p_param_err,
+        ni_strncpy(p_param_err, max_err_len,
                 "intra refresh cycle (height / intraRefreshArg MB or CTU) must > 1",
-                max_err_len);
+                max_err_len - 1);
         param_ret = NI_RETCODE_INVALID_PARAM;
         LRETURN;
       }
       if (p_cfg->ui8LookAheadDepth != 0)
       {
-        strncpy(p_param_err, "lookaheadDepth must be 0 for intra refresh", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "lookaheadDepth must be 0 for intra refresh", max_err_len - 1);
         param_ret = NI_RETCODE_INVALID_PARAM;
         LRETURN;
       }
@@ -12241,7 +12432,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       {
         if (p_cfg->niParamT408.intra_period < p_cfg->ui16gdrDuration)
         {
-          strncpy(p_param_warn, "intraPeriod forced to match intra refersh cycle (intraPeriod must >= intra refersh cycle)", max_err_len);
+          ni_strncpy(p_param_warn, max_err_len, "intraPeriod forced to match intra refersh cycle (intraPeriod must >= intra refersh cycle)", max_err_len - 1);
           warning = NI_RETCODE_PARAM_WARN;
           p_cfg->niParamT408.intra_period = p_cfg->ui16gdrDuration;
         }
@@ -12250,7 +12441,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       {
         if (p_cfg->niParamT408.avcIdrPeriod < p_cfg->ui16gdrDuration)
         {
-          strncpy(p_param_warn, "intraPeriod forced to match intra refersh cycle (intraPeriod must >= intra refersh cycle)", max_err_len);
+          ni_strncpy(p_param_warn, max_err_len, "intraPeriod forced to match intra refersh cycle (intraPeriod must >= intra refersh cycle)", max_err_len - 1);
           warning = NI_RETCODE_PARAM_WARN;
           p_cfg->niParamT408.avcIdrPeriod = p_cfg->ui16gdrDuration;
         }
@@ -12261,7 +12452,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     {
         if (p_cfg->ui8hrdEnable)
         {
-            strncpy(p_param_warn, "HRD conformance is not guaranteed in multicoreJointMode", max_err_len);
+            ni_strncpy(p_param_warn, max_err_len, "HRD conformance is not guaranteed in multicoreJointMode", max_err_len - 1);
             warning = NI_RETCODE_PARAM_WARN;
         }
     }
@@ -12294,7 +12485,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     // maxrate must >= bitrate
     if (p_cfg->ui32vbvMaxRate != 0)
     {
-        if (p_cfg->ui32vbvMaxRate < p_cfg->i32bitRate)
+        if ((int)p_cfg->ui32vbvMaxRate < p_cfg->i32bitRate)
         {
             snprintf(p_param_err, max_err_len, "vbvMaxRate %u cannot be smaller than bitrate %d",
                      p_cfg->ui32vbvMaxRate, p_cfg->i32bitRate);
@@ -12306,7 +12497,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     // minrate must <= bitrate
     if (p_cfg->ui32vbvMinRate != 0)
     {
-        if (p_cfg->ui32vbvMinRate > p_cfg->i32bitRate)
+        if ((int)p_cfg->ui32vbvMinRate > p_cfg->i32bitRate)
         {
             snprintf(p_param_err, max_err_len, "vbvMinRate %u cannot be larger than bitrate %d",
                      p_cfg->ui32vbvMinRate, p_cfg->i32bitRate);
@@ -12320,10 +12511,10 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     if (p_cfg->i32vbvBufferSize != 0)
     {
         // check buffer size compatible to bitrate
-        uint32_t minVbvBufferSize = p_cfg->i32frameRateDenominator * 1000 / p_cfg->i32frameRateInfo;
+        int32_t minVbvBufferSize = p_cfg->i32frameRateDenominator * 1000 / p_cfg->i32frameRateInfo;
         if (p_cfg->i32vbvBufferSize < minVbvBufferSize)
         {
-            snprintf(p_param_err, max_err_len, "vbvBufferSize must be greater than the average frame size. Minimum is %u msec for framerate %d fps",
+            snprintf(p_param_err, max_err_len, "vbvBufferSize must be greater than the average frame size. Minimum is %d msec for framerate %d fps",
                      minVbvBufferSize, (p_cfg->i32frameRateInfo / p_cfg->i32frameRateDenominator));
             param_ret = NI_RETCODE_PARAM_INVALID_VALUE;
             LRETURN;
@@ -12332,10 +12523,10 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         // check buffer size compatible to maxrate
         if (p_cfg->ui32vbvMaxRate != 0)
         {
-            uint32_t maxRateMinVbvBufferSize = ((int64_t)p_cfg->i32frameRateDenominator * 1000 / p_cfg->i32frameRateInfo) * p_cfg->ui32vbvMaxRate / p_cfg->i32bitRate;
+            int32_t maxRateMinVbvBufferSize = ((int64_t)p_cfg->i32frameRateDenominator * 1000 / p_cfg->i32frameRateInfo) * p_cfg->ui32vbvMaxRate / p_cfg->i32bitRate;
             if (p_cfg->i32vbvBufferSize < maxRateMinVbvBufferSize)
             {
-                snprintf(p_param_warn, max_err_len, "vbvBufferSize cannot be smaller than one frame size based on vbvMaxRate, force vbvBufferSize to %u msec for bitrate %d vbvMaxRate %u and framerate %d fps",
+                snprintf(p_param_warn, max_err_len, "vbvBufferSize cannot be smaller than one frame size based on vbvMaxRate, force vbvBufferSize to %d msec for bitrate %d vbvMaxRate %u and framerate %d fps",
                          maxRateMinVbvBufferSize, p_cfg->i32bitRate, p_cfg->ui32vbvMaxRate, (p_cfg->i32frameRateInfo / p_cfg->i32frameRateDenominator));
                 warning = NI_RETCODE_PARAM_WARN;
                 p_cfg->i32vbvBufferSize = maxRateMinVbvBufferSize;
@@ -12344,10 +12535,10 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         // check buffer size compatible to minrate (capped CRF may set minrate without maxrate)
         else if (p_cfg->ui32vbvMinRate != 0)
         {
-            uint32_t minRateMinVbvBufferSize = ((int64_t)p_cfg->i32frameRateDenominator * 1000 / p_cfg->i32frameRateInfo) * p_cfg->ui32vbvMinRate / p_cfg->i32bitRate;
+            int32_t minRateMinVbvBufferSize = ((int64_t)p_cfg->i32frameRateDenominator * 1000 / p_cfg->i32frameRateInfo) * p_cfg->ui32vbvMinRate / p_cfg->i32bitRate;
             if (p_cfg->i32vbvBufferSize < minRateMinVbvBufferSize)
             {
-                snprintf(p_param_warn, max_err_len, "vbvBufferSize cannot be smaller than one frame size based on vbvMinRate, force vbvBufferSize to %u msec for bitrate %d vbvMinRate %u and framerate %d fps",
+                snprintf(p_param_warn, max_err_len, "vbvBufferSize cannot be smaller than one frame size based on vbvMinRate, force vbvBufferSize to %d msec for bitrate %d vbvMinRate %u and framerate %d fps",
                          minRateMinVbvBufferSize, p_cfg->i32bitRate, p_cfg->ui32vbvMinRate, (p_cfg->i32frameRateInfo / p_cfg->i32frameRateDenominator));
                 warning = NI_RETCODE_PARAM_WARN;
                 p_cfg->i32vbvBufferSize = minRateMinVbvBufferSize;
@@ -12371,10 +12562,10 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     {
         if (p_cfg->ui32ltrRefInterval && p_cfg->niParamT408.useLongTerm)
         {
-            strncpy(p_param_err,
+            ni_strncpy(p_param_err, max_err_len,
                     "Can't enable ltrRefInterval and longTermReferenceEnable "
                     "at same time",
-                    max_err_len);
+                    max_err_len - 1);
             param_ret = NI_RETCODE_INVALID_PARAM;
             LRETURN;
         }
@@ -12383,7 +12574,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       {
         if (p_cfg->niParamT408.custom_gop_params.custom_gop_size > 1)
         {
-          strncpy(p_param_err, "Custom GOP size can not be > 1 for long term reference", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "Custom GOP size can not be > 1 for long term reference", max_err_len - 1);
           param_ret = NI_RETCODE_INVALID_PARAM;
           LRETURN;
         }
@@ -12392,26 +12583,26 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       {
           if (p_cfg->niParamT408.gop_preset_index != GOP_PRESET_IDX_DEFAULT)
           {
-              strncpy(p_param_err,
+              ni_strncpy(p_param_err, max_err_len,
                       "Must use low delay GOP (gopPresetIdx 1,3,7,9) for long term reference",
-                      max_err_len);
+                      max_err_len - 1);
               param_ret = NI_RETCODE_INVALID_PARAM;
               LRETURN;
           }
-        strncpy(p_param_warn, "GOP size forced to 1 for long term reference", max_err_len);
+        ni_strncpy(p_param_warn, max_err_len, "GOP size forced to 1 for long term reference", max_err_len - 1);
         warning = NI_RETCODE_PARAM_WARN;
         p_cfg->ui8gopSize = 1;
       }
 
       if (p_cfg->ui8LookAheadDepth != 0)
       {
-        strncpy(p_param_err, "lookaheadDepth must be 0 for long term reference", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "lookaheadDepth must be 0 for long term reference", max_err_len - 1);
         param_ret = NI_RETCODE_INVALID_PARAM;
         LRETURN;
       }
       if (p_cfg->i8crf >= 0)
       {
-        strncpy(p_param_err, "crf must < 0 for long term reference", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "crf must < 0 for long term reference", max_err_len - 1);
         param_ret = NI_RETCODE_INVALID_PARAM;
         LRETURN;
       }
@@ -12419,10 +12610,10 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
 
     if (p_cfg->ui32setLongTermInterval && (p_cfg->niParamT408.useLongTerm == 0))
     {
-        strncpy(
-            p_param_err,
+        ni_strncpy(
+            p_param_err, max_err_len,
             "Must set longTermReferenceEnable for longTermReferenceInterval",
-            max_err_len);
+            max_err_len - 1);
         param_ret = NI_RETCODE_INVALID_PARAM;
         LRETURN;
     }
@@ -12431,7 +12622,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     {
       if (STD_AV1 != p_cfg->ui8bitstreamFormat)
       {
-          strncpy(p_param_warn, "AV1 err resilient mode forced to 0 when using other codecs", max_err_len);
+          ni_strncpy(p_param_warn, max_err_len, "AV1 err resilient mode forced to 0 when using other codecs", max_err_len - 1);
           warning = NI_RETCODE_PARAM_WARN;
           p_cfg->ui8av1ErrResilientMode = 0;
       }
@@ -12441,7 +12632,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     {
       if (STD_HEVC != p_cfg->ui8bitstreamFormat)
       {
-          strncpy(p_param_warn, "Motion Constrained mode force disabled for codecs other than HEVC", max_err_len);
+          ni_strncpy(p_param_warn, max_err_len, "Motion Constrained mode force disabled for codecs other than HEVC", max_err_len - 1);
           warning = NI_RETCODE_PARAM_WARN;
           p_cfg->ui8motionConstrainedMode = 0;
       }
@@ -12449,10 +12640,10 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       {
         if (p_cfg->ui8rdoLevel != 1)
         {
-          strncpy(
-              p_param_err,
+          ni_strncpy(
+              p_param_err, max_err_len,
               "rdoLevel must be 1 for Motion Constrained mode 1 or 2",
-              max_err_len);
+              max_err_len - 1);
           param_ret = NI_RETCODE_INVALID_PARAM;
           LRETURN;
         }
@@ -12461,10 +12652,10 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         {
           if (p_cfg->ui8multicoreJointMode)
           {
-            strncpy(
-                p_param_err,
+            ni_strncpy(
+                p_param_err, max_err_len,
                 "multicoreJointMode must be 0 for Motion Constrained mode 2",
-                max_err_len);
+                max_err_len - 1);
             param_ret = NI_RETCODE_INVALID_PARAM;
             LRETURN;
           }
@@ -12473,10 +12664,10 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
             if (!p_cfg->ui32cropWidth || !p_cfg->ui32cropHeight ||
                 p_cfg->ui32cropWidth % 64 || p_cfg->ui32cropHeight % 64)
             {
-              strncpy(
-                  p_param_err,
+              ni_strncpy(
+                  p_param_err, max_err_len,
                   "input resolution (or cropping window) must be 64x64 aligned for Motion Constrained mode 2",
-                  max_err_len);
+                  max_err_len - 1);
               param_ret = NI_RETCODE_INVALID_PARAM;
               LRETURN;
             }
@@ -12489,7 +12680,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     {
       if ((STD_AVC != p_cfg->ui8bitstreamFormat) && (STD_HEVC != p_cfg->ui8bitstreamFormat))
       {
-        strncpy(p_param_warn, "AVCC HVCC forced to 0 for codecs other than AVC HEVC", max_err_len);
+        ni_strncpy(p_param_warn, max_err_len, "AVCC HVCC forced to 0 for codecs other than AVC HEVC", max_err_len - 1);
         warning = NI_RETCODE_PARAM_WARN;
         p_cfg->ui8avccHvcc = 0;
       }
@@ -12499,7 +12690,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
   if (p_cfg->niParamT408.cu_size_mode < 0 ||
     p_cfg->niParamT408.cu_size_mode > 7)
   {
-    strncpy(p_param_err, "Invalid cu_size_mode: out of range", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Invalid cu_size_mode: out of range", max_err_len - 1);
     param_ret = NI_RETCODE_PARAM_ERROR_CU_SIZE_MODE;
     LRETURN;
   }
@@ -12509,7 +12700,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
   if (p_cfg->niParamT408.use_recommend_enc_params < 0 ||
     p_cfg->niParamT408.use_recommend_enc_params > 3)
   {
-    strncpy(p_param_err, "Invalid use_recommend_enc_params: out of range", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Invalid use_recommend_enc_params: out of range", max_err_len - 1);
     param_ret = NI_RETCODE_PARAM_ERROR_USR_RMD_ENC_PARAM;
     LRETURN;
   }
@@ -12527,7 +12718,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         if (p_cfg->niParamT408.max_num_merge < 0 ||
           p_cfg->niParamT408.max_num_merge > 3)
         {
-          strncpy(p_param_err, "Invalid max_num_merge: out of range", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "Invalid max_num_merge: out of range", max_err_len - 1);
           param_ret = NI_RETCODE_PARAM_ERROR_MAXNUMMERGE;
           LRETURN;
         }
@@ -12541,7 +12732,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
   if ( p_cfg->niParamT408.intra_qp < -1 ||
        p_cfg->niParamT408.intra_qp > 51 )
   {
-    strncpy(p_param_err, "Invalid intra_qp: out of range", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Invalid intra_qp: out of range", max_err_len - 1);
     param_ret = NI_RETCODE_PARAM_ERROR_INTRA_QP;
     LRETURN;
   }
@@ -12555,7 +12746,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
                               "6X") < 0)
         {
-          strncpy(p_param_err, "CRF requres LookAheadDepth <[4-40]>", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "CRF requres LookAheadDepth <[4-40]>", max_err_len - 1);
           param_ret = NI_RETCODE_PARAM_ERROR_LOOK_AHEAD_DEPTH;
           LRETURN;
         }
@@ -12563,21 +12754,21 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         {
           p_cfg->ui8LookAheadDepth = 1;
           p_cfg->ui8noMbtree = 1;
-          strncpy(p_param_warn, "enable lookahead of current frame", max_err_len);
+          ni_strncpy(p_param_warn, max_err_len, "enable lookahead of current frame", max_err_len - 1);
           warning = NI_RETCODE_PARAM_WARN;
         }
       }
 
       if (p_cfg->ui8rcEnable == 1)
       {
-        strncpy(p_param_err, "CRF requires RcEnable 0", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "CRF requires RcEnable 0", max_err_len - 1);
         param_ret = NI_RETCODE_PARAM_ERROR_RCENABLE;
         LRETURN;
       }
       #if 0
       if (p_cfg->ui8ctbRcMode > 0)
       {
-        strncpy(p_param_warn, "Lookahead with cuLevelRCEnable or hvsQPEnable may degrade quality", max_err_len);
+        ni_strncpy(p_param_warn, sizeof(p_param_warn), "Lookahead with cuLevelRCEnable or hvsQPEnable may degrade quality", max_err_len - 1);
         warning = NI_RETCODE_PARAM_WARN;
         //LRETURN;
       }
@@ -12588,7 +12779,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     {
         if (p_cfg->ui8LookAheadDepth == 0)
         {
-            strncpy(p_param_err, "tuneBframeVisual level 1 (medium) requires lookahead or crf encode", max_err_len);
+            ni_strncpy(p_param_err, max_err_len, "tuneBframeVisual level 1 (medium) requires lookahead or crf encode", max_err_len - 1);
             param_ret = NI_RETCODE_PARAM_ERROR_RCENABLE;
             LRETURN;
         }
@@ -12598,7 +12789,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
   if ( p_cfg->niParamT408.enable_mb_level_rc != 1 &&
        p_cfg->niParamT408.enable_mb_level_rc != 0 )
   {
-    strncpy(p_param_err, "Invalid enable_mb_level_rc: out of range", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Invalid enable_mb_level_rc: out of range", max_err_len - 1);
     param_ret = NI_RETCODE_PARAM_ERROR_RCENABLE;
     LRETURN;
   }
@@ -12607,7 +12798,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     if ( p_cfg->niParamT408.minQpI < 0 ||
          p_cfg->niParamT408.minQpI > 51 )
     {
-      strncpy(p_param_err, "Invalid min_qp: out of range", max_err_len);
+      ni_strncpy(p_param_err, max_err_len, "Invalid min_qp: out of range", max_err_len - 1);
       param_ret = NI_RETCODE_PARAM_ERROR_MN_QP;
       LRETURN;
     }
@@ -12615,7 +12806,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     if ( p_cfg->niParamT408.maxQpI < 0 ||
          p_cfg->niParamT408.maxQpI > 51 )
     {
-      strncpy(p_param_err, "Invalid max_qp: out of range", max_err_len);
+      ni_strncpy(p_param_err, max_err_len, "Invalid max_qp: out of range", max_err_len - 1);
       param_ret = NI_RETCODE_PARAM_ERROR_MX_QP;
       LRETURN;
     }
@@ -12623,7 +12814,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     if ( p_cfg->niParamT408.enable_cu_level_rate_control != 1 &&
          p_cfg->niParamT408.enable_cu_level_rate_control != 0 )
     {
-      strncpy(p_param_err, "Invalid enable_cu_level_rate_control: out of range", max_err_len);
+      ni_strncpy(p_param_err, max_err_len, "Invalid enable_cu_level_rate_control: out of range", max_err_len - 1);
       param_ret = NI_RETCODE_PARAM_ERROR_CU_LVL_RC_EN;
       LRETURN;
     }
@@ -12633,7 +12824,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       if ( p_cfg->niParamT408.enable_hvs_qp != 1 &&
            p_cfg->niParamT408.enable_hvs_qp != 0 )
       {
-        strncpy(p_param_err, "Invalid enable_hvs_qp: out of range", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Invalid enable_hvs_qp: out of range", max_err_len - 1);
         param_ret = NI_RETCODE_PARAM_ERROR_HVS_QP_EN;
         LRETURN;
       }
@@ -12643,7 +12834,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         if ( p_cfg->niParamT408.max_delta_qp < 0 ||
              p_cfg->niParamT408.max_delta_qp > 51 )
         {
-          strncpy(p_param_err, "Invalid max_delta_qp: out of range", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "Invalid max_delta_qp: out of range", max_err_len - 1);
           param_ret = NI_RETCODE_PARAM_ERROR_MX_DELTA_QP;
           LRETURN;
         }
@@ -12652,21 +12843,21 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     // hrd is off when i32vbvBufferSize is 0
     if ((p_cfg->i32vbvBufferSize < 10 && p_cfg->i32vbvBufferSize != 0) || p_cfg->i32vbvBufferSize > 3000)
     {
-      strncpy(p_param_err, "Invalid i32vbvBufferSize: out of range", max_err_len);
+      ni_strncpy(p_param_err, max_err_len, "Invalid i32vbvBufferSize: out of range", max_err_len - 1);
       param_ret = NI_RETCODE_PARAM_ERROR_VBV_BUFFER_SIZE;
       LRETURN;
     }
   }
 
   // check valid for common param
-  param_ret = ni_check_common_params(&p_cfg->niParamT408, p_src, p_param_err, max_err_len);
+  param_ret = ni_check_common_params(&p_cfg->niParamT408, p_src, p_param_err, max_err_len - 1);
   if (param_ret != NI_RETCODE_SUCCESS)
   {
     LRETURN;
   }
 
   // check valid for RC param
-  param_ret = ni_check_ratecontrol_params(p_cfg, p_param_err, max_err_len);
+  param_ret = ni_check_ratecontrol_params(p_cfg, p_param_err, max_err_len - 1);
   if (param_ret != NI_RETCODE_SUCCESS)
   {
     LRETURN;
@@ -12675,7 +12866,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
   if (warning == NI_RETCODE_PARAM_WARN && param_ret == NI_RETCODE_SUCCESS)
   {
     param_ret = NI_RETCODE_PARAM_WARN;
-    strncpy(p_param_err, p_param_warn, max_err_len);
+    ni_strncpy(p_param_err, max_err_len, p_param_warn, max_err_len - 1);
   }
 
 END:
@@ -12701,7 +12892,7 @@ ni_retcode_t ni_check_common_params(ni_t408_config_t *p_param,
   }
 
   //Zero out the error buffer
-  memset(p_param_err, 0, max_err_len);
+  memset(p_param_err, 0, max_err_len - 1);
 
   // check low-delay gop structure
   if (!QUADRA)
@@ -12752,7 +12943,7 @@ ni_retcode_t ni_check_common_params(ni_t408_config_t *p_param,
     if (((p_param->intra_period != 0) && ((p_param->intra_period < intra_period_gop_step_size+1) == 1)) ||
         ((p_param->avcIdrPeriod != 0) && ((p_param->avcIdrPeriod < intra_period_gop_step_size+1) == 1)))
     {
-      strncpy(p_param_err, "Invalid intra_period and gop_preset_index: gop structure is larger than intra period", max_err_len);
+      ni_strncpy(p_param_err, max_err_len, "Invalid intra_period and gop_preset_index: gop structure is larger than intra period", max_err_len - 1);
       ret = NI_RETCODE_PARAM_ERROR_INTRA_PERIOD;
       LRETURN;
     }
@@ -12760,7 +12951,7 @@ ni_retcode_t ni_check_common_params(ni_t408_config_t *p_param,
     if (((!low_delay) && (p_param->intra_period != 0) && ((p_param->intra_period % intra_period_gop_step_size) != 0)) ||
         ((!low_delay) && (p_param->avcIdrPeriod != 0) && ((p_param->avcIdrPeriod % intra_period_gop_step_size) != 0)))
     {
-      strncpy(p_param_err, "Invalid intra_period and gop_preset_index: intra period is not a multiple of gop structure size", max_err_len);
+      ni_strncpy(p_param_err, max_err_len, "Invalid intra_period and gop_preset_index: intra period is not a multiple of gop structure size", max_err_len - 1);
       ret = NI_RETCODE_PARAM_ERROR_INTRA_PERIOD;
       LRETURN;
     }
@@ -12773,14 +12964,14 @@ ni_retcode_t ni_check_common_params(ni_t408_config_t *p_param,
       {
         if (p_param->custom_gop_params.pic_param[i].temporal_id >= XCODER_MAX_NUM_TEMPORAL_LAYER)
         {
-          strncpy(p_param_err, "Invalid custom gop parameters: temporal_id larger than 7", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "Invalid custom gop parameters: temporal_id larger than 7", max_err_len - 1);
           ret = NI_RETCODE_PARAM_ERROR_CUSTOM_GOP;
           LRETURN;
         }
 
         if (p_param->custom_gop_params.pic_param[i].temporal_id < 0)
         {
-          strncpy(p_param_err, "Invalid custom gop parameters: temporal_id is zero or negative", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "Invalid custom gop parameters: temporal_id is zero or negative", max_err_len - 1);
           ret = NI_RETCODE_PARAM_ERROR_CUSTOM_GOP;
           LRETURN;
         }
@@ -12804,7 +12995,7 @@ ni_retcode_t ni_check_common_params(ni_t408_config_t *p_param,
       }
       if (count_pos != p_param->custom_gop_params.custom_gop_size)
       {
-        strncpy(p_param_err, "Invalid custom gop parameters: poc_offset is invalid", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Invalid custom gop parameters: poc_offset is invalid", max_err_len - 1);
         ret = NI_RETCODE_PARAM_ERROR_CUSTOM_GOP;
         LRETURN;
       }
@@ -12820,14 +13011,14 @@ ni_retcode_t ni_check_common_params(ni_t408_config_t *p_param,
       {
         if (p_param->custom_gop_params.pic_param[i].temporal_id >= XCODER_MAX_NUM_TEMPORAL_LAYER)
         {
-          strncpy(p_param_err, "Invalid custom gop parameters: temporal_id larger than 7", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "Invalid custom gop parameters: temporal_id larger than 7", max_err_len - 1);
           ret = NI_RETCODE_PARAM_ERROR_CUSTOM_GOP;
           LRETURN;
         }
 
         if (p_param->custom_gop_params.pic_param[i].temporal_id < 0)
         {
-          strncpy(p_param_err, "Invalid custom gop parameters: temporal_id is negative", max_err_len);
+          ni_strncpy(p_param_err, max_err_len, "Invalid custom gop parameters: temporal_id is negative", max_err_len - 1);
           ret = NI_RETCODE_PARAM_ERROR_CUSTOM_GOP;
           LRETURN;
         }
@@ -12836,7 +13027,7 @@ ni_retcode_t ni_check_common_params(ni_t408_config_t *p_param,
         {
           if (p_param->custom_gop_params.pic_param[i].rps[j].ref_pic == 0)
           {
-            strncpy(p_param_err, "Invalid custom gop parameters: ref pic delta cannot be 0", max_err_len);
+            ni_strncpy(p_param_err, max_err_len, "Invalid custom gop parameters: ref pic delta cannot be 0", max_err_len - 1);
             ret = NI_RETCODE_PARAM_ERROR_CUSTOM_GOP;
             LRETURN;
           }
@@ -12873,7 +13064,7 @@ ni_retcode_t ni_check_common_params(ni_t408_config_t *p_param,
       }
       if (count_pos != p_param->custom_gop_params.custom_gop_size)
       {
-        strncpy(p_param_err, "Invalid custom gop parameters: poc_offset is invalid", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Invalid custom gop parameters: poc_offset is invalid", max_err_len - 1);
         ret = NI_RETCODE_PARAM_ERROR_CUSTOM_GOP;
         LRETURN;
       }
@@ -12893,19 +13084,19 @@ ni_retcode_t ni_check_common_params(ni_t408_config_t *p_param,
 
       if (((p_param->cu_size_mode & 0x1) == 0) && ((align_8_width_flag != 0) || (align_8_height_flag != 0)))
       {
-        strncpy(p_param_err, "Invalid use_recommend_enc_params and cu_size_mode: picture width and height must be aligned with 8 pixels when enable CU8x8 of cu_size_mode. Recommend to set cu_size_mode |= 0x1 (CU8x8)", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Invalid use_recommend_enc_params and cu_size_mode: picture width and height must be aligned with 8 pixels when enable CU8x8 of cu_size_mode. Recommend to set cu_size_mode |= 0x1 (CU8x8)", max_err_len - 1);
         ret = NI_RETCODE_PARAM_ERROR_CUSIZE_MODE_8X8_EN;
         LRETURN;
       }
       else if (((p_param->cu_size_mode & 0x1) == 0) && ((p_param->cu_size_mode & 0x2) == 0) && ((align_16_width_flag != 0) || (align_16_height_flag != 0)))
       {
-        strncpy(p_param_err, "Invalid use_recommend_enc_params and cu_size_mode: picture width and height must be aligned with 16 pixels when enable CU16x16 of cu_size_mode. Recommend to set cu_size_mode |= 0x2 (CU16x16)", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Invalid use_recommend_enc_params and cu_size_mode: picture width and height must be aligned with 16 pixels when enable CU16x16 of cu_size_mode. Recommend to set cu_size_mode |= 0x2 (CU16x16)", max_err_len - 1);
         ret = NI_RETCODE_PARAM_ERROR_CUSIZE_MODE_16X16_EN;
         LRETURN;
       }
       else if (((p_param->cu_size_mode & 0x1) == 0) && ((p_param->cu_size_mode & 0x2) == 0) && ((p_param->cu_size_mode & 0x4) == 0) && ((align_32_width_flag != 0) || (align_32_height_flag != 0)))
       {
-        strncpy(p_param_err, "Invalid use_recommend_enc_params and cu_size_mode: picture width and height must be aligned with 32 pixels when enable CU32x32 of cu_size_mode. Recommend to set cu_size_mode |= 0x4 (CU32x32)", max_err_len);
+        ni_strncpy(p_param_err, max_err_len, "Invalid use_recommend_enc_params and cu_size_mode: picture width and height must be aligned with 32 pixels when enable CU32x32 of cu_size_mode. Recommend to set cu_size_mode |= 0x4 (CU32x32)", max_err_len - 1);
         ret = NI_RETCODE_PARAM_ERROR_CUSIZE_MODE_32X32_EN;
         LRETURN;
       }
@@ -12914,52 +13105,52 @@ ni_retcode_t ni_check_common_params(ni_t408_config_t *p_param,
 
   if ((p_param->conf_win_top < 0) || (p_param->conf_win_top > 8192))
   {
-    strncpy(p_param_err, "Invalid conf_win_top: out of range", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Invalid conf_win_top: out of range", max_err_len - 1);
     ret = NI_RETCODE_PARAM_ERROR_CONF_WIN_TOP;
     LRETURN;
   }
   if (p_param->conf_win_top % 2)
   {
-    strncpy(p_param_err, "Invalid conf_win_top: not multiple of 2", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Invalid conf_win_top: not multiple of 2", max_err_len - 1);
     ret = NI_RETCODE_PARAM_ERROR_CONF_WIN_TOP;
     LRETURN;
   }
 
   if ((p_param->conf_win_bottom < 0) || (p_param->conf_win_bottom > 8192))
   {
-    strncpy(p_param_err, "Invalid conf_win_bottom: out of range", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Invalid conf_win_bottom: out of range", max_err_len - 1);
     ret = NI_RETCODE_PARAM_ERROR_CONF_WIN_BOT;
     LRETURN;
   }
   if (p_param->conf_win_bottom % 2)
   {
-    strncpy(p_param_err, "Invalid conf_win_bottom: not multiple of 2", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Invalid conf_win_bottom: not multiple of 2", max_err_len - 1);
     ret = NI_RETCODE_PARAM_ERROR_CONF_WIN_BOT;
     LRETURN;
   }
 
   if ((p_param->conf_win_left < 0) || (p_param->conf_win_left > 8192))
   {
-    strncpy(p_param_err, "Invalid conf_win_left: out of range", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Invalid conf_win_left: out of range", max_err_len - 1);
     ret = NI_RETCODE_PARAM_ERROR_CONF_WIN_L;
     LRETURN;
   }
   if (p_param->conf_win_left % 2)
   {
-    strncpy(p_param_err, "Invalid conf_win_left: not multiple of 2", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Invalid conf_win_left: not multiple of 2", max_err_len - 1);
     ret = NI_RETCODE_PARAM_ERROR_CONF_WIN_L;
     LRETURN;
   }
 
   if (p_param->conf_win_right < 0 || p_param->conf_win_right > 8192)
   {
-    strncpy(p_param_err, "Invalid conf_win_right: out of range", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Invalid conf_win_right: out of range", max_err_len - 1);
     ret = NI_RETCODE_PARAM_ERROR_CONF_WIN_R;
     LRETURN;
   }
   if (p_param->conf_win_right % 2)
   {
-    strncpy(p_param_err, "Invalid conf_win_right: not multiple of 2", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Invalid conf_win_right: not multiple of 2", max_err_len - 1);
     ret = NI_RETCODE_PARAM_ERROR_CONF_WIN_R;
   }
 
@@ -12983,18 +13174,18 @@ ni_retcode_t ni_check_ratecontrol_params(ni_encoder_config_t* p_cfg, char* p_par
   p_param = &p_cfg->niParamT408;
 
   //Zero out the error buffer
-  memset(p_param_err, 0, max_err_len);
+  memset(p_param_err, 0, max_err_len - 1);
 
   if (p_param->roiEnable != 0 && p_param->roiEnable != 1)
   {
-    strncpy(p_param_err, "Invalid roiEnable: out of range", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "Invalid roiEnable: out of range", max_err_len - 1);
     ret = NI_RETCODE_PARAM_INVALID_VALUE;
     LRETURN;
   }
 
   if (p_param->roiEnable && p_param->enable_hvs_qp)
   {
-    strncpy(p_param_err, "hvsQPEnable and roiEnable: not mutually exclusive", max_err_len);
+    ni_strncpy(p_param_err, max_err_len, "hvsQPEnable and roiEnable: not mutually exclusive", max_err_len - 1);
     ret = NI_RETCODE_PARAM_INVALID_VALUE;
     LRETURN;
   }
@@ -13003,7 +13194,7 @@ ni_retcode_t ni_check_ratecontrol_params(ni_encoder_config_t* p_cfg, char* p_par
   {
     if (p_param->minQpP > p_param->maxQpP || p_param->minQpB > p_param->maxQpB)
     {
-      strncpy(p_param_err, "Invalid min_qp(P/B) and max_qp(P/B): min_qp cannot be larger than max_qp", max_err_len);
+      ni_strncpy(p_param_err, max_err_len, "Invalid min_qp(P/B) and max_qp(P/B): min_qp cannot be larger than max_qp", max_err_len - 1);
       ret = NI_RETCODE_PARAM_ERROR_MX_QP;
       LRETURN;
     }
@@ -13179,12 +13370,15 @@ void *ni_session_keep_alive_thread(void *arguments)
          -1) ||
         sched_setscheduler(syscall(SYS_gettid), SCHED_RR, &sched_param) < 0)
     {
+        char errmsg[NI_ERRNO_LEN] = {0};
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         ni_log(NI_LOG_DEBUG, "%s cannot set scheduler: %s\n", __func__,
-               strerror(NI_ERRNO));
+               errmsg);
         if (setpriority(PRIO_PROCESS, 0, -20) != 0)
         {
+            ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
             ni_log(NI_LOG_DEBUG, "%s cannot set nice value: %s\n", __func__,
-                   strerror(NI_ERRNO));
+                   errmsg);
         }
     }
 
@@ -13225,7 +13419,7 @@ void *ni_session_keep_alive_thread(void *arguments)
     ctx.keep_alive_timeout = args->keep_alive_timeout;
     volatile uint64_t * plast_access_time = args->plast_access_time;
     if((ctx.last_access_time - *plast_access_time) >=
-            ctx.keep_alive_timeout * 1000000000LL)
+            (uint64_t)(ctx.keep_alive_timeout * 1000000000LL))
     {
       ni_log(NI_LOG_ERROR,
             "%s creation timeout. session_id=0x%X requested timeout: %" PRIu64
@@ -13291,7 +13485,7 @@ void *ni_session_keep_alive_thread(void *arguments)
         acceptable(timeout) then the thread might have been blocked.*/
         if ((current_time - ctx.last_access_time) >= (2 * interval) ||   //*2 is for safety
             (current_time - ctx.last_access_time) >=
-                args->keep_alive_timeout * 1000000000LL)
+                (uint64_t)(args->keep_alive_timeout * 1000000000LL))
         {
             ni_log(
                 NI_LOG_INFO,
@@ -13534,7 +13728,7 @@ ni_retcode_t ni_uploader_session_open(ni_session_context_t* p_ctx)
          p_ctx->session_id);
 
   p_ctx->hw_action = NI_CODEC_HW_NONE;
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__APPLE__) && !defined(__OPEN_HARMONY__) && !defined(_ANDROID)
   // If this is a P2P upload session, open the Netint kernel driver
   if (p_ctx->isP2P)
   {
@@ -14111,7 +14305,8 @@ int ni_hwupload_session_write(ni_session_context_t *p_ctx, ni_frame_t *p_frame,
       snprintf(dump_file, sizeof(dump_file), "%ld-%u-hwup-fme/fme-%04ld.yuv",
                (long)getpid(), p_ctx->session_id, (long)p_ctx->frame_num);
 
-      FILE *f = fopen(dump_file, "wb");
+      FILE *f = NULL;
+      ni_fopen(&f, dump_file, "wb");
       fwrite(p_frame->p_buffer,
              p_frame->data_len[0] + p_frame->data_len[1] + p_frame->data_len[2],
              1, f);
@@ -14300,7 +14495,7 @@ ni_retcode_t ni_decoder_session_read_desc(ni_session_context_t* p_ctx, ni_frame_
     int rx_size = 0;
     uint64_t frame_offset = 0;
     uint8_t *p_data_buffer = NULL;
-    int i = 0;
+    uint32_t i = 0;
     int retval = NI_RETCODE_SUCCESS;
     int metadata_hdr_size = NI_FW_META_DATA_SZ -
         NI_MAX_NUM_OF_DECODER_OUTPUTS * sizeof(niFrameSurface1_t);
@@ -14870,7 +15065,7 @@ start:
                               "decoder dts queue %d %ld success !\n",
                               __func__, i, tmp_dts);
                       if (prev_dts != INT64_MIN) {
-                          ts_diff += labs(tmp_dts - prev_dts);
+                          ts_diff += llabs(tmp_dts - prev_dts);
                           nb_diff++;
                       }
                       prev_dts = tmp_dts;
@@ -14925,7 +15120,7 @@ start:
 
       if (p_ctx->is_first_frame)
       {
-          for (i = 0; i < p_ctx->pic_reorder_delay; i++)
+          for (i = 0; (int)i < p_ctx->pic_reorder_delay; i++)
           {
               if (p_ctx->last_pts == NI_NOPTS_VALUE &&
                   p_ctx->last_dts == NI_NOPTS_VALUE)
@@ -14976,23 +15171,24 @@ start:
         // search for the pkt_offsets of received frame according to frame_offset.
         // here we get the index(i) which promises (p_ctx->pkt_offsets_index_min[i] <= frame_offset && p_ctx->pkt_offsets_index[i] > frame_offset)
         // i = -1 if not found
-        i = rotated_array_binary_search(p_ctx->pkt_offsets_index_min,
+        int j = 0;
+        j = rotated_array_binary_search(p_ctx->pkt_offsets_index_min,
                                         p_ctx->pkt_offsets_index, NI_FIFO_SZ,
                                         frame_offset);
-        if (i >= 0)
+        if (j >= 0)
         {
-            p_frame->pts = p_ctx->pts_offsets[i];
-            p_frame->flags = p_ctx->flags_array[i];
-            p_frame->pkt_pos = p_ctx->pkt_pos[i];
+            p_frame->pts = p_ctx->pts_offsets[j];
+            p_frame->flags = p_ctx->flags_array[j];
+            p_frame->pkt_pos = p_ctx->pkt_pos[j];
             ni_log2(p_ctx, NI_LOG_DEBUG,
                    "%s: (found pts) dts %" PRId64 " pts "
-                   "%" PRId64 " frame_offset %" PRIu64 " i %d "
+                   "%" PRId64 " frame_offset %" PRIu64 " j %d "
                    "pkt_offsets_index_min %" PRIu64 " "
                    "pkt_offsets_index %" PRIu64 " pkt_pos %" PRIu64 "\n",
-                   __func__, p_frame->dts, p_frame->pts, frame_offset, i,
-                   p_ctx->pkt_offsets_index_min[i],
-                   p_ctx->pkt_offsets_index[i],
-                   p_ctx->pkt_pos[i]);
+                   __func__, p_frame->dts, p_frame->pts, frame_offset, j,
+                   p_ctx->pkt_offsets_index_min[j],
+                   p_ctx->pkt_offsets_index[j],
+                   p_ctx->pkt_pos[j]);
 
             if (p_ctx->is_first_frame)
             {
@@ -15005,12 +15201,12 @@ start:
                     ts_diff > 0)
                 {
                     while (p_frame->dts < p_frame->pts &&
-                           labs(p_frame->pts - p_frame->dts) > ts_diff)
+                           llabs(p_frame->pts - p_frame->dts) > ts_diff)
                     {
                         ni_log2(p_ctx, NI_LOG_DEBUG, "%s: First I frame pts %ld "
                                 "dts %ld diff. %ld > ts_diff %ld\n",
                                 __func__, p_frame->pts, p_frame->dts,
-                                labs(p_frame->pts - p_frame->dts), ts_diff);
+                                llabs(p_frame->pts - p_frame->dts), ts_diff);
 
                         if (ni_timestamp_get_with_threshold(
                                 p_ctx->dts_queue, 0, (int64_t *)&p_frame->dts,
@@ -15024,8 +15220,8 @@ start:
                 }
             }
 
-            p_frame->p_custom_sei_set = p_ctx->pkt_custom_sei_set[i];
-            p_ctx->pkt_custom_sei_set[i] = NULL;
+            p_frame->p_custom_sei_set = p_ctx->pkt_custom_sei_set[j];
+            p_ctx->pkt_custom_sei_set[j] = NULL;
         } else
         {
             //backup solution pts
@@ -15076,6 +15272,13 @@ start:
                         __func__, p_ctx->frame_num, p_frame->error_ratio);
     }
 
+    if (p_ctx->ppu_reconfig_pkt_pos != 0 &&
+      p_ctx->ppu_reconfig_pkt_pos < p_ctx->frame_num + p_ctx->session_statistic.ui32FramesDropped)
+    {
+      ni_log2(p_ctx, NI_LOG_DEBUG,  "%s: ppu reconfig done. ppu_reconfig_pkt_pos = %u, frame_num = %u droped = %u\n",
+                __func__, p_ctx->ppu_reconfig_pkt_pos, p_ctx->frame_num, p_ctx->session_statistic.ui32FramesDropped);
+      p_ctx->ppu_reconfig_pkt_pos = 0;
+    }
 #ifdef MEASURE_LATENCY
 #ifndef XCODER_311
     ni_log2(p_ctx, NI_LOG_INFO, "DEC pkt_num %d, fme_num %d, latecy is %d\n",
@@ -15775,6 +15978,90 @@ ni_retcode_t ni_config_instance_set_decoder_params(ni_session_context_t* p_ctx, 
 END:
 
     ni_aligned_free(p_decoder_config);
+    ni_log2(p_ctx, NI_LOG_TRACE,  "%s(): exit\n", __func__);
+    return retval;
+}
+
+/*!******************************************************************************
+*  \brief  Send a p_config command to configure decoding parameters.
+*
+*  \param   ni_session_context_t p_ctx - xcoder Context
+*  \param   uint32_t max_pkt_size - overwrite maximum packet size if nonzero
+*
+*  \return - NI_RETCODE_SUCCESS on success, NI_RETCODE_ERROR_INVALID_SESSION, NI_RETCODE_ERROR_NVME_CMD_FAILED on failure
+*******************************************************************************/
+ni_retcode_t ni_config_instance_set_decoder_ppu_params(ni_session_context_t* p_ctx,
+                      void *p_dec_ppu_config, int buffer_size)
+{
+  void* p_ppu_config = NULL;
+  // uint32_t buffer_size = sizeof(ni_decoder_output_picture_size);
+  uint32_t tmp_buffer_size = buffer_size;
+  ni_retcode_t retval = NI_RETCODE_SUCCESS;
+  uint32_t ui32LBA = 0;
+
+  ni_log2(p_ctx, NI_LOG_TRACE,  "%s(): enter\n", __func__);
+
+  if (!p_ctx || !p_dec_ppu_config)
+  {
+      ni_log2(p_ctx, NI_LOG_ERROR, "ERROR: %s() passed parameters are null!, return\n",
+             __func__);
+      retval = NI_RETCODE_INVALID_PARAM;
+      LRETURN;
+  }
+
+  if (NI_INVALID_SESSION_ID == p_ctx->session_id)
+  {
+    ni_log2(p_ctx, NI_LOG_ERROR, "ERROR %s(): Invalid session ID, return.\n",
+           __func__);
+    retval = NI_RETCODE_ERROR_INVALID_SESSION;
+    LRETURN;
+  }
+
+  ni_pthread_mutex_lock(&p_ctx->mutex);
+
+  if (ni_cmp_fw_api_ver((char*)&p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6rT") < 0)
+  {
+    ni_log2(p_ctx, NI_LOG_INFO, "%s() FW rev %s < 6rT-- load balancing might be affected\n", __func__,
+            (char*)&p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX]);
+  }
+
+  tmp_buffer_size = ((tmp_buffer_size + (NI_MEM_PAGE_ALIGNMENT - 1)) / NI_MEM_PAGE_ALIGNMENT) * NI_MEM_PAGE_ALIGNMENT;
+  if (ni_posix_memalign(&p_ppu_config, sysconf(_SC_PAGESIZE), tmp_buffer_size))
+  {
+    ni_log2(p_ctx, NI_LOG_ERROR, "ERROR %d: %s() Cannot allocate memory\n",
+           NI_ERRNO, __func__);
+    retval = NI_RETCODE_ERROR_MEM_ALOC;
+    LRETURN;
+  }
+  memset(p_ppu_config, 0, tmp_buffer_size);
+
+  memcpy(p_ppu_config, p_dec_ppu_config, buffer_size);
+  // configure the session here
+  ui32LBA = CONFIG_INSTANCE_SetDecPpuPara_W(p_ctx->session_id, NI_DEVICE_TYPE_DECODER);
+
+  retval = ni_nvme_send_write_cmd(p_ctx->blk_io_handle, p_ctx->event_handle,
+                                  p_ppu_config, tmp_buffer_size, ui32LBA);
+  CHECK_ERR_RC(p_ctx, retval, 0, nvme_admin_cmd_xcoder_config,
+               p_ctx->device_type, p_ctx->hw_id,
+               &(p_ctx->session_id), OPT_1);
+  if (NI_RETCODE_SUCCESS != retval)
+  {
+    ni_log2(p_ctx, NI_LOG_ERROR, "ERROR: ni_nvme_send_admin_cmd failed: blk_io_handle: %" PRIx64 ", hw_id, %u, xcoder_inst_id: %d\n", (int64_t)p_ctx->blk_io_handle, p_ctx->hw_id, p_ctx->session_id);
+    ni_pthread_mutex_unlock(&p_ctx->mutex);
+    //Close the session since we can't configure it
+    retval = ni_decoder_session_close(p_ctx, 0);
+    if (NI_RETCODE_SUCCESS != retval)
+    {
+      ni_log2(p_ctx, NI_LOG_ERROR, "ERROR: ni_decoder_session_close failed: blk_io_handle: %" PRIx64 ", hw_id, %u, xcoder_inst_id: %d\n", (int64_t)p_ctx->blk_io_handle, p_ctx->hw_id, p_ctx->session_id);
+    }
+    ni_pthread_mutex_lock(&p_ctx->mutex);
+    retval = NI_RETCODE_ERROR_NVME_CMD_FAILED;
+  }
+
+END:
+
+    ni_pthread_mutex_unlock(&p_ctx->mutex);
+    ni_aligned_free(p_ppu_config);
     ni_log2(p_ctx, NI_LOG_TRACE,  "%s(): exit\n", __func__);
     return retval;
 }
@@ -16532,9 +16819,9 @@ ni_retcode_t ni_ai_session_write(ni_session_context_t *p_ctx,
                 LRETURN;
             }
             if (!p_frame->iovec[0].ptr || p_frame->iovec[0].size == 0 ||
-                    ((unsigned long)p_frame->iovec[0].ptr & (NI_MEM_PAGE_ALIGNMENT - 1))) {
+                    ((int64_t)p_frame->iovec[0].ptr & (NI_MEM_PAGE_ALIGNMENT - 1))) {
                 ni_log2(p_ctx, NI_LOG_ERROR, "Ai session write: invalid iovec ptr 0x%lx, size %u\n",
-                        (unsigned long)p_frame->iovec[0].ptr, p_frame->iovec[0].size);
+                        (int64_t)p_frame->iovec[0].ptr, p_frame->iovec[0].size);
                 retval = NI_RETCODE_INVALID_PARAM;
                 LRETURN;
             }
@@ -16584,7 +16871,7 @@ ni_retcode_t ni_ai_session_write(ni_session_context_t *p_ctx,
         }
     } else { //for iovec
         //validate iovec
-        int i;
+        uint32_t i;
         uint32_t rel_offset = 0;
         int32_t iovec_index = 0;
         int32_t iovec_left;
@@ -16601,9 +16888,9 @@ ni_retcode_t ni_ai_session_write(ni_session_context_t *p_ctx,
             ni_log2(p_ctx, NI_LOG_DEBUG, "iovec %d, ptr %p, size %u\n", i,
                     this_iovec->ptr, this_iovec->size);
             if ((this_iovec->ptr == NULL) || (this_iovec->size == 0) ||
-                    ((unsigned long)this_iovec->ptr & (NI_MEM_PAGE_ALIGNMENT - 1))) {
+                    ((int64_t)this_iovec->ptr & (NI_MEM_PAGE_ALIGNMENT - 1))) {
                 ni_log2(p_ctx, NI_LOG_ERROR, "Ai session write: invalid iovec ptr 0x%lx, size %u\n",
-                        (unsigned long)this_iovec->ptr, this_iovec->size);
+                        (int64_t)this_iovec->ptr, this_iovec->size);
                 retval = NI_RETCODE_INVALID_PARAM;
                 LRETURN;
             }
@@ -16629,7 +16916,7 @@ ni_retcode_t ni_ai_session_write(ni_session_context_t *p_ctx,
             buffer_info->ui16Option = NI_AI_FLAG_IOVEC;
             buffer_info->ui32IovecNum = iovec_batch;
             buffer_info->ui32RelOffset = rel_offset;
-            for (i = 0; i < iovec_batch; i++) {
+            for (i = 0; (int)i < iovec_batch; i++) {
                 ni_iovec_t *iovec = &p_frame->iovec[iovec_index + i];
                 buffer_info->segment[i].ui32RelLba = rel_lba;
                 buffer_info->segment[i].ui32Size = iovec->size;
@@ -16663,7 +16950,7 @@ ni_retcode_t ni_ai_session_write(ni_session_context_t *p_ctx,
             }
 
 #ifdef __linux__
-            for (i = 0; i < iovec_batch; i++) {
+            for (i = 0; (int)i < iovec_batch; i++) {
                 ni_iovec_t *iovec = &p_frame->iovec[iovec_index + i];
                 ni_segment_t *segment = &buffer_info->segment[i];
                 ui32LBA = WRITE_INSTANCE_W(p_ctx->session_id, NI_DEVICE_TYPE_AI) + segment->ui32RelLba;
@@ -16681,7 +16968,7 @@ ni_retcode_t ni_ai_session_write(ni_session_context_t *p_ctx,
                 LRETURN;
             }
 #else
-            for (i = 0; i < iovec_batch; i++) {
+            for (i = 0; (int)i < iovec_batch; i++) {
                 ni_iovec_t *iovec = &p_frame->iovec[iovec_index + i];
                 ui32LBA = WRITE_INSTANCE_W(p_ctx->session_id, NI_DEVICE_TYPE_AI) + rel_lba;
                 ni_log2(p_ctx, NI_LOG_DEBUG,  "Ai session write: data = %p, size = %u, "
@@ -16892,7 +17179,7 @@ ni_retcode_t ni_config_read_inout_layers(ni_session_context_t *p_ctx,
     uint32_t ui32LBA = 0;
     uint32_t dataLen;
     int32_t query_retry = 0;
-    int l;
+    uint32_t l;
     ni_network_layer_params_t *layer_param;
     uint32_t buffer_size;
     uint32_t this_size;
@@ -18457,8 +18744,8 @@ ni_retcode_t  ni_dump_log_single_core(ni_session_context_t *p_ctx, void* p_data,
     {
         //generate log file e.g. raw_dp_slot_0_0000.bin
         char filename[32] = "raw_";
-        strcat(filename, core_name);
-        strcat(filename, "_slot_");
+        ni_strcat(filename, 32, core_name);
+        ni_strcat(filename, 32, "_slot_");
 #ifdef __linux__
         bool pcie_id_name = false;
         char devFilePath[1024] = {0};
@@ -18476,9 +18763,9 @@ ni_retcode_t  ni_dump_log_single_core(ni_session_context_t *p_ctx, void* p_data,
             get_dev_pcie_addr(devFilePath, pcie, domain, slot, dev, func);
             if (strlen(pcie) > 0 && strlen(slot) > 0 && strlen(domain) > 0)
             {
-                strcat(filename, slot);
-                strcat(filename, "_");
-                strcat(filename, domain);
+                ni_strcat(filename, 32, slot);
+                ni_strcat(filename, 32, "_");
+                ni_strcat(filename, 32, domain);
                 pcie_id_name = true;
             }
         }
@@ -18488,22 +18775,22 @@ ni_retcode_t  ni_dump_log_single_core(ni_session_context_t *p_ctx, void* p_data,
                     __func__, __LINE__, p_ctx->blk_io_handle);
             char num[4] = {0};
             snprintf(num, 4, "%d", p_ctx->hw_id);
-            strcat(filename, num);
-            strcat(filename, "_0000");
+            ni_strcat(filename, 32, num);
+            ni_strcat(filename, 32, "_0000");
         }
-        strcat(filename, ".bin");
+        ni_strcat(filename, 32, ".bin");
         ni_log2(p_ctx, NI_LOG_INFO, "For dev %d %s core %s creating file %s\n",
                 p_ctx->blk_io_handle, devFilePath, core_name, filename);
 #else
         char num[4] = {0};
         snprintf(num, 4, "%02x", p_ctx->hw_id);
-        strcat(filename, num);
-        strcat(filename, "_0000");
-        strcat(filename, ".bin");
+        ni_strcat(filename, 32, num);
+        ni_strcat(filename, 32, "_0000");
+        ni_strcat(filename, 32, ".bin");
         ni_log2(p_ctx, NI_LOG_INFO, "For dev %d core %s creating file %s\n",
                 p_ctx->blk_io_handle, core_name, filename);
 #endif
-        p_file = fopen(filename, "wb");
+        ni_fopen(&p_file, filename, "wb");
         if (p_file)
         {
             /* Write out the stream header */
@@ -18616,7 +18903,7 @@ ni_retcode_t ni_recv_from_target(
     uint8_t *p_data;
     uint16_t ui16Direction = NI_P2P_RECV;
     uint32_t ui32Dummy = 0;
-    int i;
+    uint32_t i;
 
     if (dmaAddrs->ui32NumEntries > NI_MAX_P2P_SGL_ENTRIES)
     {
@@ -18679,4 +18966,57 @@ END:
 int lower_pixel_rate(const ni_load_query_t *pQuery, uint32_t ui32CurrentLowest)
 {
     return (pQuery->total_pixel_load < ui32CurrentLowest) ? 1 : 0;
+}
+
+/*!******************************************************************************
+ *  \brief  set cpu affinity based on numa node
+ *
+ *  \param[in]      p_ctx           pointer to session context
+ *
+ *  \return         NI_RETCODE_SUCCESS
+ *                  NI_RETCODE_ERROR_MEM_ALOC
+ *******************************************************************************/
+ni_retcode_t ni_set_cpu_affinity(ni_session_context_t *p_ctx)
+{
+#if defined(__linux__) && defined(XCODER_ENABLE_CPU_AFFINITY)
+    int numa_node;
+    if (numa_available() == -1) {
+        ni_log2(p_ctx, NI_LOG_INFO,  "Warning: %s() NUMA not available.\n",
+                __func__);
+    }
+    else
+    {
+        numa_node = ni_rsrc_get_numa_node(p_ctx->blk_xcoder_name);
+
+        ni_log2(p_ctx, NI_LOG_DEBUG, "%s(): device name %s, numa node %d\n",
+                __func__, p_ctx->blk_xcoder_name, numa_node);
+
+        if (numa_node < 0)
+        {
+          ni_log2(p_ctx, NI_LOG_INFO,  "Warning: %s() %s NUMA not available.\n",
+                  __func__, p_ctx->blk_dev_name);
+        }
+        else
+        {
+#if defined(LIBNUMA_API_VERSION) && (LIBNUMA_API_VERSION == 2)
+          struct bitmask *node_mask = numa_allocate_nodemask();
+          if (!node_mask)
+          {
+            ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR: %s() numa_allocate_cpumask failed.\n",
+                    __func__);
+            return NI_RETCODE_ERROR_MEM_ALOC;
+          }
+          numa_bitmask_setbit(node_mask, numa_node);
+          numa_bind(node_mask);
+          numa_bitmask_free(node_mask);
+#else
+          nodemask_t node_mask;
+          nodemask_zero(&node_mask);
+          nodemask_set(&node_mask, numa_node);
+          numa_bind(&node_mask);
+#endif
+        }
+    }
+#endif
+    return NI_RETCODE_SUCCESS;
 }

@@ -305,8 +305,8 @@ int ni_nvme_enumerate_devices
                            "NETINT %s NVMe video transcoder identified "
                            "at port %s\n\n",
                            model_name, port_name_buffer);
-                    strncpy(ni_devices[device_count++], port_name_buffer,
-                            NI_MAX_DEVICE_NAME_LEN);
+                    ni_strncpy(ni_devices[device_count++], NI_MAX_DEVICE_NAME_LEN, port_name_buffer,
+                            (NI_MAX_DEVICE_NAME_LEN-1));
                 } else
                 {
                     ni_log(NI_LOG_DEBUG,

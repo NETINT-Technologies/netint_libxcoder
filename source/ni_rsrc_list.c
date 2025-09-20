@@ -120,10 +120,11 @@ int strcat_dyn_buf(dyn_str_buf_t *dyn_str_buf, const char *fmt, ...)
         }
         dyn_str_buf->str_buf = tmp_char_ptr;
         dyn_str_buf->buf_size += add_buf_size;
+        avail_buf = dyn_str_buf->buf_size - dyn_str_buf->str_len;
     }
 
     // concatenate string to buffer
-    vsprintf(dyn_str_buf->str_buf + dyn_str_buf->str_len, fmt, vl);
+    ni_vsprintf(dyn_str_buf->str_buf + dyn_str_buf->str_len, avail_buf, fmt, vl);
     dyn_str_buf->str_len += formatted_len;
 
     va_end(vl);
@@ -284,6 +285,7 @@ static void print_full_text(ni_device_t *p_device)
 
     dyn_str_buf_t output_buf = {0};
     ni_device_info_t *p_dev_info = NULL;
+    int ddr_module_id = -1;
     for (int xcoder_index_1 = 0;
          xcoder_index_1 < p_device->xcoder_cnt[NI_DEVICE_TYPE_ENCODER];
          xcoder_index_1++)
@@ -338,6 +340,7 @@ static void print_full_text(ni_device_t *p_device)
                         ni_log(NI_LOG_ERROR, "ERROR: Cannot print device info!\n");
                     } else
                     {
+                        ddr_module_id = p_device_info->module_id;
                         strcat_dyn_buf(&output_buf, " %s #%d\n",
                             GET_XCODER_DEVICE_TYPE_STR(p_device_info->device_type),
                             p_device_info->module_id);
@@ -444,6 +447,13 @@ static void print_full_text(ni_device_t *p_device)
                 }
             }
         }
+        if (ddr_module_id >= 0)
+        {
+            strcat_dyn_buf(&output_buf, " Memory #%d\n", ddr_module_id);
+            strcat_dyn_buf(&output_buf, "  Type: DDR4\n");
+            strcat_dyn_buf(&output_buf, "  Size: 8GB\n");
+            ddr_module_id = -1;
+        }
     }
     if (output_buf.str_buf)
         printf("%s", output_buf.str_buf);
@@ -460,6 +470,7 @@ static void print_json(ni_device_t *p_device)
 
     dyn_str_buf_t output_buf = {0};
     ni_device_info_t *p_dev_info = NULL;
+    int ddr_module_id = -1;
     strcat_dyn_buf(&output_buf,"{\n");
     for (int xcoder_index_1 = 0;
          xcoder_index_1 < p_device->xcoder_cnt[NI_DEVICE_TYPE_ENCODER];
@@ -509,6 +520,7 @@ static void print_json(ni_device_t *p_device)
                         ni_log(NI_LOG_ERROR, "ERROR: Cannot print device info!\n");
                     } else
                     {
+                        ddr_module_id = p_device_info->module_id;
                         strcat_dyn_buf(&output_buf, "\t\t\"%s #%d\": [\n",
                             GET_XCODER_DEVICE_TYPE_STR(p_device_info->device_type),
                             p_device_info->module_id);
@@ -541,7 +553,7 @@ static void print_json(ni_device_t *p_device)
                                                         "Ai Pre-processing (ni_quadra_ai_pre), "
                                                         "Background Remove (ni_quadra_bgr), Hvsplus (ni_quadra_hvsplus)\"\n");
                             strcat_dyn_buf(&output_buf, "\t\t\t\t\t}\n\t\t\t\t]\n");
-                            strcat_dyn_buf(&output_buf, "\t\t\t}\n\t\t]\n");
+                            strcat_dyn_buf(&output_buf, "\t\t\t}\n\t\t],\n");
                         } else if (NI_DEVICE_TYPE_DECODER == p_device_info->device_type ||
                                 NI_DEVICE_TYPE_ENCODER == p_device_info->device_type)
                         {
@@ -631,6 +643,15 @@ static void print_json(ni_device_t *p_device)
                     }
                 }
             }
+        }
+        if (ddr_module_id >= 0)
+        {
+            strcat_dyn_buf(&output_buf, "\t\t\"Memory #%d\": [\n", ddr_module_id);
+            strcat_dyn_buf(&output_buf, "\t\t\t{\n");
+            strcat_dyn_buf(&output_buf, "\t\t\t\t\"Type\": \"DDR4\",\n"
+                                        "\t\t\t\t\"Size\": \"8GB\"\n");
+            strcat_dyn_buf(&output_buf, "\t\t\t}\n\t\t]\n");
+            ddr_module_id = -1;
         }
         if (xcoder_index_1 == p_device->xcoder_cnt[NI_DEVICE_TYPE_ENCODER] - 1)
             strcat_dyn_buf(&output_buf, "\t}\n ]\n");
@@ -724,8 +745,10 @@ int32_t main(int argc, char *argv[])
     device = (ni_device_t *)malloc(sizeof(ni_device_t));
     if (!device)
     {
+        char errmsg[NI_ERRNO_LEN] = {0};
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         ni_log(NI_LOG_ERROR, "ERROR %s() failed to malloc memory: %s\n",
-               __func__, strerror(NI_ERRNO));
+               __func__, errmsg);
         return 1;
     }
     memset(device, 0, sizeof(ni_device_t));

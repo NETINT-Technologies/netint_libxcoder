@@ -159,32 +159,7 @@ void get_pcie_addr(char *device_name, char *pcie)
  *******************************************************************************/
 int get_numa_node(char *device_name)
 {
-  int ret = -1;
-  FILE *cmd_fp;
-  char *ptr = NULL;
-  char cmd[128] = {0};
-  char cmd_ret[64] = {0};
-
-  if(!device_name)
-  {
-    return ret;
-  }
-  ptr = device_name + 5;
-  snprintf(cmd, sizeof(cmd) - 1, "cat /sys/block/%s/device/*/numa_node",ptr);
-  cmd_fp = popen(cmd, "r");
-  if (!cmd_fp)
-  {
-    return ret;
-  }
-  if (fgets(cmd_ret, sizeof(cmd_ret)/sizeof(cmd_ret[0]), cmd_fp) == 0)
-  {
-    goto get_numa_node_ret;
-  }
-  ret = atoi(cmd_ret);
-
-get_numa_node_ret:
-  pclose(cmd_fp);
-  return ret;
+  return ni_rsrc_get_numa_node(device_name);
 }
 
 #endif //__linux__
@@ -218,10 +193,10 @@ int remove_device_from_saved(ni_device_type_t device_type, int32_t module_id,
     } else
     {
         fprintf(stderr,
-                "Error: device_handle to remove %d"
-                "not match device_handles[%d][%d]=%d\n",
-                device_handle, device_type, module_id,
-                device_handles[xcoder_device_type][module_id]);
+                "Error: device_handle to remove %" PRId64
+                "not match device_handles[%d][%d]=%" PRId64 "\n",
+                (int64_t)device_handle, device_type, module_id,
+                (int64_t)device_handles[xcoder_device_type][module_id]);
         return -1;
     }
 }
@@ -338,9 +313,9 @@ unsigned int get_modules(ni_device_type_t device_type,
         size_of_i32,
         compareInt32_t);
 
-  strncpy(device_name,
+  ni_strncpy(device_name, MAX_DEVICE_NAME_SIZE,
           g_device_type_str[device_type],
-          MAX_DEVICE_NAME_SIZE);
+          (MAX_DEVICE_NAME_SIZE-1));
 
   return device_count;
 }
@@ -378,10 +353,12 @@ bool open_and_query(ni_device_type_t device_type,
 
   if (p_session_context->device_handle == NI_INVALID_DEVICE_HANDLE)
   {
+    char errmsg[NI_ERRNO_LEN] = {0};
+    ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
     fprintf(stderr,
             "ERROR: ni_device_open() failed for %s: %s\n",
             p_device_context->p_device_info->dev_name,
-            strerror(NI_ERRNO));
+            errmsg);
     ni_rsrc_free_device_context(p_device_context);
     return false;
   }
@@ -458,10 +435,12 @@ bool open_and_get_log(ni_device_context_t *p_device_context,
                    &p_session_context->max_nvme_io_size);
   if (p_session_context->device_handle == NI_INVALID_DEVICE_HANDLE)
   {
+    char errmsg[NI_ERRNO_LEN] = {0};
+    ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
     fprintf(stderr,
             "ERROR: ni_device_open() failed for %s: %s\n",
             p_device_context->p_device_info->blk_name,
-            strerror(NI_ERRNO));
+            errmsg);
     ni_rsrc_free_device_context(p_device_context);
     return false;
   }
@@ -476,12 +455,12 @@ bool open_and_get_log(ni_device_context_t *p_device_context,
 
 void dump_fw_log(ni_device_queue_t *coders, ni_session_context_t *sessionCtxt, int devid)
 {
-  int i;
+  uint32_t i;
   unsigned int module_count;
   int32_t *module_id_arr = NULL;
   char module_name[MAX_DEVICE_NAME_SIZE];
   ni_device_context_t *p_device_context = NULL;
-  ni_device_type_t module_type = NI_DEVICE_TYPE_DECODER;
+  ni_device_type_t module_type = NI_DEVICE_TYPE_ENCODER;
 
   module_count = get_modules(module_type, coders, module_name, &module_id_arr);
   if (!module_count) {
@@ -492,7 +471,7 @@ void dump_fw_log(ni_device_queue_t *coders, ni_session_context_t *sessionCtxt, i
   bool gen_log_file = true; // dump and write fw logs to runtime dir
 
   void* p_log_buffer = NULL;
-  if (devid >= 0 && devid < module_count)
+  if (devid >= 0 && (uint32_t)devid < module_count)
   {
     // dump fw logs of specified card
     p_device_context = ni_rsrc_get_device_context(module_type, module_id_arr[devid]);
@@ -539,7 +518,7 @@ bool swap_encoder_and_uploader(ni_device_type_t *p_device_type,
   {
   case NI_DEVICE_TYPE_ENCODER:
     *p_device_type = NI_DEVICE_TYPE_UPLOAD;
-    strcpy(device_name, "uploader");
+    ni_strcpy(device_name, MAX_DEVICE_NAME_SIZE, "uploader");
     return true;
   case NI_DEVICE_TYPE_UPLOAD:
     *p_device_type = NI_DEVICE_TYPE_ENCODER;
@@ -614,10 +593,11 @@ int strcat_dyn_buf(dyn_str_buf_t *dyn_str_buf, const char *fmt, ...)
         }
         dyn_str_buf->str_buf = tmp_char_ptr;
         dyn_str_buf->buf_size += add_buf_size;
+        avail_buf = dyn_str_buf->buf_size - dyn_str_buf->str_len;
     }
 
     // concatenate string to buffer
-    vsprintf(dyn_str_buf->str_buf + dyn_str_buf->str_len, fmt, vl);
+    ni_vsprintf(dyn_str_buf->str_buf + dyn_str_buf->str_len, avail_buf, fmt, vl);
     dyn_str_buf->str_len += formatted_len;
 
     va_end(vl);
@@ -841,7 +821,7 @@ UPLOADER:
     if (icore == PCIE_LOAD)
     {
       strcat_dyn_buf(&output_buf,
-                     "INDEX LOAD(          FW )                  PCIE_THROUGHPUT GBps "
+                     "INDEX LOAD(          FW )                   PCIE_Card2Host_Gbps "
                      "DEVICE       L_FL2V   N_FL2V   FR       N_FR\n");
     }
     else
@@ -954,7 +934,7 @@ void print_simple_text(ni_device_queue_t *p_device_queue,
   bool copied_block_name;
   char block_name[NI_MAX_DEVICE_NAME_LEN] = {0};
   char device_name[MAX_DEVICE_NAME_SIZE] = {0};
-  int guid;
+  unsigned int guid;
   unsigned int number_of_quadras;
   unsigned int number_of_device_types_present;
   unsigned int device_type_counter;
@@ -1043,9 +1023,9 @@ void print_simple_text(ni_device_queue_t *p_device_queue,
 
       if (!copied_block_name)
       {
-        strncpy(block_name,
+        ni_strncpy(block_name, NI_MAX_DEVICE_NAME_LEN,
                 p_device_context->p_device_info->dev_name,
-                NI_MAX_DEVICE_NAME_LEN);
+                (NI_MAX_DEVICE_NAME_LEN-1));
         copied_block_name = true;
       }
 
@@ -1112,7 +1092,7 @@ void print_simple_text(ni_device_queue_t *p_device_queue,
 void print_json_detail(ni_device_queue_t *p_device_queue, ni_session_context_t *p_session_context, ni_instance_mgr_detail_status_v1_t *detail_data_v1)
 {
   char device_name[MAX_DEVICE_NAME_SIZE] = {0};
-  unsigned int index, device_count;
+  unsigned int i, index, device_count;
   int instance_count;
   int32_t *module_ids;
 
@@ -1141,11 +1121,11 @@ void print_json_detail(ni_device_queue_t *p_device_queue, ni_session_context_t *
       continue;
     }
 
-    for (index = 0; index < device_count; index++)
+    for (i = 0; i < device_count; i++)
     {
       p_device_context =
         ni_rsrc_get_device_context(device_type,
-                                   module_ids[index]);
+                                   module_ids[i]);
       if (!open_and_query(device_type,
                           p_device_context,
                           p_session_context,
@@ -1265,7 +1245,7 @@ void print_json(ni_device_queue_t *p_device_queue,
                 ni_session_context_t *p_session_context, int detail, ni_instance_mgr_detail_status_v1_t *detail_data_v1)
 {
   char device_name[MAX_DEVICE_NAME_SIZE] = {0};
-  unsigned int index, device_count;
+  unsigned int i, index, device_count;
   int instance_count;
   int32_t *module_ids;
   uint32_t total_contexts;
@@ -1300,11 +1280,11 @@ void print_json(ni_device_queue_t *p_device_queue,
     }
 
 UPLOADER:
-    for (index = 0; index < device_count; index++)
+    for (i = 0; i < device_count; i++)
     {
       p_device_context =
         ni_rsrc_get_device_context(device_type,
-                                   module_ids[index]);
+                                   module_ids[i]);
       if (!open_and_query(device_type,
                           p_device_context,
                           p_session_context,
@@ -1570,7 +1550,7 @@ UPLOADER:
     }
     if (icore == NP_LOAD)
     {
-      strcpy(device_name, "nvme");
+      ni_strcpy(device_name, MAX_DEVICE_NAME_SIZE, "nvme");
       g_temp_load = (uint32_t*)calloc(device_count, sizeof(uint32_t));
       if (!g_temp_load)
       {
@@ -1598,11 +1578,12 @@ UPLOADER:
     }
     else
     {
-      (icore == TP_LOAD)?strcpy(device_name, "tp"):strcpy(device_name, "pcie");
+      (icore == TP_LOAD)?ni_strcpy(device_name, MAX_DEVICE_NAME_SIZE, "tp"):ni_strcpy(device_name, MAX_DEVICE_NAME_SIZE, "pcie");
     }
-    for (index = 0; index < device_count; index++)
+
+    for (i = 0; i < device_count; i++)
     {
-    p_device_context = ni_rsrc_get_device_context(device_type, module_ids[index]);
+    p_device_context = ni_rsrc_get_device_context(device_type, module_ids[i]);
     if (icore == NP_LOAD)
     {
       if (!open_and_query(device_type,
@@ -1629,10 +1610,10 @@ UPLOADER:
         ni_device_close(p_session_context->device_handle);
         goto CLOSE;
       }
-      g_temp_load[index] = load_query.tp_fw_load;
-      g_temp_pload[index] = load_query.pcie_load;
-      g_temp_pthroughput[index] = load_query.pcie_throughput;
-      g_temp_sharemem[index] = load_query.fw_share_mem_usage;
+      g_temp_load[i] = load_query.tp_fw_load;
+      g_temp_pload[i] = load_query.pcie_load;
+      g_temp_pthroughput[i] = load_query.pcie_throughput;
+      g_temp_sharemem[i] = load_query.fw_share_mem_usage;
     }
 
 #ifdef __linux__
@@ -1674,7 +1655,7 @@ UPLOADER:
                      "}\n",
                      device_name, device_count,
                      p_device_context->p_device_info->module_id,
-                     g_temp_pload[index], 0, (float)g_temp_pthroughput[index]/10,
+                     g_temp_pload[i], 0, (float)g_temp_pthroughput[i]/10,
                      p_device_context->p_device_info->dev_name,
                      p_device_context->p_device_info->fl_ver_last_ran,
                      p_device_context->p_device_info->fl_ver_nor_flash,
@@ -1687,8 +1668,8 @@ UPLOADER:
     }
     else
     {
-      load_query.fw_load = (icore==TP_LOAD)?g_temp_load[index]:load_query.fw_load;
-      load_query.fw_share_mem_usage = (icore==TP_LOAD)?g_temp_sharemem[index]:load_query.fw_share_mem_usage;
+      load_query.fw_load = (icore==TP_LOAD)?g_temp_load[i]:load_query.fw_load;
+      load_query.fw_share_mem_usage = (icore==TP_LOAD)?g_temp_sharemem[i]:load_query.fw_share_mem_usage;
 
       strcat_dyn_buf(&output_buf,
                      "{ \"%s\" :\n"
@@ -1835,7 +1816,7 @@ UPLOADER:
           }
           if (p_dev_extra_info.power_consumption + 1)
           {
-              sprintf(power_consumption, "%umW", p_dev_extra_info.power_consumption);
+              ni_sprintf(power_consumption, 16, "%umW", p_dev_extra_info.power_consumption);
           }
       }
       if (p_session_context->overall_load_query.admin_queried &&
@@ -2071,7 +2052,7 @@ UPLOADER:
         }
         if (p_dev_extra_info.power_consumption + 1)
         {
-          sprintf(power_consumption, "%umW", p_dev_extra_info.power_consumption);
+          ni_sprintf(power_consumption, 16, "%umW", p_dev_extra_info.power_consumption);
         }
       }
 
@@ -2198,7 +2179,8 @@ PRINT_OUTPUT:
 void print_text(ni_device_queue_t *coders,
                 ni_session_context_t *sessionCtxt, int detail, ni_instance_mgr_detail_status_v1_t *detail_data_v1, ni_instance_mgr_detail_status_v1_t (*previous_detail_data_p)[NI_DEVICE_TYPE_XCODER_MAX], int checkInterval)
 {
-  int i, index, instance_count; // used in later FOR-loop when compiled without c99
+  int index, instance_count; // used in later FOR-loop when compiled without c99
+  unsigned int i;
   unsigned int module_count;
   char module_name[MAX_DEVICE_NAME_SIZE] = {0};
   int32_t *module_id_arr = NULL;
@@ -2460,10 +2442,12 @@ void print_extra(ni_device_queue_t *p_device_queue, ni_session_context_t *p_sess
 
     if (p_session_context->device_handle == NI_INVALID_DEVICE_HANDLE)
     {
+      char errmsg[NI_ERRNO_LEN] = {0};
+      ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
       fprintf(stderr,
               "ERROR: ni_device_open() failed for %s: %s\n",
               p_device_context->p_device_info->dev_name,
-              strerror(NI_ERRNO));
+              errmsg);
       ni_rsrc_free_device_context(p_device_context);
       continue;
     }
@@ -2477,7 +2461,7 @@ void print_extra(ni_device_queue_t *p_device_queue, ni_session_context_t *p_sess
 
     if (p_dev_extra_info.power_consumption + 1)
     {
-        sprintf(power_consumption, "%umW", p_dev_extra_info.power_consumption);
+        ni_sprintf(power_consumption, 16, "%umW", p_dev_extra_info.power_consumption);
     }
     if (!internal_call)
     {
@@ -2680,6 +2664,7 @@ int main(int argc, char *argv[])
              "N_FL2V        nor flash firmware loader 2 version\n"
              "FR            current firmware revision\n"
              "N_FR          nor flash firmware revision\n"
+             "Unique field PCIe_Card2Host_Gbps for PCIE throughput from card to host in GBps(Values in steps of 100 Mbps)\n"
              "\n"
              "Additional reporting columns for full JSON formats\n"
              "LOAD          VPU load\n"
@@ -2796,7 +2781,8 @@ int main(int argc, char *argv[])
   while (!g_xcoder_stop_process)
   {
     now = time(NULL);
-    ltime = localtime(&now);
+    struct tm temp_time;
+    ltime = ni_localtime(&temp_time, &now);
     if (ltime)
     {
       strftime(buf, sizeof(buf), "%c", ltime);

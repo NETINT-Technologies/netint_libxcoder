@@ -293,7 +293,7 @@ typedef struct _ni_metadata_enc_bstream
     uint16_t      inter_total_count; // the inter includ the skip mode
     uint16_t      intra_total_count;
     uint8_t       gop_size;
-    uint8_t       reserved_byte[1];
+    uint8_t       reserved_byte[3];
     uint16_t      ui16psnr_y;
     uint32_t      reconLumaSize;
     uint32_t      reconChromaSize;
@@ -305,7 +305,8 @@ typedef struct _ni_metadata_enc_bstream
     uint8_t       ui8SceneChange;
     uint8_t       ui8StillImage;
     uint8_t       ui8Reserved[2];
-    uint32_t      ui32Reserved[3];
+    float         pass1Cost;
+    uint32_t      ui32Reserved[2];
 } ni_metadata_enc_bstream_t;
 
 /*!****** encoder paramters *********************************************/
@@ -659,6 +660,8 @@ typedef struct _ni_encoder_config_t
   uint8_t    ui8pastFrameMaxIntraRatio;
   uint8_t    ui8linkFrameMaxIntraRatio;
   int32_t i32spatialLayerBitrate[NI_MAX_SPATIAL_LAYERS];
+  uint8_t ui8disableAv1TimingInfo;
+  uint8_t ui8av1OpLevel[NI_MAX_SPATIAL_LAYERS];
 } ni_encoder_config_t;
 
 typedef struct _ni_uploader_config_t
@@ -1322,6 +1325,18 @@ ni_retcode_t ni_dump_log_all_cores(ni_session_context_t *p_ctx, void* p_data, bo
 ni_retcode_t ni_send_to_target(ni_session_context_t *p_ctx, niFrameSurface1_t *source, uint64_t ui64DestAddr, uint32_t ui32FrameSize);
 ni_retcode_t ni_recv_from_target(ni_session_context_t *pSession, const ni_p2p_sgl_t *dmaAddrs, ni_frame_t *pDstFrame);
 int lower_pixel_rate(const ni_load_query_t *pQuery, uint32_t ui32CurrentLowest);
+ni_retcode_t ni_config_instance_set_decoder_ppu_params(ni_session_context_t* p_ctx,
+                      void *p_dec_ppu_config, int buffer_size);
+
+/*!******************************************************************************
+ *  \brief  set cpu affinity based on numa node
+ *
+ *  \param[in]      p_ctx           pointer to session context
+ *
+ *  \return         NI_RETCODE_SUCCESS
+ *                  NI_RETCODE_ERROR_MEM_ALOC
+ *******************************************************************************/
+ni_retcode_t ni_set_cpu_affinity(ni_session_context_t *p_ctx);
 
 #ifdef __cplusplus
 }

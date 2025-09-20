@@ -39,6 +39,7 @@
 #include "ni_defs.h"
 #include "ni_rsrc_api.h"
 #include "ni_rsrc_priv.h"
+#include "ni_util.h"
 
 #ifdef _WIN32
 #include "ni_getopt.h"
@@ -48,6 +49,8 @@
 #elif __APPLE__
 #define DEV_NAME_PREFIX "/dev/disk"
 #endif
+
+#define CHAR_DEV_NAME_LEN 64
 
 /*!******************************************************************************
  *  \brief  get the NVMe device's block device name (e.g. /dev/nvmeXnY)
@@ -70,7 +73,7 @@ static int get_dev_name(const char *in, char *dev_name)
     // for apple blk name (/dev/diskX)
     // for android blk name (/dev/nvmeXnY or /dev/block/nvmeXnY)
     // for windows blk name (\\\\.\\PHYSICALDRIVEX)
-    strcpy(dev_name, in);
+    ni_strcpy(dev_name, CHAR_DEV_NAME_LEN, in);
 
     return 0;
 
@@ -101,7 +104,7 @@ static void display_help(void)
 int main(int argc, char *argv[])
 {
     int opt, rc = 0;
-    char char_dev_name[64];
+    char char_dev_name[CHAR_DEV_NAME_LEN] = {0};
     int should_match_rev = 1;
     int add_dev = 0; // default is to add(not delete) a resource
     int del_dev = 0;

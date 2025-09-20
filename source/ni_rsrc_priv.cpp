@@ -107,9 +107,9 @@ ni_retcode_t ni_rsrc_fill_device_info(ni_device_info_t* p_device_info, ni_codec_
         p_device_info->dev_cap[0].min_res_width = p_hw_cap->min_video_width;
         p_device_info->dev_cap[0].min_res_height = p_hw_cap->min_video_height;
 
-        strncpy(p_device_info->dev_cap[0].profiles_supported,
-                "Baseline, Main, High, High10", NI_PROFILES_SUPP_STR_LEN);
-        strncpy(p_device_info->dev_cap[0].level, "6.2", NI_LEVELS_SUPP_STR_LEN);
+        ni_strncpy(p_device_info->dev_cap[0].profiles_supported, NI_PROFILES_SUPP_STR_LEN,
+                "Baseline, Main, High, High10", (NI_PROFILES_SUPP_STR_LEN-1));
+        ni_strncpy(p_device_info->dev_cap[0].level, NI_LEVELS_SUPP_STR_LEN, "6.2", (NI_LEVELS_SUPP_STR_LEN-1));
 
         p_device_info->dev_cap[1].supports_codec = EN_H265;
         p_device_info->dev_cap[1].max_res_width = p_hw_cap->max_video_width;
@@ -117,9 +117,9 @@ ni_retcode_t ni_rsrc_fill_device_info(ni_device_info_t* p_device_info, ni_codec_
         p_device_info->dev_cap[1].min_res_width = p_hw_cap->min_video_width;
         p_device_info->dev_cap[1].min_res_height = p_hw_cap->min_video_height;
 
-        strncpy(p_device_info->dev_cap[1].profiles_supported, "Main, Main10",
-                NI_PROFILES_SUPP_STR_LEN);
-        strncpy(p_device_info->dev_cap[1].level, "6.2", NI_LEVELS_SUPP_STR_LEN);
+        ni_strncpy(p_device_info->dev_cap[1].profiles_supported, NI_PROFILES_SUPP_STR_LEN, "Main, Main10",
+                (NI_PROFILES_SUPP_STR_LEN-1));
+        ni_strncpy(p_device_info->dev_cap[1].level, NI_LEVELS_SUPP_STR_LEN, "6.2", (NI_LEVELS_SUPP_STR_LEN-1));
 
         p_device_info->dev_cap[2].supports_codec = EN_JPEG;
         p_device_info->dev_cap[2].max_res_width = p_hw_cap->max_video_width;
@@ -128,9 +128,9 @@ ni_retcode_t ni_rsrc_fill_device_info(ni_device_info_t* p_device_info, ni_codec_
         p_device_info->dev_cap[2].min_res_height =
             NI_MIN_RESOLUTION_HEIGHT_JPEG;
 
-        strncpy(p_device_info->dev_cap[2].profiles_supported, "Baseline",
-                NI_PROFILES_SUPP_STR_LEN);
-        strncpy(p_device_info->dev_cap[2].level, "6.2", NI_LEVELS_SUPP_STR_LEN);
+        ni_strncpy(p_device_info->dev_cap[2].profiles_supported, NI_PROFILES_SUPP_STR_LEN, "Baseline",
+                (NI_PROFILES_SUPP_STR_LEN-1));
+        ni_strncpy(p_device_info->dev_cap[2].level, NI_LEVELS_SUPP_STR_LEN, "6.2", (NI_LEVELS_SUPP_STR_LEN-1));
 
         p_device_info->dev_cap[3].supports_codec = EN_VP9;
         p_device_info->dev_cap[3].max_res_width = p_hw_cap->max_video_width;
@@ -138,9 +138,9 @@ ni_retcode_t ni_rsrc_fill_device_info(ni_device_info_t* p_device_info, ni_codec_
         p_device_info->dev_cap[3].min_res_width = p_hw_cap->min_video_width;
         p_device_info->dev_cap[3].min_res_height = p_hw_cap->min_video_height;
 
-        strncpy(p_device_info->dev_cap[3].profiles_supported, "0, 2",
-                NI_PROFILES_SUPP_STR_LEN);
-        strncpy(p_device_info->dev_cap[3].level, "6.2", NI_LEVELS_SUPP_STR_LEN);
+        ni_strncpy(p_device_info->dev_cap[3].profiles_supported, NI_PROFILES_SUPP_STR_LEN, "0, 2",
+                (NI_PROFILES_SUPP_STR_LEN-1));
+        ni_strncpy(p_device_info->dev_cap[3].level, NI_LEVELS_SUPP_STR_LEN, "6.2", (NI_LEVELS_SUPP_STR_LEN-1));
     } else if (NI_DEVICE_TYPE_ENCODER == type)
     { /*! encoder */
         p_device_info->dev_cap[0].supports_codec = EN_H264;
@@ -149,9 +149,9 @@ ni_retcode_t ni_rsrc_fill_device_info(ni_device_info_t* p_device_info, ni_codec_
         p_device_info->dev_cap[0].min_res_width = p_hw_cap->min_video_width;
         p_device_info->dev_cap[0].min_res_height = p_hw_cap->min_video_height;
 
-        strncpy(p_device_info->dev_cap[0].profiles_supported,
-                "Baseline, Main, High, High10", NI_PROFILES_SUPP_STR_LEN);
-        strncpy(p_device_info->dev_cap[0].level, "6.2", NI_LEVELS_SUPP_STR_LEN);
+        ni_strncpy(p_device_info->dev_cap[0].profiles_supported, NI_PROFILES_SUPP_STR_LEN,
+                "Baseline, Main, High, High10", (NI_PROFILES_SUPP_STR_LEN-1));
+        ni_strncpy(p_device_info->dev_cap[0].level, NI_LEVELS_SUPP_STR_LEN, "6.2", (NI_LEVELS_SUPP_STR_LEN-1));
 
         p_device_info->dev_cap[1].supports_codec = EN_H265;
         p_device_info->dev_cap[1].max_res_width = p_hw_cap->max_video_width;
@@ -159,19 +159,19 @@ ni_retcode_t ni_rsrc_fill_device_info(ni_device_info_t* p_device_info, ni_codec_
         p_device_info->dev_cap[1].min_res_width = p_hw_cap->min_video_width;
         p_device_info->dev_cap[1].min_res_height = p_hw_cap->min_video_height;
 
-        strncpy(p_device_info->dev_cap[1].profiles_supported, "Main, Main10",
-                NI_PROFILES_SUPP_STR_LEN);
-        strncpy(p_device_info->dev_cap[1].level, "6.2", NI_LEVELS_SUPP_STR_LEN);
+        ni_strncpy(p_device_info->dev_cap[1].profiles_supported, NI_PROFILES_SUPP_STR_LEN, "Main, Main10",
+                (NI_PROFILES_SUPP_STR_LEN-1));
+        ni_strncpy(p_device_info->dev_cap[1].level, NI_LEVELS_SUPP_STR_LEN, "6.2", (NI_LEVELS_SUPP_STR_LEN-1));
 
         p_device_info->dev_cap[2].supports_codec = EN_JPEG;
         p_device_info->dev_cap[2].max_res_width = p_hw_cap->max_video_width;
         p_device_info->dev_cap[2].max_res_height = p_hw_cap->max_video_height;
-        p_device_info->dev_cap[2].min_res_width = NI_PARAM_MIN_WIDTH;
-        p_device_info->dev_cap[2].min_res_height = NI_PARAM_MIN_HEIGHT;
+        p_device_info->dev_cap[2].min_res_width = NI_MIN_WIDTH;
+        p_device_info->dev_cap[2].min_res_height = NI_MIN_HEIGHT;
 
-        strncpy(p_device_info->dev_cap[2].profiles_supported, "Main",
-                NI_PROFILES_SUPP_STR_LEN);
-        strncpy(p_device_info->dev_cap[2].level, "5.1", NI_LEVELS_SUPP_STR_LEN);
+        ni_strncpy(p_device_info->dev_cap[2].profiles_supported, NI_PROFILES_SUPP_STR_LEN, "Main",
+                (NI_PROFILES_SUPP_STR_LEN-1));
+        ni_strncpy(p_device_info->dev_cap[2].level, NI_LEVELS_SUPP_STR_LEN, "5.1", (NI_LEVELS_SUPP_STR_LEN-1));
 
         p_device_info->dev_cap[3].supports_codec = EN_AV1;
         p_device_info->dev_cap[3].max_res_width = NI_PARAM_AV1_MAX_WIDTH;
@@ -179,9 +179,9 @@ ni_retcode_t ni_rsrc_fill_device_info(ni_device_info_t* p_device_info, ni_codec_
         p_device_info->dev_cap[3].min_res_width = p_hw_cap->min_video_width;
         p_device_info->dev_cap[3].min_res_height = p_hw_cap->min_video_height;
 
-        strncpy(p_device_info->dev_cap[3].profiles_supported, "Main",
-                NI_PROFILES_SUPP_STR_LEN);
-        strncpy(p_device_info->dev_cap[3].level, "5.1", NI_LEVELS_SUPP_STR_LEN);
+        ni_strncpy(p_device_info->dev_cap[3].profiles_supported, NI_PROFILES_SUPP_STR_LEN, "Main",
+                (NI_PROFILES_SUPP_STR_LEN-1));
+        ni_strncpy(p_device_info->dev_cap[3].level, NI_LEVELS_SUPP_STR_LEN, "5.1", (NI_LEVELS_SUPP_STR_LEN-1));
     } else if (NI_DEVICE_TYPE_SCALER == type || NI_DEVICE_TYPE_AI == type)
     {
         p_device_info->dev_cap[0].supports_codec =
@@ -189,7 +189,7 @@ ni_retcode_t ni_rsrc_fill_device_info(ni_device_info_t* p_device_info, ni_codec_
                 p_device_info->dev_cap[2].supports_codec =
                     p_device_info->dev_cap[3].supports_codec = EN_INVALID;
     }
-    strncpy(p_device_info->dev_cap[3].additional_info, "Set", NI_ADDITIONAL_INFO_STR_LEN);
+    ni_strncpy(p_device_info->dev_cap[3].additional_info, NI_ADDITIONAL_INFO_STR_LEN, "Set", (NI_ADDITIONAL_INFO_STR_LEN-1));
 END:
 
     return retval;
@@ -291,8 +291,8 @@ static void fill_device_info(ni_device_info_t *device_info,
 
     hw_capability = &device_capability->xcoder_devices[device_type];
 
-    strncpy(device_info->dev_name, device_name, (MAX_CHAR_IN_DEVICE_NAME-1));
-    strncpy(device_info->blk_name, device_name, (MAX_CHAR_IN_DEVICE_NAME-1));
+    ni_strncpy(device_info->dev_name, MAX_CHAR_IN_DEVICE_NAME, device_name, (MAX_CHAR_IN_DEVICE_NAME-1));
+    ni_strncpy(device_info->blk_name, MAX_CHAR_IN_DEVICE_NAME, device_name, (MAX_CHAR_IN_DEVICE_NAME-1));
     device_info->hw_id = hw_capability->hw_id;
     device_info->module_id = module_id;
     device_info->fw_ver_compat_warning = fw_ver_compat_warning;
@@ -528,7 +528,9 @@ ni_retcode_t ni_rsrc_create_retry_lck()
     {
       if(errno != EEXIST)
       {
-        ni_log(NI_LOG_ERROR, "Failed to create %s ERROR: %s\n", XCODERS_RETRY_LCK_NAME[i], strerror(errno));
+        char errmsg[NI_ERRNO_LEN] = {0};
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
+        ni_log(NI_LOG_ERROR, "Failed to create %s ERROR: %s\n", XCODERS_RETRY_LCK_NAME[i], errmsg);
         return NI_RETCODE_ERROR_LOCK_DOWN_DEVICE;
       }
       else
@@ -1176,8 +1178,10 @@ void ni_rsrc_get_one_device_info (ni_device_info_t * p_device_info)
 
 #ifndef __OPENHARMONY__
   if (msync((void*)p_coder_info_dst, sizeof(ni_device_info_t), MS_SYNC | MS_INVALIDATE)) {
+      char errmsg[NI_ERRNO_LEN] = {0};
+      ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
       ni_log(NI_LOG_ERROR, "ERROR %s() msync() p_coder_info_dst: %s\n",
-             __func__, strerror(NI_ERRNO));
+             __func__, errmsg);
   } else {
     ni_log(NI_LOG_DEBUG, "%s(): written out\n", __func__);
   }
@@ -1248,8 +1252,10 @@ void ni_rsrc_update_record(ni_device_context_t *p_device_context, ni_session_con
   }
   if (msync((void *)p_device_context->p_device_info, sizeof(ni_device_info_t), MS_SYNC | MS_INVALIDATE))
   {
+      char errmsg[NI_ERRNO_LEN] = {0};
+      ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
       ni_log(NI_LOG_ERROR, "ERROR %s() msync() p_device_context->"
-             "p_device_info: %s\n", __func__, strerror(NI_ERRNO));
+             "p_device_info: %s\n", __func__, errmsg);
   }
 }
 
@@ -1315,7 +1321,9 @@ void get_dev_pcie_addr(char *device_name,
           ret = sscanf(ptr, "%4c:%2c:%2c.%1c", pcie, pcie+5,pcie+8,pcie+11);
           if (ret != 4)
           {
-            ni_log2(NULL, NI_LOG_DEBUG, "\tsscanf error %d errno %d %s\n", ret, errno, strerror(errno));
+            char errmsg[NI_ERRNO_LEN] = {0};
+            ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
+            ni_log2(NULL, NI_LOG_DEBUG, "\tsscanf error %d errno %d %s\n", ret, errno, errmsg);
           }
       }
       ni_log2(NULL, NI_LOG_DEBUG, "=====\n");
@@ -1370,10 +1378,12 @@ ni_retcode_t ni_rsrc_try_get_shm_lock(const char *lck_name,
   }
 #endif
 
+  char errmsg[NI_ERRNO_LEN] = {0};
   lock = open(lck_name, flags, mode);
   if (lock < 0) {
+    ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
     ni_log(NI_LOG_ERROR, "ERROR: %s() open() %s fail: %s\n",
-        __func__, lck_name, strerror(NI_ERRNO));
+        __func__, lck_name, errmsg);
     return NI_RETCODE_FAILURE;
   }
 
@@ -1385,7 +1395,8 @@ ni_retcode_t ni_rsrc_try_get_shm_lock(const char *lck_name,
     ni_usleep(LOCK_WAIT);    //10ms
     if (retry_cnt >= 900)   //10s
     {
-      ni_log(NI_LOG_ERROR, "ERROR %s() lockf() %s fail: %s\n", __func__, lck_name, strerror(NI_ERRNO));
+      ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
+      ni_log(NI_LOG_ERROR, "ERROR %s() lockf() %s fail: %s\n", __func__, lck_name, errmsg);
       ni_log(NI_LOG_ERROR, "ERROR %s() If persists, stop traffic and run rm /dev/shm/NI_*\n", __func__);
       close(lock);
       return NI_RETCODE_FAILURE;
@@ -1415,12 +1426,14 @@ static ni_retcode_t openharmony_open_shm(const char *shm_name,
   memset(shm_path, 0, PATH_MAX);
   snprintf(shm_path, PATH_MAX, "%s/%s", LOCK_DIR, shm_name);
 
+  char errmsg[NI_ERRNO_LEN] = {0};
   //If file not exist, create the file for ftok
   if (0 != access(shm_path, F_OK)) {
     int fd = open(shm_path, O_RDWR | O_CREAT | O_CLOEXEC,
                   S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
     if (fd < 0) {
-      ni_log(NI_LOG_ERROR, "ERROR: %s() open() %s fail: %s\n", __func__, shm_name, strerror(NI_ERRNO));
+      ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
+      ni_log(NI_LOG_ERROR, "ERROR: %s() open() %s fail: %s\n", __func__, shm_name, errmsg);
       return NI_RETCODE_FAILURE;
     }
 
@@ -1430,7 +1443,8 @@ static ni_retcode_t openharmony_open_shm(const char *shm_name,
   //create unique key for share memory
   key_t key = ftok(shm_path, PROJ_ID);
   if (key == -1) {
-    ni_log(NI_LOG_ERROR, "ERROR: %s() ftok() fail: %s\n", __func__, strerror(NI_ERRNO));
+    ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
+    ni_log(NI_LOG_ERROR, "ERROR: %s() ftok() fail: %s\n", __func__, errmsg);
     return NI_RETCODE_FAILURE;
   }
 
@@ -1447,7 +1461,8 @@ static ni_retcode_t openharmony_open_shm(const char *shm_name,
     }
 
     if (shm_id < 0) {
-      ni_log(NI_LOG_ERROR, "ERROR: %s() shmget() fail: %s\n", __func__, strerror(NI_ERRNO));
+      ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
+      ni_log(NI_LOG_ERROR, "ERROR: %s() shmget() fail: %s\n", __func__, errmsg);
       return NI_RETCODE_FAILURE;
     }
   }
@@ -1475,10 +1490,12 @@ static ni_retcode_t openharmony_remove_shm(const char *shm_name,
     return NI_RETCODE_SUCCESS;
   }
 
+  char errmsg[NI_ERRNO_LEN] = {0};
   //create unique key for share memory
   key_t key = ftok(shm_path, PROJ_ID);
   if (key == -1) {
-    ni_log(NI_LOG_ERROR, "ERROR: %s() ftok() fail: %s\n", __func__, strerror(NI_ERRNO));
+    ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
+    ni_log(NI_LOG_ERROR, "ERROR: %s() ftok() fail: %s\n", __func__, errmsg);
     return NI_RETCODE_FAILURE;
   }
 
@@ -1486,7 +1503,8 @@ static ni_retcode_t openharmony_remove_shm(const char *shm_name,
   mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
   shm_id = shmget(key, shm_size, mode);
   if (shm_id < 0) {
-    ni_log(NI_LOG_ERROR, "ERROR: %s() shmget() fail: %s\n", __func__, strerror(NI_ERRNO));
+    ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
+    ni_log(NI_LOG_ERROR, "ERROR: %s() shmget() fail: %s\n", __func__, errmsg);
     return NI_RETCODE_FAILURE;
   }
 
@@ -1626,8 +1644,10 @@ static ni_retcode_t linux_open_shm(const char *shm_name,
     }
 
     if (shm_fd_tmp < 0) {
+      char errmsg[NI_ERRNO_LEN] = {0};
+      ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
       ni_log(NI_LOG_ERROR, "ERROR: %s() %s shm_open() fail: %s\n",
-         __func__, shm_name, strerror(NI_ERRNO));
+         __func__, shm_name, errmsg);
       return NI_RETCODE_FAILURE;
     }
   }
@@ -1701,19 +1721,22 @@ ni_retcode_t ni_rsrc_mmap_shm(const char *shm_name,
     return NI_RETCODE_INVALID_PARAM;
   }
 
+  char errmsg[NI_ERRNO_LEN] = {0};
 #ifdef __OPENHARMONY__
   *shm_addr = shmat(shm_fd, nullptr, 0);
   if ((void *)(-1) == *shm_addr) {
+    ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
     ni_log(NI_LOG_ERROR, "%s(): %s shmat() fail: %s\n", __func__,
-           shm_name, strerror(NI_ERRNO));
+           shm_name, errmsg);
     return NI_RETCODE_FAILURE;
   }
 #else
   *shm_addr = mmap(0, shm_size, PROT_READ | PROT_WRITE,
                    MAP_SHARED, shm_fd, 0);
   if (MAP_FAILED == *shm_addr) {
+    ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
     ni_log(NI_LOG_ERROR, "%s(): %s mmap() fail: %s\n", __func__,
-           shm_name, strerror(NI_ERRNO));
+           shm_name, errmsg);
     return NI_RETCODE_FAILURE;
   }
 #endif
@@ -1793,10 +1816,12 @@ ni_retcode_t ni_rsrc_remove_all_shm()
 
   ni_log(NI_LOG_ERROR, "Deleting shared memory files in %s\n", LOCK_DIR);
 
+  char errmsg[NI_ERRNO_LEN] = {0};
   dir = opendir(LOCK_DIR);
   if (!dir) {
+    ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
     ni_log(NI_LOG_ERROR, "ERROR: %s(): opendir failed for %s: %s\n",
-         __func__, LOCK_DIR, strerror(NI_ERRNO));
+         __func__, LOCK_DIR, errmsg);
     return NI_RETCODE_FAILURE;
   }
 
@@ -1825,8 +1850,9 @@ ni_retcode_t ni_rsrc_remove_all_shm()
 #endif
 
   if (closedir(dir) == -1) {
+    ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
     ni_log(NI_LOG_ERROR, "ERROR: %s(): closedir failed for %s: %s\n",
-           __func__, LOCK_DIR, strerror(NI_ERRNO));
+           __func__, LOCK_DIR, errmsg);
     return NI_RETCODE_FAILURE;
   }
 

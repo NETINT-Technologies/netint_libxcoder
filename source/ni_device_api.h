@@ -58,8 +58,10 @@ extern "C"
 
 #define NI_MAX_REF_PIC 4
 
+#ifndef DEPRECATION_AS_ERROR
 NI_DEPRECATE_MACRO(NI_MAX_VUI_SIZE)
 #define NI_MAX_VUI_SIZE NI_DEPRECATED_MACRO 32
+#endif
 
 #define NI_MAX_TX_RETRIES 1000
 
@@ -110,7 +112,7 @@ NI_DEPRECATE_MACRO(NI_MAX_VUI_SIZE)
 
 #define NI_INVALID_SESSION_ID 0xFFFF
 
-#define NI_MAX_BITRATE 1000000000
+#define NI_MAX_BITRATE 800000000
 #define NI_MIN_BITRATE 10000
 
 #define NI_MAX_FRAMERATE 65535
@@ -287,6 +289,14 @@ typedef enum
     NI_ENC_MEM_ALLOCATE_STRATEGY_INVALID_MAX,
 } ni_enc_allocate_strategy_t;
 
+typedef enum {
+  NI_CUS_ROI_DISABLE = 0, // disable 2-pass customize roi
+  NI_CUS_ROI_MAPFILE = 1, // select qp in customizeQpMapFile
+  NI_CUS_ROI_REPLACE = 2, // replace the cutree roimap with the customize roimap
+  NI_CUS_ROI_OVERWRITE = 3, // overwrite the cutree roimap with the customize roimap
+  NI_CUS_ROI_MERGE = 4 // add the customize roimap into the cutree roimap
+} ni_customize_roi_level_t;
+
 // The macro definition in ni_quadra_filter_api.h need to be synchronized with libxcoder
 // If you change this,you should also change NI_QUADRA_SCALER_FLAG_* in ni_quadra_filter_api.h
 #define NI_SCALER_FLAG_IO   0x0001  /* 0 = source frame, 1 = destination frame */
@@ -302,6 +312,7 @@ typedef enum
 #define NI_AI_FLAG_PC 0x0002 /* 0 = single allocation, 1 = create pool */
 #define NI_AI_FLAG_LM 0x0004 /* 0 == no memory acquisition limit; 1 == limit memory acquisition */
 #define NI_AI_FLAG_IOVEC 0x0008
+#define NI_AI_FLAG_SC 0x0010 /* 0 == size got from network info; 1 == size configured by sw */
 
 #define NI_UPLOADER_FLAG_LM 0x0010 /* 0 == no memory acquisition limit, 1 == limit memory acquisition */
 
@@ -1407,13 +1418,28 @@ typedef struct _ni_input_frame
   int8_t usable;
 }ni_input_frame;
 
+// This is for decoder to reset the ppu value
+// ppu_set_enable & (0x1 << idx) is which ppu[idx] enabled
+// for examle, ppu_set_enable is 3, so ppu0 amd ppu1 is enabled
+// 0x03 & (0x01 << 0) is not 0 and 0x03 &(0x01 << 1) is not 0
+// 0: all ppu disabled. 1: ppu0 enabled. 2: ppu1 enabled
+// 3: ppu0 ppu1 enabled. 4: ppu2 enabled. 5: ppu0 ppu2 enabled
+// 6: ppu1 ppu enabled. 7: all ppu enabled others: disabled
+typedef struct _ni_ppu_config{
+    uint8_t ppu_set_enable;
+    uint16_t ppu_w[NI_MAX_NUM_OF_DECODER_OUTPUTS];
+    uint16_t ppu_h[NI_MAX_NUM_OF_DECODER_OUTPUTS];
+}ni_ppu_config_t;
+
 typedef struct _ni_session_context
 {
     /*! MEASURE_LATENCY queue */
     /* frame_time_q is pointer to ni_lat_meas_q_t but reserved as void pointer
        here as ni_lat_meas_q_t is part of private API */
     void *frame_time_q;
+#ifndef DEPRECATION_AS_ERROR
     NI_DEPRECATED uint64_t prev_read_frame_time;
+#endif
 
     /*! close-caption/HDR10+ header and trailer template, used for encoder */
     uint8_t itu_t_t35_cc_sei_hdr_hevc[NI_CC_SEI_HDR_HEVC_LEN];
@@ -1445,7 +1471,9 @@ typedef struct _ni_session_context
     int64_t pts_correction_last_dts;
     int pts_correction_num_faulty_pts;
     int64_t pts_correction_last_pts;
+#ifndef DEPRECATION_AS_ERROR
     NI_DEPRECATED int64_t start_dts_offset;
+#endif
 
     /* store pts values to create an accurate pts offset */
     int64_t pts_offsets[NI_FIFO_SZ];
@@ -1728,6 +1756,7 @@ typedef struct _ni_session_context
     ni_aio_context_t aio_context;
     ni_iocb_t **iocbs;
     ni_io_event_t *io_event;
+    uint64_t ppu_reconfig_pkt_pos;
 } ni_session_context_t;
 
 typedef struct _ni_split_context_t
@@ -2072,7 +2101,11 @@ typedef struct _ni_encoder_cfg_params
 #define NI_ENC_PARAM_ROI_DEMO_MODE "RoiDemoMode"
 #define NI_ENC_PARAM_CACHE_ROI "cacheRoi"
 #define NI_ENC_PARAM_FORCE_PIC_QP_DEMO_MODE "ForcePicQpDemoMode"
-#define NI_ENC_PARAM_GEN_HDRS "GenHdrs"
+
+#ifndef DEPRECATION_AS_ERROR
+NI_DEPRECATE_MACRO(NI_ENC_PARAM_GEN_HDRS)
+#define NI_ENC_PARAM_GEN_HDRS NI_DEPRECATED_MACRO "GenHdrs"
+#endif
 #define NI_ENC_PARAM_PADDING "padding"
 #define NI_ENC_PARAM_FORCE_FRAME_TYPE "forceFrameType"
 #define NI_ENC_PARAM_PROFILE "profile"
@@ -2130,8 +2163,10 @@ typedef struct _ni_encoder_cfg_params
 #define NI_ENC_PARAM_INTRA_REFRESH_MIN_PERIOD "intraRefreshMinPeriod"
 
 //QUADRA
+#ifndef DEPRECATION_AS_ERROR
 NI_DEPRECATE_MACRO(NI_ENC_PARAM_CONSTANT_RATE_FACTOR)
 #define NI_ENC_PARAM_CONSTANT_RATE_FACTOR NI_DEPRECATED_MACRO "crf"
+#endif
 #define NI_ENC_PARAM_CONSTANT_RATE_FACTOR_FLOAT "crfFloat"
 #define NI_ENC_PARAM_RDO_LEVEL "rdoLevel"
 #define NI_ENC_PARAM_RDO_QUANT "EnableRdoQuant"
@@ -2149,8 +2184,10 @@ NI_DEPRECATE_MACRO(NI_ENC_PARAM_CONSTANT_RATE_FACTOR)
 #define NI_ENC_PARAM_VBV_MAXRAE "vbvMaxRate"
 #define NI_ENC_PARAM_ENABLE_FILLER "fillerEnable"
 #define NI_ENC_PARAM_ENABLE_PIC_SKIP "picSkip"
+#ifndef DEPRECATION_AS_ERROR
 NI_DEPRECATE_MACRO(NI_ENC_PARAM_MAX_FRAME_SIZE_LOW_DELAY)
 #define NI_ENC_PARAM_MAX_FRAME_SIZE_LOW_DELAY NI_DEPRECATED_MACRO "maxFrameSize"
+#endif
 #define NI_ENC_PARAM_MAX_FRAME_SIZE_BITS_LOW_DELAY "maxFrameSize-Bits"
 #define NI_ENC_PARAM_MAX_FRAME_SIZE_BYTES_LOW_DELAY "maxFrameSize-Bytes"
 #define NI_ENC_PARAM_LTR_REF_INTERVAL "ltrRefInterval"
@@ -2248,6 +2285,9 @@ NI_DEPRECATE_MACRO(NI_ENC_PARAM_MAX_FRAME_SIZE_LOW_DELAY)
 #define NI_ENC_PARAM_PAST_FRAME_MAX_INTRA_RATIO "pastFrameMaxIntraRatio"
 #define NI_ENC_PARAM_LINK_FRAME_MAX_INTRA_RATIO "linkFrameMaxIntraRatio"
 #define NI_ENC_PARAM_SPATIAL_LAYER_BITRATE "spatialLayerBitrate"
+#define NI_ENC_PARAM_DISABLE_AV1_TIMING_INFO "disableAv1TimingInfo"
+#define NI_ENC_PARAM_AV1_OP_LEVEL "av1OpLevel"
+#define NI_ENC_PARAM_ENABLE_CPU_AFFINITY "enableCpuAffinity"
 
     //----- Start supported by all codecs -----
     int frame_rate;
@@ -2427,6 +2467,7 @@ NI_DEPRECATE_MACRO(NI_ENC_PARAM_MAX_FRAME_SIZE_LOW_DELAY)
     // 1: Frame Level output encoder information
     // 2: Cu Level Output encoder information
     // 3: Frame&Cu Level encoder information
+    // 6: 1-pass satd cost
     int statistic_output_level;
     int skip_frame_enable;
     int max_consecutive_skip_num;
@@ -2461,6 +2502,8 @@ NI_DEPRECATE_MACRO(NI_ENC_PARAM_MAX_FRAME_SIZE_LOW_DELAY)
     int pastFrameMaxIntraRatio;
     int linkFrameMaxIntraRatio;
     int spatialLayerBitrate[NI_MAX_SPATIAL_LAYERS];
+    int disableAv1TimingInfo;
+    int av1OpLevel[NI_MAX_SPATIAL_LAYERS];
 } ni_encoder_cfg_params_t;
 
 typedef struct _ni_decoder_input_params_t
@@ -2516,6 +2559,7 @@ typedef struct _ni_decoder_input_params_t
 #define NI_DEC_PARAM_SURVIVE_STREAM_ERR "surviveStreamErr"
 #define NI_DEC_PARAM_REDUCE_DPB_DELAY "reduceDpbDelay"
 #define NI_DEC_PARAM_SKIP_EXTRA_HEADERS "skipExtraHeaders"
+#define NI_DEC_PARAM_ENABLE_CPU_AFFINITY "enableCpuAffinity"
 
     int hwframes;
     int enable_out1;
@@ -2762,7 +2806,7 @@ typedef struct _ni_xcoder_params
     int force_pic_qp_demo_mode;   // for force pic qp mode testing
     int low_delay_mode;           // encoder low latency mode
     int padding;                 // encoder input padding setting
-    NI_DEPRECATED int generate_enc_hdrs;   // in libavcodec, open a dummy session to generate codec headers during init
+    int generate_enc_hdrs;   // in libavcodec, open a dummy session to generate codec headers during init
     int use_low_delay_poc_type;   // specifies the encoder to set
                                   // picture_order_count_type=2 in the H.264 SPS
 
@@ -2776,12 +2820,14 @@ typedef struct _ni_xcoder_params
 
     int cacheRoi;   // enables caching of ROIs applied to subsequent frames
 
+#ifndef DEPRECATION_AS_ERROR
     NI_DEPRECATED uint32_t ui32VuiDataSizeBits; /**< size of VUI RBSP in bits **/
     NI_DEPRECATED uint32_t
         ui32VuiDataSizeBytes; /**< size of VUI RBSP in bytes up to MAX_VUI_SIZE **/
     NI_DEPRECATED  uint8_t ui8VuiRbsp[NI_MAX_VUI_SIZE]; /**< VUI raw byte sequence **/
     NI_DEPRECATED uint32_t pos_num_units_in_tick;
     NI_DEPRECATED uint32_t pos_time_scale;
+#endif
 
     int color_primaries;
     int color_transfer_characteristic;
@@ -2818,6 +2864,7 @@ typedef struct _ni_xcoder_params
     int minFramesDelay;
     int interval_of_psnr;
     int8_t customize_roi_qp_map[NI_CUSTOMIZE_ROI_QPOFFSET_LEVEL][NI_CUSTOMIZE_ROI_QP_NUM];
+    int enableCpuAffinity;
 } ni_xcoder_params_t;
 
 typedef struct _niFrameSurface1
@@ -2999,6 +3046,7 @@ LIB_API ni_device_handle_t ni_device_open(const char *dev,
  ******************************************************************************/
 LIB_API void ni_device_close(ni_device_handle_t dev);
 
+#ifndef DEPRECATION_AS_ERROR
 /*!*****************************************************************************
  *  \brief  Query device and return device capability structure
  *          This function had been replaced by ni_device_capability_query2
@@ -3014,8 +3062,9 @@ LIB_API void ni_device_close(ni_device_handle_t dev);
  *                     NI_RETCODE_ERROR_MEM_ALOC
  *                     NI_RETCODE_ERROR_NVME_CMD_FAILED
  ******************************************************************************/
-LIB_API ni_retcode_t ni_device_capability_query(
+LIB_API NI_DEPRECATED ni_retcode_t ni_device_capability_query(
     ni_device_handle_t device_handle, ni_device_capability_t *p_cap);
+#endif
 
 /*!*****************************************************************************
  *  \brief  Query device and return device capability structure
@@ -4832,6 +4881,7 @@ LIB_API void ni_gop_params_check_set(ni_xcoder_params_t *p_param, char *value);
 *******************************************************************************/
 LIB_API bool ni_gop_params_check(ni_xcoder_params_t *p_param);
 
+#ifndef DEPRECATION_AS_ERROR
 /*!*****************************************************************************
  *  \brief   Initiate P2P transfer (P2P write) (deprecated)
  *
@@ -4843,10 +4893,11 @@ LIB_API bool ni_gop_params_check(ni_xcoder_params_t *p_param);
  *  \return always returns
  *              NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION
 *******************************************************************************/
-LIB_API ni_retcode_t ni_p2p_xfer(ni_session_context_t *pSession,
+LIB_API NI_DEPRECATED ni_retcode_t ni_p2p_xfer(ni_session_context_t *pSession,
                                  niFrameSurface1_t *source,
                                  uint64_t ui64DestAddr,
                                  uint32_t ui32FrameSize);
+#endif
 
 /*!*****************************************************************************
  *  \brief   Initiate P2P transfer to another device (P2P write)
@@ -4926,6 +4977,18 @@ LIB_API ni_retcode_t ni_device_session_restart(ni_session_context_t *p_ctx,
                                                int video_height,
                                                ni_device_type_t device_type);
 
+/*!******************************************************************************
+*  \brief  Send a p_config command to reconfigure decoding ppu params.
+*
+*  \param   ni_session_context_t p_session_ctx - xcoder Context
+*  \param   ni_xcoder_params_t p_param - xcoder Params
+*  \param   ni_ppu_config_t p_ppu_config - Struct ni_ppu_config
+*
+*  \return - NI_RETCODE_SUCCESS on success, NI_RETCODE_ERROR_INVALID_SESSION, NI_RETCODE_ERROR_NVME_CMD_FAILED on failure
+*******************************************************************************/
+LIB_API ni_retcode_t ni_dec_reconfig_ppu_params(ni_session_context_t *p_session_ctx,
+                                            ni_xcoder_params_t *p_param,
+                                            ni_ppu_config_t *p_ppu_config);
 #ifdef __cplusplus
 }
 #endif

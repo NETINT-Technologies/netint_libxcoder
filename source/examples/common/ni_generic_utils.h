@@ -111,7 +111,7 @@ typedef struct _ni_test_frame_list
 
 typedef struct _ni_pts_queue
 {
-    int data[NI_MAX_PTS_QUEUE_SIZE];
+    int64_t data[NI_MAX_PTS_QUEUE_SIZE];
     int front;
     int rear;
     int size;

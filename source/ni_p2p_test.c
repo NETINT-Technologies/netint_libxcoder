@@ -927,14 +927,14 @@ void parse_arguments(int argc, char *argv[], char *input_filename,
                 }
                 break;
             case 'c':
-                strcpy(xcoderGUID, optarg);
+                ni_strcpy(xcoderGUID, sizeof(xcoderGUID), optarg);
                 *iXcoderGUID = (int)strtol(optarg, &n, 10);
                 // No numeric characters found in left side of optarg
                 if (n == xcoderGUID)
                     arg_error_exit("-c | --card", optarg);
                 break;
             case 'i':
-                strcpy(input_filename, optarg);
+                ni_strcpy(input_filename, FILE_NAME_LEN, optarg);
                 break;
             case 's':
                 *arg_width = (int)strtol(optarg, &n, 10);
@@ -955,26 +955,26 @@ void parse_arguments(int argc, char *argv[], char *input_filename,
                     arg_error_exit("-, | --mode", optarg);
 
                 // determine codec
-                sprintf(mode_description, "P2P + Encoding");
+                ni_sprintf(mode_description, 128, "P2P + Encoding");
 
                 g_rgb2yuv_csc = (optarg[0] == 'r') ? 1 : 0;
 
                 if (optarg[2] == 'a')
                 {
                     *dst_codec_format = NI_CODEC_FORMAT_H264;
-                    strcat(mode_description, " to AVC");
+                    ni_strcat(mode_description, 128, " to AVC");
                 }
 
                 if (optarg[2] == 'h')
                 {
                     *dst_codec_format = NI_CODEC_FORMAT_H265;
-                    strcat(mode_description, " to HEVC");
+                    ni_strcat(mode_description, 128, " to HEVC");
                 }
                 printf("%s...\n", mode_description);
 
                 break;
             case 'o':
-                strcpy(output_filename, optarg);
+                ni_strcpy(output_filename, FILE_NAME_LEN, optarg);
                 break;
             case 'r':
                 if (!(atoi(optarg) >= 1))
@@ -1043,7 +1043,7 @@ int main(int argc, char *argv[])
     // Create output file
     if (strcmp(output_filename, "null") != 0)
     {
-        p_file = fopen(output_filename, "wb");
+        ni_fopen(&p_file, output_filename, "wb");
         if (p_file == NULL)
         {
             fprintf(stderr, "Error: cannot open %s\n", output_filename);

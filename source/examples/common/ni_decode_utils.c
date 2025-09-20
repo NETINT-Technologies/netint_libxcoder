@@ -730,7 +730,7 @@ int probe_h264_stream_info(ni_demo_context_t *p_ctx, ni_h264_sps_t *sps)
     reset_data_buf_pos(p_ctx);
     // probe at most 100 VCL before stops
     while ((!sps_parsed || !is_interlaced) && vcl_nal_count < 100 &&
-           (nal_size = find_h264_next_nalu(p_ctx, buf, &nal_type)) > 0)
+           (nal_size = (uint32_t)find_h264_next_nalu(p_ctx, buf, &nal_type)) > 0)
     {
         ni_log(NI_LOG_DEBUG, "nal %d  nal_size %d\n", nal_type, nal_size);
         p_buf = buf;
@@ -2010,7 +2010,7 @@ int probe_h265_stream_info(ni_demo_context_t *p_ctx, ni_h265_sps_t *sps)
     reset_data_buf_pos(p_ctx);
     // probe at most 100 VCL before stops
     while ((!sps_parsed) && vcl_nal_count < 100 &&
-           (nal_size = find_h265_next_nalu(p_ctx, buf, &nal_type)) > 0)
+           (nal_size = (uint32_t)find_h265_next_nalu(p_ctx, buf, &nal_type)) > 0)
     {
         p_buf = buf;
 
@@ -2198,7 +2198,7 @@ int probe_vp9_stream_info(ni_demo_context_t *p_ctx, ni_vp9_header_info_t *vp9_in
     } else
     {
         if (size_bytes > p_ctx->total_file_size)
-            size_bytes = p_ctx->total_file_size;
+            size_bytes = (uint32_t)p_ctx->total_file_size;
         memcpy(buf, &p_ctx->file_cache[p_ctx->curr_file_offset], size_bytes);
     }
 
@@ -2260,7 +2260,7 @@ int decoder_send_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_dec_ctx,
             ni_h264_sps_t *sps;
             sps = (ni_h264_sps_t *)stream_info;
             // send whole encoded packet which ends with a slice NAL
-            while ((nal_size = find_h264_next_nalu(p_ctx, tmp_buf_ptr, &nal_type)) > 0)
+            while ((nal_size = (uint32_t)find_h264_next_nalu(p_ctx, tmp_buf_ptr, &nal_type)) > 0)
             {
                 frame_pkt_size += nal_size;
                 tmp_buf_ptr += nal_size;
@@ -2307,7 +2307,7 @@ int decoder_send_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_dec_ctx,
             }   // while there is still NAL
         } else if (NI_CODEC_FORMAT_H265 == p_dec_ctx->codec_format)
         {
-            while ((nal_size = find_h265_next_nalu(p_ctx, tmp_buf_ptr, &nal_type)) > 0)
+            while ((nal_size = (uint32_t)find_h265_next_nalu(p_ctx, tmp_buf_ptr, &nal_type)) > 0)
             {
                 frame_pkt_size += nal_size;
                 tmp_buf_ptr += nal_size;
@@ -2323,7 +2323,7 @@ int decoder_send_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_dec_ctx,
             }
         } else if (NI_CODEC_FORMAT_VP9 == p_dec_ctx->codec_format)
         {
-            while ((packet_size = find_vp9_next_packet(p_ctx, tmp_buf_ptr, stream_info)) > 0)
+            while ((packet_size = (uint32_t)find_vp9_next_packet(p_ctx, tmp_buf_ptr, stream_info)) > 0)
             {
                 frame_pkt_size += packet_size;
                 ni_log(NI_LOG_DEBUG, "%s vp9 packet_size %d\n", __func__,
@@ -2672,7 +2672,7 @@ void *decoder_send_thread(void *args)
     }
 
     ni_log(NI_LOG_TRACE, "decoder_send_thread exit\n");
-    return (void *)(long)retval;
+    return (void *)(int64_t)retval;
 }
 
 void *decoder_receive_thread(void *args)
@@ -2792,5 +2792,5 @@ void *decoder_receive_thread(void *args)
     }
 
     ni_log(NI_LOG_TRACE, "decoder_receive_thread exit\n");
-    return (void *)(long)retval;
+    return (void *)(int64_t)retval;
 }

@@ -290,6 +290,7 @@ LIB_API int ni_rsrc_init(int should_match_rev, int timeout_seconds);
  ******************************************************************************/
 LIB_API ni_retcode_t ni_rsrc_refresh(int should_match_rev);
 
+#ifndef DEPRECATION_AS_ERROR
 /*!******************************************************************************
  *  \brief  Scans system for all NVMe devices and returns the system device
  *   names to the user which were identified as NETINT transcoder deivices.
@@ -307,6 +308,7 @@ LIB_API ni_retcode_t ni_rsrc_refresh(int should_match_rev);
  *******************************************************************************/
 LIB_API NI_DEPRECATED int ni_rsrc_get_local_device_list(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
                                           int max_handles);
+#endif
 
 /*!*****************************************************************************
  *  \brief  Scans system for all NVMe devices and returns the system device
@@ -606,6 +608,16 @@ LIB_API int ni_rsrc_unlock(int device_type, ni_lock_handle_t lock);
 *  \return 1 for full compatibility, 2 for partial, 0 for none
 *******************************************************************************/
 LIB_API int ni_rsrc_is_fw_compat(uint8_t fw_rev[8]);
+
+/*!******************************************************************************
+ *  \brief     get linux numa_node
+ *
+ *  \param[in] char *device_name
+ *
+ *  \return    int atoi(cmd_ret)
+ *******************************************************************************/
+LIB_API int ni_rsrc_get_numa_node(char *device_name);
+
 
 /*!******************************************************************************
  *  \brief  Create a pointer to  hw_device_info_coder_param_t instance .This instance will be created and

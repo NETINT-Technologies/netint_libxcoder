@@ -120,10 +120,10 @@ int main(int argc, char *argv[])
                 ret = 0;
                 goto end;
             case 'i':
-                strcpy(in_filename, optarg);
+                ni_strcpy(in_filename, FILE_NAME_LEN, optarg);
                 break;
             case 'o':
-                strcpy(out_filename, optarg);
+                ni_strcpy(out_filename, FILE_NAME_LEN, optarg);
                 break;
             case 'm':
                 // Accept both upper and lower case
@@ -186,7 +186,7 @@ int main(int argc, char *argv[])
                 }
                 break;
             case 'd':
-                strcpy(dec_conf_params, optarg);
+                ni_strcpy(dec_conf_params, sizeof(dec_conf_params), optarg);
                 break;
             default:
                 print_usage();
@@ -231,7 +231,7 @@ int main(int argc, char *argv[])
     if (strcmp(out_filename, "null") != 0 &&
         strcmp(out_filename, "/dev/null") != 0)
     {
-        output_fp = fopen(out_filename, "wb");
+        ni_fopen(&output_fp, out_filename, "wb");
         if (!output_fp)
         {
             ni_log(NI_LOG_ERROR, "Error: Failed to open %s\n", out_filename);

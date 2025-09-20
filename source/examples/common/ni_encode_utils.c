@@ -1743,8 +1743,8 @@ int encoder_receive_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc_c
     ni_packet_t *p_out_pkt = &(p_out_data->data.packet);
     int meta_size = p_enc_ctx->meta_size;
     ni_xcoder_params_t *p_api_param = (ni_xcoder_params_t *)p_enc_ctx->p_session_config;
-    int pts = -1;
-    int dts = -1;
+    int64_t pts = -1;
+    int64_t dts = -1;
 
     ni_log(NI_LOG_DEBUG, "===> encoder_receive_data <===\n");
     if (NI_INVALID_SESSION_ID == p_enc_ctx->session_id)
@@ -1786,7 +1786,6 @@ receive_data:
                 p_out_pkt->p_data = NULL;
                 p_out_pkt->buffer_size = 0;
                 p_out_pkt->data_len = 0;
-                p_enc_ctx->pkt_num = 1;
             } else
             {
                 // store the av1 unshown frames for next packet writing
@@ -1848,6 +1847,11 @@ receive_data:
         }
 
         p_ctx->enc_total_bytes_received[enc_id] += rx_size - meta_size;
+
+        if (p_enc_ctx->pkt_num == 0)
+        {
+            p_enc_ctx->pkt_num = 1;
+        }
 
         // The first packet is the sequence head packet and it will be read before the first frame is sent
         if(p_ctx->num_packets_received[enc_id] != 0)
@@ -2212,6 +2216,205 @@ int encoder_open(ni_demo_context_t *p_ctx,
     return ret;
 }
 
+// encoder_open2() is used for the encoder with a scaler filter, supporting ladder encoding with multiple resolutions.
+int encoder_open2(ni_demo_context_t *p_ctx,
+                 ni_session_context_t *enc_ctx_list,
+                 ni_xcoder_params_t *p_api_param_list,
+                 int output_total, char p_enc_conf_params[][2048],
+                 char p_enc_conf_gop[][2048],
+                 ni_frame_t *p_ni_frame, int width[], int height[],
+                 int fps_num, int fps_den, int bitrate,
+                 int codec_format, ni_pix_fmt_t pix_fmt[],
+                 int aspect_ratio_idc, int xcoder_guid,
+                 niFrameSurface1_t *p_surface[], int multi_thread,
+                 bool check_zerocopy)
+{
+    int i, ret = 0;
+    int color_prim = NI_COL_PRI_UNSPECIFIED;
+    int color_trc = NI_COL_TRC_UNSPECIFIED;
+    int color_space = NI_COL_SPC_UNSPECIFIED;
+    int sar_num = 0;
+    int sar_den = 0;
+    int video_full_range_flag = 0;
+
+    if (p_ni_frame != NULL)
+    {
+        // open the encode session when the first frame arrives and the session
+        // is not opened yet, with the source stream and user-configured encode
+        // info both considered when constructing VUI in the stream headers
+        color_prim = p_ni_frame->color_primaries;
+        color_trc = p_ni_frame->color_trc;
+        color_space = p_ni_frame->color_space;
+        sar_num = p_ni_frame->sar_width;
+        sar_den = p_ni_frame->sar_height;
+        video_full_range_flag = p_ni_frame->video_full_range_flag;
+
+        // calculate the source fps and set it as the default target fps, based
+        // on the timing_info passed in from the decoded frame
+        if (p_ni_frame->vui_num_units_in_tick && p_ni_frame->vui_time_scale)
+        {
+            if (NI_CODEC_FORMAT_H264 == p_ni_frame->src_codec)
+            {
+                if (0 == p_ni_frame->vui_time_scale % 2)
+                {
+                    fps_num = (int)(p_ni_frame->vui_time_scale / 2);
+                    fps_den = (int)(p_ni_frame->vui_num_units_in_tick);
+                } else
+                {
+                    fps_num = (int)(p_ni_frame->vui_time_scale);
+                    fps_den = (int)(2 * p_ni_frame->vui_num_units_in_tick);
+                }
+            } else if (NI_CODEC_FORMAT_H265 == p_ni_frame->src_codec)
+            {
+                fps_num = p_ni_frame->vui_time_scale;
+                fps_den = p_ni_frame->vui_num_units_in_tick;
+            }
+        }
+    }
+
+    for (i = 0; i < output_total; i++)
+    {
+
+        if(!p_ctx->enc_pts_queue[i])
+        {
+            p_ctx->enc_pts_queue[i] = (ni_pts_queue *)calloc(1, sizeof(ni_pts_queue));
+            if(!p_ctx->enc_pts_queue[i])
+            {
+                ni_log(NI_LOG_ERROR, "Failed to allocate ni_pts_queue\n");
+                return -1;
+            }
+        }
+
+        // set up encoder p_config, using some info from source
+        ret = ni_encoder_init_default_params(&p_api_param_list[i], fps_num,
+                                             fps_den, bitrate, width[i], height[i],
+                                             enc_ctx_list[i].codec_format);
+        if (ret < 0)
+        {
+            ni_log(NI_LOG_ERROR, "Error encoder[%d] init default set up error\n", i);
+            return -1;
+        }
+
+        // check and set ni_encoder_params from --xcoder-params
+        // Note: the parameter setting has to be in this order so that user
+        //       configured values can overwrite the source/default ones if
+        //       desired.
+        if (ni_retrieve_xcoder_params(p_enc_conf_params[i],
+                                      &p_api_param_list[i], &enc_ctx_list[i]))
+        {
+            ni_log(NI_LOG_ERROR, "Error: encoder[%d] p_config parsing error\n", i);
+            return -1;
+        }
+
+        if (ni_retrieve_xcoder_gop(p_enc_conf_gop[i],
+                                   &p_api_param_list[i], &enc_ctx_list[i]))
+        {
+            ni_log(NI_LOG_ERROR, "Error: encoder[%d] p_config_gop parsing error\n", i);
+            return -1;
+        }
+
+        // set async mode in enc_ctx if encoding is multi-threaded
+        if (multi_thread)
+        {
+            ni_log(NI_LOG_INFO, "Encoder[%d] is multi-threaded, set async mode "
+                   "in the session context!\n", i);
+            enc_ctx_list[i].async_mode = 1;
+            p_api_param_list[i].cfg_enc_params.enable_acq_limit = 1;
+        }
+
+        // check color primaries configuration
+        if (color_prim != p_api_param_list[i].color_primaries &&
+            NI_COL_PRI_UNSPECIFIED != p_api_param_list[i].color_primaries)
+        {
+            ni_log(NI_LOG_DEBUG, "Encoder[%d] user-configured color primaries "
+                   "%d to overwrite source %d\n",
+                   i, p_api_param_list[i].color_primaries, color_prim);
+            color_prim = p_api_param_list[i].color_primaries;
+        }
+
+        // check color transfer characteristic configuration
+        if (color_trc != p_api_param_list[i].color_transfer_characteristic &&
+            NI_COL_TRC_UNSPECIFIED != p_api_param_list[i].color_transfer_characteristic)
+        {
+            ni_log(NI_LOG_DEBUG, "Encoder[%d] user-configured color trc %d to "
+                   "overwrite source %d\n", i,
+                   p_api_param_list[i].color_transfer_characteristic, color_trc);
+            color_trc = p_api_param_list[i].color_transfer_characteristic;
+        }
+
+        // check color space configuration
+        if (color_space != p_api_param_list[i].color_space &&
+            NI_COL_SPC_UNSPECIFIED != p_api_param_list[i].color_space)
+        {
+            ni_log(NI_LOG_DEBUG, "Encoder[%d] user-configured color space %d "
+                   "to overwrite source %d\n",
+                   i, p_api_param_list[i].color_space, color_space);
+            color_space = p_api_param_list[i].color_space;
+        }
+
+        // check video full range flag configuration
+        if (p_api_param_list[i].video_full_range_flag >= 0)
+        {
+            ni_log(NI_LOG_DEBUG, "Encoder[%d] user-configured video full range "
+                   "flag %d\n", i, p_api_param_list[i].video_full_range_flag);
+            video_full_range_flag = p_api_param_list[i].video_full_range_flag;
+        }
+
+        // check aspect ratio indicator configuration
+        if (aspect_ratio_idc > 0 && aspect_ratio_idc < NI_NUM_PIXEL_ASPECT_RATIO)
+        {
+            sar_num = ni_h264_pixel_aspect_list[aspect_ratio_idc].num;
+            sar_den = ni_h264_pixel_aspect_list[aspect_ratio_idc].den;
+        } else if (p_api_param_list[i].sar_denom)
+        {
+            sar_num = p_api_param_list[i].sar_num;
+            sar_den = p_api_param_list[i].sar_denom;
+        }
+
+        // check hwframe configuration
+        if (p_surface[i] != NULL)
+        {
+            //Items in this else condition could be improved by being handled in libxcoder
+            enc_ctx_list[i].hw_action = NI_CODEC_HW_ENABLE;
+            p_api_param_list[i].hwframes = 1;
+            enc_ctx_list[i].sender_handle =
+                (ni_device_handle_t)(int64_t)p_surface[i]->device_handle;
+            p_api_param_list[i].rootBufId = p_surface[i]->ui16FrameIdx;
+        }
+
+        // VUI setting including color setting is done by specifying them in the
+        // encoder config
+        p_api_param_list[i].cfg_enc_params.colorDescPresent = 0;
+        if ((color_prim != NI_COL_PRI_UNSPECIFIED) ||
+            (color_space != NI_COL_SPC_UNSPECIFIED) ||
+            (color_trc != NI_COL_TRC_UNSPECIFIED))
+        {
+            p_api_param_list[i].cfg_enc_params.colorDescPresent = 1;
+        }
+        p_api_param_list[i].cfg_enc_params.colorPrimaries = color_prim;
+        p_api_param_list[i].cfg_enc_params.colorTrc = color_trc;
+        p_api_param_list[i].cfg_enc_params.colorSpace = color_space;
+        p_api_param_list[i].cfg_enc_params.videoFullRange = video_full_range_flag;
+        p_api_param_list[i].cfg_enc_params.aspectRatioWidth = sar_num;
+        p_api_param_list[i].cfg_enc_params.aspectRatioHeight = sar_den;
+
+        ret = encoder_open_session(&enc_ctx_list[i], codec_format, xcoder_guid,
+                                   &p_api_param_list[i], width[i], height[i],
+                                   pix_fmt[i], check_zerocopy);
+        if (ret != 0)
+        {
+            ni_log(NI_LOG_ERROR, "Error encoder[%d] open session failed!\n", i);
+            return -1;
+        }
+
+        ni_init_pts_queue(p_ctx->enc_pts_queue[i]);
+        p_ctx->pts[i] = 0;
+        ni_prepare_pts_queue(p_ctx->enc_pts_queue[i], &p_api_param_list[i], p_ctx->pts[i]);
+    }
+
+    return ret;
+}
+
 int encoder_receive(ni_demo_context_t *p_ctx,
                     ni_session_context_t *enc_ctx_list,
                     ni_session_data_io_t *in_frame,
@@ -2220,7 +2423,7 @@ int encoder_receive(ni_demo_context_t *p_ctx,
 {
     int i, recycle_index;
     int recv_fin_flag = NI_TEST_RETCODE_SUCCESS;
-    uint32_t prev_num_pkt[MAX_OUTPUT_FILES] = {0};
+    uint64_t prev_num_pkt[MAX_OUTPUT_FILES] = {0};
     ni_session_data_io_t *p_out_pkt = pkt;
 
     for (i = 0; i < output_total; i++)
@@ -2247,7 +2450,80 @@ int encoder_receive(ni_demo_context_t *p_ctx,
             ni_hw_frame_unref(recycle_index);
         } else
         {
-            ni_log(NI_LOG_DEBUG, "enc %d recv, prev_num_pkt %u "
+            ni_log(NI_LOG_DEBUG, "enc %d recv, prev_num_pkt %llu "
+                   "number_of_packets_list %u recycle_index %u\n", i,
+                   prev_num_pkt[i], p_ctx->num_packets_received[i], recycle_index);
+        }
+
+        if (prev_num_pkt[i] < p_ctx->num_packets_received[i] &&
+            enc_ctx_list[i].codec_format == NI_CODEC_FORMAT_AV1 &&
+            p_ctx->num_packets_received[i] > 1)
+        {
+            // For low delay mode encoding, only one packet is received for one
+            // frame sent. For non low delay mode, there will be multiple
+            // packets received for one frame sent. So we need to read out all
+            // the packets encoded.
+            ni_xcoder_params_t *p_api_param =
+                (ni_xcoder_params_t *)enc_ctx_list[i].p_session_config;
+            if (!p_api_param->low_delay_mode)
+            {
+                i--;
+                continue;
+            }
+        }
+
+        p_ctx->enc_eos_received[i] = p_out_pkt->data.packet.end_of_stream;
+
+        if (recv_fin_flag < 0)
+        {
+            ni_log(NI_LOG_DEBUG, "enc %d error, quit !\n", i);
+            break;
+        } else if (recv_fin_flag == NI_TEST_RETCODE_EAGAIN)
+        {
+            ni_usleep(100);
+        }
+    }
+
+    return recv_fin_flag;
+}
+
+// encoder_receive2() is used for the encoder with a scaler filter, supporting ladder encoding with multiple resolutions.
+int encoder_receive2(ni_demo_context_t *p_ctx,
+                    ni_session_context_t *enc_ctx_list,
+                    ni_session_data_io_t *in_frame,
+                    ni_session_data_io_t *pkt, int width[], int height[],
+                    int output_total, FILE **pfs_list)
+{
+    int i, recycle_index;
+    int recv_fin_flag = NI_TEST_RETCODE_SUCCESS;
+    uint64_t prev_num_pkt[MAX_OUTPUT_FILES] = {0};
+    ni_session_data_io_t *p_out_pkt = pkt;
+
+    for (i = 0; i < output_total; i++)
+    {
+        if (enc_ctx_list[i].codec_format == NI_CODEC_FORMAT_AV1)
+        {
+            p_out_pkt = &pkt[i];
+        }
+        p_out_pkt->data.packet.end_of_stream = 0;
+        prev_num_pkt[i] = p_ctx->num_packets_received[i];
+
+        p_ctx->curr_enc_index = i;
+        recv_fin_flag = encoder_receive_data(p_ctx, &enc_ctx_list[i], p_out_pkt, width[i],
+                                             height[i], pfs_list[i], in_frame);
+
+        recycle_index = p_out_pkt->data.packet.recycle_index;
+        if (prev_num_pkt[i] < p_ctx->num_packets_received[i] &&
+            enc_ctx_list[i].hw_action && recycle_index > 0 &&
+            recycle_index < NI_GET_MAX_HWDESC_FRAME_INDEX(enc_ctx_list[i].ddr_config))
+        {
+            //encoder only returns valid recycle index
+            //when there's something to recycle.
+            //This range is suitable for all memory bins
+            ni_hw_frame_unref(recycle_index);
+        } else
+        {
+            ni_log(NI_LOG_DEBUG, "enc %d recv, prev_num_pkt %llu "
                    "number_of_packets_list %u recycle_index %u\n", i,
                    prev_num_pkt[i], p_ctx->num_packets_received[i], recycle_index);
         }
@@ -2397,7 +2673,7 @@ void *encoder_send_thread(void *args)
     }
 
     ni_log(NI_LOG_TRACE, "%s exit\n", __func__);
-    return (void *)(long)ret;
+    return (void *)(int64_t)ret;
 }
 
 void *encoder_receive_thread(void *args)
@@ -2458,7 +2734,7 @@ void *encoder_receive_thread(void *args)
     }
 
     ni_log(NI_LOG_TRACE, "%s exit\n", __func__);
-    return (void *)(long)ret;
+    return (void *)(int64_t)ret;
 }
 
 void ni_init_pts_queue(ni_pts_queue *q)
@@ -2475,7 +2751,7 @@ int ni_pts_queue_full(ni_pts_queue *q)
 {
     return q->size == NI_MAX_PTS_QUEUE_SIZE;
 }
-int ni_pts_enqueue(ni_pts_queue *q, int value)
+int ni_pts_enqueue(ni_pts_queue *q, int64_t value)
 {
     if(ni_pts_queue_full(q))
     {
@@ -2488,7 +2764,7 @@ int ni_pts_enqueue(ni_pts_queue *q, int value)
     ++q->size;
     return 1;
 }
-int ni_pts_dequeue(ni_pts_queue *q, int *value)
+int ni_pts_dequeue(ni_pts_queue *q, int64_t *value)
 {
     if(ni_pts_queue_empty(q))
     {

@@ -14,7 +14,9 @@ secure_compile=false;
 build_doxygen=false;
 disable_backtrace_print=false;
 info_level_ssim_log=false;
+enable_cpu_affinity=false;
 setup_systemd=false;
+deprecation_as_error=false;
 RC=0
 
 while [ "$1" != "" ]; do
@@ -24,22 +26,24 @@ while [ "$1" != "" ]; do
                          echo "Example: ./build.sh";
                          echo;
                          echo "Options:";
-                         echo "-h, --help                   display this help and exit";
-                         echo "-w, windows                  compile for Windows";
-                         echo "-a, --android                compile for Android";
-                         echo "-o, --openharmony            compile for openharmony";
-                         echo "-g, --gdb                    compile with gdb debugging (and without -O3 optimizations)";
-                         echo "-k, --with-self-kill         compile with self termination on multiple repeated NVMe errors";
-                         echo "-p, --with-latency-display   compile with per frame latency display";
-                         echo "-d, --with-data-dump         compile with dumping video transcoding data";
+                         echo "-h, --help                       display this help and exit";
+                         echo "-w, windows                      compile for Windows";
+                         echo "-a, --android                    compile for Android";
+                         echo "-o, --openharmony                compile for openharmony";
+                         echo "-g, --gdb                        compile with gdb debugging (and without -O3 optimizations)";
+                         echo "-k, --with-self-kill             compile with self termination on multiple repeated NVMe errors";
+                         echo "-p, --with-latency-display       compile with per frame latency display";
+                         echo "-d, --with-data-dump             compile with dumping video transcoding data";
                          echo "-v, --with-linux-virt-io-driver  compile with vm linux virt-io driver";
                          echo "-l, --with-tracelog-timestamps   compile with microsecond timestamps on tracelogs";
                          echo "-e, --warnings-as-errors         compile with '-Werror'. Deprecation macros disabled";
                          echo "-b, --disable-backtrace-print    complie without print backtrace"
-                         echo "-s, --secure-compile         compile with more foritication such as strong stack protection and RELRO";
+                         echo "-s, --secure-compile             compile with more foritication such as strong stack protection and RELRO";
                          echo "-m, --with-info-level-ssim-log   compile with SSIM logging at info level. Default is at debug level";
+                         echo "-c, --enable-cpu-affinity        compile with cpu affinity on multi-NUMA node linux server. Default is disable";
                          echo "--doxygen                        compile Doxygen (does not compile libxcoder)";
-                         echo "--setup-systemd                  install systemd service to initialize libxcoder"; exit 0
+                         echo "--setup-systemd                  install systemd service to initialize libxcoder";
+                         echo "--deprecation-as-error           compile without deprecated macros, functions and variables"; exit 0
         ;;
         -w | windows)                   target_windows=true
         ;;
@@ -67,9 +71,13 @@ while [ "$1" != "" ]; do
         ;;
         -m | --with-info-level-ssim-log)     info_level_ssim_log=true
         ;;
+        -c | --enable-cpu-affinity)     enable_cpu_affinity=true
+        ;;
         --doxygen)                      build_doxygen=true
         ;;
         --setup-systemd)                setup_systemd=true
+        ;;
+        --deprecation-as-error)         deprecation_as_error=true
         ;;
         *)               echo "Usage: ./build.sh [OPTION]..."; echo "Try './build.sh --help' for more information"; exit 1
         ;;
@@ -153,9 +161,18 @@ if $secure_compile; then
     extra_make_flags="${extra_make_flags} SECURE_COMPILE=TRUE"
 fi
 
+if $enable_cpu_affinity; then
+    extra_config_flags="${extra_config_flags} --enable-cpu-affinity"
+    extra_make_flags="${extra_make_flags} CPU_AFFINITY=TRUE"
+fi
+
 if $setup_systemd; then
     extra_config_flags="${extra_config_flags} --with-setup-systemd"
     extra_make_flags="${extra_make_flags} SETUP_SYSTEMD=TRUE"
+fi
+
+if $deprecation_as_error; then
+    extra_make_flags="${extra_make_flags} DEPRECATION_AS_ERROR=TRUE"
 fi
 
 # configure, build, and install

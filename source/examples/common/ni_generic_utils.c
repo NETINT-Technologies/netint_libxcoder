@@ -257,13 +257,13 @@ uint64_t get_total_file_size(FILE *fp)
 
 int read_and_cache_file(ni_demo_context_t *ctx, char *filename)
 {
-    FILE *fp;
+    FILE *fp = NULL;
     uint64_t total_file_size;
     size_t read_chunk = 4096;
     size_t read_rc;
     uint64_t file_size_left;
 
-    fp = fopen(filename, "rb");
+    ni_fopen(&fp, filename, "rb");
     if (!fp)
     {
         ni_log(NI_LOG_ERROR, "Error: Failed to open file %s\n", filename);
@@ -394,10 +394,10 @@ uint32_t read_next_chunk_from_file(ni_demo_context_t *p_ctx, FILE *fp,
         }
     } else if (data_left_size < to_read)
     {
-        to_read = data_left_size;
+        to_read = (uint32_t)data_left_size;
     }
 
-    int read_rc = fread(p_dst, to_read, 1, fp);
+    size_t read_rc = fread(p_dst, to_read, 1, fp);
     if (read_rc != 1)
     {
         ni_log(NI_LOG_ERROR, "Error: Failed to read input file, %lu bytes left to read\n",
@@ -962,7 +962,7 @@ niFrameSurface1_t *hwupload_frame(ni_demo_context_t *p_ctx,
         ni_log(NI_LOG_DEBUG, "No space to write to, try to read a packet\n");
         //file was read so reset read pointer and try again
         rewind_data_buf_pos_by(p_ctx, chunk_size);
-        fseek(pfs, p_ctx->curr_file_offset, SEEK_SET);
+        fseek(pfs, (long)p_ctx->curr_file_offset, SEEK_SET);
         return NULL;
     } else if (ret)
     {

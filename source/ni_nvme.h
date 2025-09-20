@@ -424,6 +424,7 @@ typedef enum _nvme_config_xcoder_config_instance_subtype
     nvme_config_xcoder_config_set_scaler_params = 0x0005,
     nvme_config_xcoder_config_set_scaler_drawbox_params = 0x0006,
     nvme_config_xcoder_config_set_p2p_params = 0x0006, // ep/uploader
+    nvme_config_xcoder_config_set_ppu_params = 0x0006, // dp
     nvme_config_xcoder_config_flush = 0x0007,
     nvme_config_xcoder_config_set_upload_load = 0x0007,
     nvme_config_xcoder_config_hvsplus = 0x0007,
@@ -808,6 +809,8 @@ int32_t ni_nvme_send_io_pass_through_command(ni_device_handle_t fd, ni_nvme_pass
 
 #define CONFIG_INSTANCE_SetDecPara_W(sid,instance)      HIGH_OFFSET_IN_4K(sid,instance) + CTL_OFFSET_IN_4K(GAP(nvme_admin_cmd_xcoder_config),  \
                                                             nvme_config_xcoder_config_instance,nvme_config_xcoder_config_set_dec_params)
+#define CONFIG_INSTANCE_SetDecPpuPara_W(sid,instance)   HIGH_OFFSET_IN_4K(sid,instance) + CTL_OFFSET_IN_4K(GAP(nvme_admin_cmd_xcoder_config),  \
+                                                            nvme_config_xcoder_config_instance,nvme_config_xcoder_config_set_ppu_params)
 #define CONFIG_INSTANCE_SetScalerPara_W(sid, instance)                         \
     HIGH_OFFSET_IN_4K(sid, instance) +                                         \
         CTL_OFFSET_IN_4K(GAP(nvme_admin_cmd_xcoder_config),                    \

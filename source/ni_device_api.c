@@ -167,7 +167,12 @@ ni_retcode_t ni_device_session_context_init(ni_session_context_t *p_ctx)
     if (p_ctx->session_run_state == SESSION_RUN_STATE_SEQ_CHANGE_DRAINING)
     {
         // session context will reset so save the last values for sequence change
-        bitrate = p_ctx->last_bitrate;
+        if (p_ctx->last_bitrate < NI_MIN_BITRATE)
+            bitrate = NI_MIN_BITRATE;
+        else if (p_ctx->last_bitrate > NI_MAX_BITRATE)
+            bitrate = NI_MAX_BITRATE;
+        else
+            bitrate = p_ctx->last_bitrate;
         framerate_num = p_ctx->last_framerate.framerate_num;
         framerate_denom = p_ctx->last_framerate.framerate_denom;
     }
@@ -223,9 +228,10 @@ ni_retcode_t ni_device_session_context_init(ni_session_context_t *p_ctx)
     p_ctx->async_mode = 0;
     p_ctx->pixel_format = NI_PIX_FMT_YUV420P;
     p_ctx->buffered_frame_index = 0;
+    p_ctx->ppu_reconfig_pkt_pos = 0;
     // by default, select the least model load card
-    strncpy(p_ctx->dev_xcoder_name, NI_BEST_MODEL_LOAD_STR,
-            MAX_CHAR_IN_DEVICE_NAME);
+    ni_strncpy(p_ctx->dev_xcoder_name, MAX_CHAR_IN_DEVICE_NAME, NI_BEST_MODEL_LOAD_STR,
+            (MAX_CHAR_IN_DEVICE_NAME-1));
 #ifdef MY_SAVE
     p_ctx->debug_write_ptr = NULL;
     p_ctx->debug_write_index_ptr = NULL;
@@ -325,21 +331,21 @@ void ni_close_event(ni_event_handle_t event_handle)
   {
       char error_message[100] = {'\0'};
       char unknown_error_message[20] = {'\0'};
-      sprintf(error_message, "ERROR: %s(): ", __func__);
+      ni_sprintf(error_message, 100, "ERROR: %s(): ", __func__);
       switch (err)
       {
           case EBADF:
-              strcat(error_message, "EBADF\n");
+              ni_strcat(error_message, 100, "EBADF\n");
               break;
           case EINTR:
-              strcat(error_message, "EINTR\n");
+              ni_strcat(error_message, 100, "EINTR\n");
               break;
           case EIO:
-              strcat(error_message, "EIO\n");
+              ni_strcat(error_message, 100, "EIO\n");
               break;
           default:
-              sprintf(unknown_error_message, "Unknown error %d\n", err);
-              strcat(error_message, unknown_error_message);
+              ni_sprintf(unknown_error_message, 20, "Unknown error %d\n", err);
+              ni_strcat(error_message, 100, unknown_error_message);
       }
       ni_log(NI_LOG_ERROR, "%s\n", error_message);
   }
@@ -423,8 +429,10 @@ ni_device_handle_t ni_device_open(const char * p_dev, uint32_t * p_max_io_size_o
 
     if (fd < 0)
     {
+            char errmsg[NI_ERRNO_LEN] = {0};
+            ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
             ni_log(NI_LOG_ERROR, "ERROR: %d %s open() failed on %s\n", NI_ERRNO,
-                   strerror(NI_ERRNO), p_dev);
+                   errmsg, p_dev);
             ni_log(NI_LOG_ERROR, "ERROR: %s() failed!\n", __func__);
             fd = NI_INVALID_DEVICE_HANDLE;
             LRETURN;
@@ -546,29 +554,32 @@ void ni_device_close(ni_device_handle_t device_handle)
   {
       char error_message[100] = {'\0'};
       char unknown_error_message[20] = {'\0'};
-      sprintf(error_message, "ERROR: %s(): ", __func__);
+      ni_sprintf(error_message, 100, "ERROR: %s(): ", __func__);
       switch (errno)
       {
           case EBADF:
-              strcat(error_message, "EBADF\n");
+              ni_strcat(error_message, 100, "EBADF\n");
               break;
           case EINTR:
-              strcat(error_message, "EINTR\n");
+              ni_strcat(error_message, 100, "EINTR\n");
               break;
           case EIO:
-              strcat(error_message, "EIO\n");
+              ni_strcat(error_message, 100, "EIO\n");
               break;
           default:
-              sprintf(unknown_error_message, "Unknown error %d\n", err);
-              strcat(error_message, unknown_error_message);
+              ni_sprintf(unknown_error_message, 20, "Unknown error %d\n", err);
+              ni_strcat(error_message, 100, unknown_error_message);
       }
-      ni_log(NI_LOG_ERROR, "%s\n", strerror(errno));
+      char errmsg[NI_ERRNO_LEN] = {0};
+      ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
+      ni_log(NI_LOG_ERROR, "%s\n", errmsg);
       ni_log(NI_LOG_ERROR, "%s\n", error_message);
   }
 #endif
   ni_log(NI_LOG_TRACE, "%s(): exit\n", __func__);
 }
 
+#ifndef DEPRECATION_AS_ERROR
 /*!*****************************************************************************
  *  \brief  Query device and return device capability structure
  *          This function had been replaced by ni_device_capability_query2
@@ -627,6 +638,7 @@ END:
 
     return retval;
 }
+#endif
 
 /*!*****************************************************************************
  *  \brief  Query device and return device capability structure
@@ -892,8 +904,8 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
           p_ctx->blk_io_handle = handle;
           p_ctx->max_nvme_io_size = dummy_io_size;
           handle1 = handle;
-          strcpy(p_ctx->dev_xcoder_name, rsrc_ctx->p_device_info->dev_name);
-          strcpy(p_ctx->blk_xcoder_name, rsrc_ctx->p_device_info->blk_name);
+          ni_strcpy(p_ctx->dev_xcoder_name, MAX_CHAR_IN_DEVICE_NAME, rsrc_ctx->p_device_info->dev_name);
+          ni_strcpy(p_ctx->blk_xcoder_name, MAX_CHAR_IN_DEVICE_NAME, rsrc_ctx->p_device_info->blk_name);
           ni_rsrc_free_device_context(rsrc_ctx);
       }
 #else
@@ -911,8 +923,8 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
         p_ctx->device_handle = handle;
         p_ctx->blk_io_handle = handle1;
         // NOLINTNEXTLINE(clang-analyzer-core.NonNullParamChecker): Couldn't determine why it will be NULL.
-        strcpy(p_ctx->dev_xcoder_name, rsrc_ctx->p_device_info->dev_name);
-        strcpy(p_ctx->blk_xcoder_name, rsrc_ctx->p_device_info->blk_name);
+        ni_strcpy(p_ctx->dev_xcoder_name, MAX_CHAR_IN_DEVICE_NAME, rsrc_ctx->p_device_info->dev_name);
+        ni_strcpy(p_ctx->blk_xcoder_name, MAX_CHAR_IN_DEVICE_NAME, rsrc_ctx->p_device_info->blk_name);
 
         ni_rsrc_free_device_context(rsrc_ctx);
       }
@@ -1056,8 +1068,8 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
         p_ctx->max_nvme_io_size = dummy_io_size;
         handle1 = handle;
         p_ctx->hw_id = guid;
-        strcpy(p_ctx->dev_xcoder_name, dev_info.dev_name);
-        strcpy(p_ctx->blk_xcoder_name, dev_info.blk_name);
+        ni_strcpy(p_ctx->dev_xcoder_name, MAX_CHAR_IN_DEVICE_NAME, dev_info.dev_name);
+        ni_strcpy(p_ctx->blk_xcoder_name, MAX_CHAR_IN_DEVICE_NAME, dev_info.blk_name);
       }
 #else
       //The original design (code below) is to open char and block device file separately. And the ffmpeg will close the device twice.
@@ -1078,8 +1090,8 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
         p_ctx->device_handle = handle;
         p_ctx->blk_io_handle = handle1;
         p_ctx->hw_id = guid;
-        strcpy(p_ctx->dev_xcoder_name, dev_info.dev_name);
-        strcpy(p_ctx->blk_xcoder_name, dev_info.blk_name);
+        ni_strcpy(p_ctx->dev_xcoder_name, MAX_CHAR_IN_DEVICE_NAME, dev_info.dev_name);
+        ni_strcpy(p_ctx->blk_xcoder_name, MAX_CHAR_IN_DEVICE_NAME, dev_info.blk_name);
       }
 #endif
     }
@@ -1123,7 +1135,7 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
   if (!(strcmp(p_ctx->dev_xcoder_name, "")) || !(strcmp(p_ctx->dev_xcoder_name, NI_BEST_MODEL_LOAD_STR)) ||
       !(strcmp(p_ctx->dev_xcoder_name, NI_BEST_REAL_LOAD_STR)))
   {
-      strcpy(p_ctx->dev_xcoder_name, p_device_context->p_device_info->dev_name);
+      ni_strcpy(p_ctx->dev_xcoder_name, MAX_CHAR_IN_DEVICE_NAME, p_device_context->p_device_info->dev_name);
   }
 
   memcpy(p_ctx->fw_rev , p_device_context->p_device_info->fw_rev, 8);
@@ -4314,6 +4326,7 @@ ni_retcode_t ni_encoder_init_default_params(ni_xcoder_params_t *p_param,
   p_param->zerocopy_mode = 1;
   p_param->luma_linesize = 0;
   p_param->chroma_linesize = 0;
+  p_param ->enableCpuAffinity = 0;
 
   p_enc->preferred_transfer_characteristics = -1;
 
@@ -4434,7 +4447,7 @@ ni_retcode_t ni_encoder_init_default_params(ni_xcoder_params_t *p_param,
   p_enc->tune_bframe_visual = 0;
   p_enc->enable_acq_limit = 0;
   p_enc->get_psnr_mode = 3;
-  p_enc->customize_roi_qp_level = 0;
+  p_enc->customize_roi_qp_level = NI_CUS_ROI_DISABLE;
   p_enc->motionConstrainedMode = 0;
   p_enc->still_image_detect_level = 0;
   p_enc->scene_change_detect_level = 0;
@@ -4445,9 +4458,11 @@ ni_retcode_t ni_encoder_init_default_params(ni_xcoder_params_t *p_param,
   p_enc->enable_timecode = 0;
   p_enc->spatial_layers_ref_base_layer = 0;
   p_enc->vbvBufferReencode = 0;
+  p_enc->disableAv1TimingInfo = 0;
   for (i = 0; i < NI_MAX_SPATIAL_LAYERS; i++)
   {
     p_enc->spatialLayerBitrate[i] = 0;
+    p_enc->av1OpLevel[i] = 0;
   }
 
   if (codec_format == NI_CODEC_FORMAT_AV1)
@@ -4493,12 +4508,12 @@ ni_retcode_t ni_encoder_init_default_params(ni_xcoder_params_t *p_param,
 
   if (codec_format == NI_CODEC_FORMAT_JPEG)
   {
-      if (p_param->source_width < NI_PARAM_JPEG_MIN_WIDTH)
+      if (p_param->source_width < NI_MIN_WIDTH)
       {
           retval = NI_RETCODE_PARAM_ERROR_WIDTH_TOO_SMALL;
           LRETURN;
       }
-      if (p_param->source_height < NI_PARAM_JPEG_MIN_HEIGHT)
+      if (p_param->source_height < NI_MIN_HEIGHT)
       {
           retval = NI_RETCODE_PARAM_ERROR_HEIGHT_TOO_SMALL;
           LRETURN;
@@ -4692,7 +4707,7 @@ ni_retcode_t ni_parse_reconf_file(const char *reconf_file,
       return NI_RETCODE_INVALID_PARAM;
   }
 
-  reconf = fopen(reconf_file, "r");
+  ni_fopen(&reconf, reconf_file, "r");
   if (!reconf)
   {
       ni_log(NI_LOG_ERROR, "ERROR %d: %s(): Cannot open reconfig_file: %s\n",
@@ -4708,11 +4723,11 @@ ni_retcode_t ni_parse_reconf_file(const char *reconf_file,
     {
       if (parseKey)
       {
-        strncat(keyChar, (const char *)(&readc), 1);
+        ni_strncat(keyChar, 10, (const char *)(&readc), 1);
       }
       else
       {
-        strncat(valChar, (const char *)(&readc), 1);
+        ni_strncat(valChar, 10, (const char *)(&readc), 1);
       }
     }
     else if (readc == ':')
@@ -4794,7 +4809,7 @@ ni_retcode_t ni_parse_customize_qpoffset_file(const char *customize_file,
     return NI_RETCODE_INVALID_PARAM;
   }
 
-  reconf = fopen(customize_file, "r");
+  ni_fopen(&reconf, customize_file, "r");
   if (!reconf)
   {
     ni_log(NI_LOG_ERROR, "ERROR %d: %s(): Cannot open reconfig_file: %s\n",
@@ -4808,7 +4823,7 @@ ni_retcode_t ni_parse_customize_qpoffset_file(const char *customize_file,
     //parse lines
     if (isdigit(readc))
     {
-      strncat(valChar, (const char *)(&readc), 1);
+      ni_strncat(valChar, 5, (const char *)(&readc), 1);
     }
     else if (readc == '-') {
       negative = 1;
@@ -4929,7 +4944,7 @@ ni_retcode_t ni_decoder_params_set_value(ni_xcoder_params_t *p_params,
   if (strlen(name) + 1 < sizeof(nameBuf) && strchr(name, '_'))
   {
       char* c;
-      strcpy(nameBuf, name);
+      ni_strcpy(nameBuf, sizeof(nameBuf), name);
       while ((c = strchr(nameBuf, '_')) != 0)
       {
           *c = '-';
@@ -5079,11 +5094,11 @@ ni_retcode_t ni_decoder_params_set_value(ni_xcoder_params_t *p_params,
       }
       else if (i == 2 ) //default offsets to centered image if not specified, may need recalc
       {
-        strcpy(p_dec->cr_expr[0][i], "in_w/2-out_w/2");
+        ni_strcpy(p_dec->cr_expr[0][i], sizeof(p_dec->cr_expr[0][i]), "in_w/2-out_w/2");
       }
       else if (i == 3)
       {
-        strcpy(p_dec->cr_expr[0][i], "in_h/2-out_h/2");
+        ni_strcpy(p_dec->cr_expr[0][i], sizeof(p_dec->cr_expr[0][i]), "in_h/2-out_h/2");
       } else
       {
         return NI_RETCODE_PARAM_INVALID_VALUE;
@@ -5115,12 +5130,11 @@ ni_retcode_t ni_decoder_params_set_value(ni_xcoder_params_t *p_params,
       }
       else if (i == 2) //default offsets to centered image if not specified, may need recalc
       {
-
-        strcpy(p_dec->cr_expr[1][i], "in_w/2-out_w/2");
+        ni_strcpy(p_dec->cr_expr[1][i], sizeof(p_dec->cr_expr[1][i]), "in_w/2-out_w/2");
       }
       else if (i == 3)
       {
-        strcpy(p_dec->cr_expr[1][i], "in_h/2-out_h/2");
+        ni_strcpy(p_dec->cr_expr[1][i], sizeof(p_dec->cr_expr[1][i]), "in_h/2-out_h/2");
       }
       else
       {
@@ -5153,12 +5167,11 @@ ni_retcode_t ni_decoder_params_set_value(ni_xcoder_params_t *p_params,
       }
       else if (i == 2) //default offsets to centered image if not specified, may need recalc
       {
-
-        strcpy(p_dec->cr_expr[2][i], "in_w/2-out_w/2");
+        ni_strcpy(p_dec->cr_expr[2][i], sizeof(p_dec->cr_expr[2][i]), "in_w/2-out_w/2");
       }
       else if (i == 3)
       {
-        strcpy(p_dec->cr_expr[2][i], "in_h/2-out_h/2");
+        ni_strcpy(p_dec->cr_expr[2][i], sizeof(p_dec->cr_expr[2][i]), "in_h/2-out_h/2");
       }
       else
       {
@@ -5607,6 +5620,14 @@ ni_retcode_t ni_decoder_params_set_value(ni_xcoder_params_t *p_params,
       }
       p_dec->skip_extra_headers = atoi(value);
   }
+  OPT(NI_DEC_PARAM_ENABLE_CPU_AFFINITY)
+  {
+    if ((atoi(value) != 0) && (atoi(value) != 1))
+    {
+      return NI_RETCODE_PARAM_ERROR_OOR;
+    }
+    p_params->enableCpuAffinity = atoi(value);
+  }
   else
   {
     return NI_RETCODE_PARAM_INVALID_NAME;
@@ -5679,7 +5700,7 @@ ni_retcode_t ni_encoder_params_set_value(ni_xcoder_params_t *p_params,
   if (strlen(name) + 1 < sizeof(nameBuf) && strchr(name, '_'))
   {
       char* c;
-      strcpy(nameBuf, name);
+      ni_strcpy(nameBuf, sizeof(nameBuf), name);
       while ((c = strchr(nameBuf, '_')) != 0)
       {
           *c = '-';
@@ -5766,6 +5787,7 @@ ni_retcode_t ni_encoder_params_set_value(ni_xcoder_params_t *p_params,
   {
     p_params->padding = atoi(value);
   }
+#ifndef DEPRECATION_AS_ERROR
   OPT( NI_ENC_PARAM_GEN_HDRS )
   {
       if (0 != atoi(value) && 1 != atoi(value))
@@ -5776,6 +5798,7 @@ ni_retcode_t ni_encoder_params_set_value(ni_xcoder_params_t *p_params,
       // genHdrs is deprecated in favour of libavcodec parameter -gen_global_headers
       return NI_RETCODE_PARAM_WARNING_DEPRECATED;
   }
+#endif
   OPT(NI_ENC_PARAM_USE_LOW_DELAY_POC_TYPE)
   {
       if (0 != atoi(value) && 1 != atoi(value))
@@ -5959,6 +5982,7 @@ ni_retcode_t ni_encoder_params_set_value(ni_xcoder_params_t *p_params,
     }
     p_enc->rc.max_delta_qp = atoi(value);
   }
+#ifndef DEPRECATION_AS_ERROR
   OPT(NI_ENC_PARAM_CONSTANT_RATE_FACTOR)
   {
     if ((atoi(value) > 51) || (atoi(value) < -1))
@@ -5967,6 +5991,7 @@ ni_retcode_t ni_encoder_params_set_value(ni_xcoder_params_t *p_params,
     }
     p_enc->crf = atoi(value);
   }
+#endif
   OPT( NI_ENC_PARAM_RC_INIT_DELAY )
   {
     p_enc->rc.vbv_buffer_size = atoi(value);
@@ -6006,7 +6031,11 @@ ni_retcode_t ni_encoder_params_set_value(ni_xcoder_params_t *p_params,
     // Currenly pic skip is supported for low delay gops only - pic skip issues tracked by QDFW-1785/1958
     p_enc->rc.enable_pic_skip = atoi(value);
   }
+#ifndef DEPRECATION_AS_ERROR
   OPT2(NI_ENC_PARAM_MAX_FRAME_SIZE_LOW_DELAY, NI_ENC_PARAM_MAX_FRAME_SIZE_BYTES_LOW_DELAY)
+#else
+  OPT(NI_ENC_PARAM_MAX_FRAME_SIZE_BYTES_LOW_DELAY)
+#endif
   {
 #ifdef _MSC_VER
       if (!_strnicmp(value, "ratio", 5))
@@ -6966,7 +6995,7 @@ ni_retcode_t ni_encoder_params_set_value(ni_xcoder_params_t *p_params,
   }
   OPT(NI_ENC_PARAM_STATISTIC_OUTPUT_LEVEL)
   {
-    if (atoi(value) < 0 || atoi(value) > 1)
+    if (atoi(value) != 0 && atoi(value) != 1 && atoi(value) != 6)
     {
       return NI_RETCODE_PARAM_ERROR_OOR;
     }
@@ -7105,11 +7134,11 @@ ni_retcode_t ni_encoder_params_set_value(ni_xcoder_params_t *p_params,
   }
   OPT(NI_ENC_PARAM_CUSTOMIZE_ROI_QP_LEVEL)
   {
-    if (atoi(value) < 0 || atoi(value) > 1)
+    if (atoi(value) < NI_CUS_ROI_DISABLE || atoi(value) > NI_CUS_ROI_MERGE)
     {
       return NI_RETCODE_PARAM_ERROR_OOR;
     }
-    p_enc->customize_roi_qp_level = atoi(value);
+    p_enc->customize_roi_qp_level += atoi(value);
   }
   OPT(NI_ENC_PARAM_CUSTOMIZE_ROI_QP_MAP)
   {
@@ -7243,6 +7272,52 @@ ni_retcode_t ni_encoder_params_set_value(ni_xcoder_params_t *p_params,
     }
     free(v);
   }
+  OPT(NI_ENC_PARAM_AV1_OP_LEVEL)
+  {
+    const char delim[2] = ",";
+    char *chunk;
+#ifdef _MSC_VER
+    char *v = _strdup(value);
+#else
+    char *v = strdup(value);
+#endif
+    char *saveptr = NULL;
+    i = 0;
+    chunk = ni_strtok(v, delim, &saveptr);
+    while (chunk != NULL && i < NI_MAX_SPATIAL_LAYERS)
+    {
+      /*! allow "5.1" or "51", both converted to integer 51 */
+      /*! if level-idc specifies an obviously wrong value in either float or int,
+      throw error consistently. Stronger level checking will be done in encoder_open() */
+      if (atof(chunk) <= 10)
+      {
+        p_enc->av1OpLevel[i] = (int)(10 * atof(chunk) + .5);
+      }
+      else
+      {
+        p_enc->av1OpLevel[i] = atoi(chunk);
+      }
+      chunk = ni_strtok(NULL, delim, &saveptr);
+      i++;
+    }
+    free(v);
+  }
+  OPT(NI_ENC_PARAM_DISABLE_AV1_TIMING_INFO)
+  {
+    if ((atoi(value) != 0) && (atoi(value) != 1))
+    {
+        return NI_RETCODE_PARAM_ERROR_OOR;
+    }
+    p_enc->disableAv1TimingInfo = atoi(value);
+  }
+  OPT(NI_ENC_PARAM_ENABLE_CPU_AFFINITY)
+  {
+    if ((atoi(value) != 0) && (atoi(value) != 1))
+    {
+      return NI_RETCODE_PARAM_ERROR_OOR;
+    }
+    p_params->enableCpuAffinity = atoi(value);
+  }
   else { return NI_RETCODE_PARAM_INVALID_NAME; }
 
 #undef OPT
@@ -7318,7 +7393,7 @@ ni_retcode_t ni_encoder_gop_params_set_value(ni_xcoder_params_t *p_params,
   if (strlen(name) + 1 < sizeof(nameBuf) && strchr(name, '_'))
   {
       char* c;
-      strcpy(nameBuf, name);
+      ni_strcpy(nameBuf, sizeof(nameBuf), name);
       while ((c = strchr(nameBuf, '_')) != 0)
       {
           *c = '-';
@@ -9663,10 +9738,12 @@ ni_retcode_t ni_ai_config_network_binary(ni_session_context_t *p_ctx,
     p_ctx->xcoder_state |= NI_XCODER_GENERAL_STATE;
     ni_pthread_mutex_unlock(&p_ctx->mutex);
 
+    char errmsg[NI_ERRNO_LEN] = {0};
     if (stat(file, &file_stat) != 0)
     {
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         ni_log2(p_ctx, NI_LOG_ERROR,  "%s: failed to get network binary file stat, %s\n",
-               __func__, strerror(NI_ERRNO));
+               __func__, errmsg);
         retval = NI_RETCODE_FAILURE;
         LRETURN;
     }
@@ -9678,11 +9755,12 @@ ni_retcode_t ni_ai_config_network_binary(ni_session_context_t *p_ctx,
         LRETURN;
     }
 
-    fp = fopen(file, "rb");
+    ni_fopen(&fp, file, "rb");
     if (!fp)
     {
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         ni_log2(p_ctx, NI_LOG_ERROR,  "%s: failed to open network binary, %s\n", __func__,
-                       strerror(NI_ERRNO));
+                       errmsg);
         retval = NI_RETCODE_FAILURE;
         LRETURN;
     }
@@ -10875,10 +10953,12 @@ ni_retcode_t ni_uploader_frame_buffer_lock(ni_session_context_t *p_upl_ctx,
     pfds[0].revents = 0;
 
     ret = poll(pfds, 1, -1);
+    char errmsg[NI_ERRNO_LEN] = {0};
     if (ret < 0)
     {
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         ni_log2(p_upl_ctx, NI_LOG_ERROR,  "%s:failed to poll dmabuf fd errno %s\n", __func__,
-               strerror(NI_ERRNO));
+               errmsg);
         return ret;
     }
 
@@ -10886,9 +10966,10 @@ ni_retcode_t ni_uploader_frame_buffer_lock(ni_session_context_t *p_upl_ctx,
     ret = ioctl(p_upl_ctx->netint_fd, NETINT_IOCTL_ATTACH_RFENCE, &uatch);
     if (ret < 0)
     {
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         ni_log2(p_upl_ctx, NI_LOG_ERROR,
                "%s: failed to attach dmabuf read fence errno %s\n", __func__,
-               strerror(NI_ERRNO));
+               errmsg);
         return ret;
     }
 
@@ -11035,17 +11116,20 @@ ni_retcode_t ni_uploader_p2p_test_load(ni_session_context_t *p_upl_ctx,
 
     bar4_fd = open(bar4_name, O_RDWR | O_SYNC);
 
+    char errmsg[NI_ERRNO_LEN] = {0};
     if (bar4_fd < 0)
     {
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         ni_log2(p_upl_ctx, NI_LOG_ERROR, "Can't open bar4 %s (%s)\n",
-                bar4_name, strerror(errno));
+                bar4_name, errmsg);
         return NI_RETCODE_FAILURE;
     }
 
     if (fstat(bar4_fd, &stat) != 0)
     {
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         ni_log2(p_upl_ctx, NI_LOG_ERROR, "Can't stat bar4 (%s)\n",
-                strerror(errno));
+                errmsg);
         close(bar4_fd);
         return NI_RETCODE_FAILURE;
     }
@@ -11054,8 +11138,9 @@ ni_retcode_t ni_uploader_p2p_test_load(ni_session_context_t *p_upl_ctx,
 
     if (bar4_mm == MAP_FAILED)
     {
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         ni_log2(p_upl_ctx, NI_LOG_ERROR, "Can't mmap to bar4 (%s)\n",
-                strerror(errno));
+                errmsg);
         close(bar4_fd);
         return NI_RETCODE_FAILURE;
     }
@@ -11142,7 +11227,9 @@ ni_retcode_t ni_scaler_p2p_frame_acquire(ni_session_context_t *p_ctx,
     ret = ioctl(p_ctx->netint_fd, NETINT_IOCTL_EXPORT_DMABUF, &uexp);
     if (ret < 0)
     {
-        ni_log2(p_ctx, NI_LOG_ERROR,  "failed to export dmabuf: %s\n", strerror(errno));
+        char errmsg[NI_ERRNO_LEN] = {0};
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
+        ni_log2(p_ctx, NI_LOG_ERROR,  "failed to export dmabuf: %s\n", errmsg);
         return NI_RETCODE_FAILURE;
     }
     p_surface->dma_buf_fd = uexp.fd;
@@ -11854,7 +11941,8 @@ ni_retcode_t ni_set_demo_roi_map(ni_session_context_t *p_enc_ctx)
 {
   ni_xcoder_params_t *p_param =
     (ni_xcoder_params_t *)(p_enc_ctx->p_session_config);
-  int sumQp = 0, ctu, i, j;
+  int sumQp = 0;
+  uint32_t ctu, i, j;
   // mode 1: Set QP for center 1/3 of picture to highest - lowest quality
   // the rest to lowest - highest quality;
   // mode non-1: reverse of mode 1
@@ -12019,7 +12107,7 @@ ni_retcode_t ni_set_demo_roi_map(ni_session_context_t *p_enc_ctx)
       uint8_t *ptr = &p_enc_ctx->hevc_sub_ctu_roi_buf[subCtuWidth * i * 2];
       for (j = 0; j < ctuWidth; j++, ptr += 2)
       {
-        ctu = (int)(i * ctuWidth + j);
+        ctu = (i * ctuWidth + j);
         p_enc_ctx->hevc_roi_map[ctu].field.sub_ctu_qp_0 = *ptr;
         p_enc_ctx->hevc_roi_map[ctu].field.sub_ctu_qp_1 = *(ptr + 1);
         p_enc_ctx->hevc_roi_map[ctu].field.sub_ctu_qp_2 =
@@ -12873,6 +12961,7 @@ bool ni_gop_params_check(ni_xcoder_params_t *p_param)
   return true;
 }
 
+#ifndef DEPRECATION_AS_ERROR
 /*!*****************************************************************************
  *  \brief   Initiate P2P transfer (P2P write) (deprecated)
  *
@@ -12897,6 +12986,7 @@ NI_DEPRECATED ni_retcode_t ni_p2p_xfer(ni_session_context_t *pSession,
 
     return NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION;
 }
+#endif
 
 /*!*****************************************************************************
  *  \brief   Initiate P2P transfer (P2P write)
@@ -13087,4 +13177,104 @@ ni_retcode_t ni_device_session_restart(ni_session_context_t *p_ctx,
         }
     }
     return retval;
+}
+
+/*!******************************************************************************
+*  \brief  Send a p_config command to reconfigure decoding ppu params.
+*
+*  \param   ni_session_context_t p_session_ctx - xcoder Context
+*  \param   ni_xcoder_params_t p_param - xcoder Params
+*  \param   ni_ppu_config_t p_ppu_config - Struct ni_ppu_config
+*
+*  \return - NI_RETCODE_SUCCESS on success, NI_RETCODE_ERROR_INVALID_SESSION, NI_RETCODE_ERROR_NVME_CMD_FAILED on failure
+*******************************************************************************/
+ni_retcode_t ni_dec_reconfig_ppu_params(ni_session_context_t *p_session_ctx,
+                      ni_xcoder_params_t *p_param, ni_ppu_config_t *p_ppu_config)
+{
+    int ret = 0, i = 0;
+    if (!p_session_ctx || !p_param || !p_ppu_config)
+    {
+        ret = NI_RETCODE_PARAM_INVALID_VALUE;
+        return ret;
+    }
+    if (p_session_ctx->ppu_reconfig_pkt_pos != 0)
+    {
+      ni_log2(p_session_ctx, NI_LOG_ERROR,  "%s: Warning ignore ppu reconfig before last config done!\n", __func__);
+      return 0;
+    }
+
+    // check fw revision
+    if (ni_cmp_fw_api_ver(
+            (char*) &p_session_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+            "6sF") < 0)
+    {
+        ni_log2(p_session_ctx, NI_LOG_ERROR,  "%s: not supported on device with FW API version < 6sF\n", __func__);
+        return NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION;
+    }
+
+    if (NI_CODEC_FORMAT_H264 != p_session_ctx->codec_format &&
+        NI_CODEC_FORMAT_H265 != p_session_ctx->codec_format)
+    {
+        ni_log2(p_session_ctx, NI_LOG_ERROR, "%s(): only supported for h264 and h265 decoder\n", __func__);
+        return NI_RETCODE_PARAM_INVALID_VALUE;
+    }
+
+    ni_decoder_input_params_t *p_dec_input_param = &(p_param->dec_input_params);
+    if (p_dec_input_param->hwframes != 1)
+    {
+        ni_log2(p_session_ctx, NI_LOG_ERROR, "%s(): only supported for hw mode\n", __func__);
+        return NI_RETCODE_PARAM_INVALID_VALUE;
+    }
+    if (!p_dec_input_param->disable_adaptive_buffers)
+    {
+        ni_log2(p_session_ctx, NI_LOG_ERROR, "%s(): not supported when disable_adaptive_buffers is disabled\n", __func__);
+        return NI_RETCODE_PARAM_INVALID_VALUE;
+    }
+    if (p_dec_input_param->mcmode)
+    {
+        ni_log2(p_session_ctx, NI_LOG_ERROR, "%s(): not supported when MulticoreJointMode is enabled\n", __func__);
+        return NI_RETCODE_PARAM_INVALID_VALUE;
+    }
+    if (p_dec_input_param->enable_out1 == 0 &&
+            p_ppu_config->ppu_set_enable & (0x01 << 1))
+    {
+        ni_log2(p_session_ctx, NI_LOG_ERROR, "%s(): Error reconfig ppu1 while ppu1 is not enabled\n", __func__);
+        return NI_RETCODE_PARAM_INVALID_VALUE;
+    }
+    if (p_dec_input_param->enable_out2 == 0 &&
+            p_ppu_config->ppu_set_enable & (0x01 << 2))
+    {
+        ni_log2(p_session_ctx, NI_LOG_ERROR, "%s(): Error reconfig ppu2 while ppu2 is not enabled\n", __func__);
+        return NI_RETCODE_PARAM_INVALID_VALUE;
+    }
+    for (i = 0; i < NI_MAX_NUM_OF_DECODER_OUTPUTS; i++)
+    {
+        if (p_ppu_config->ppu_set_enable & (0x01 << i))
+        {
+            if (p_ppu_config->ppu_w[i] > NI_MAX_RESOLUTION_WIDTH ||
+                p_ppu_config->ppu_h[i] > NI_MAX_RESOLUTION_HEIGHT ||
+                p_ppu_config->ppu_w[i] < NI_MIN_RESOLUTION_WIDTH_SCALER ||
+                p_ppu_config->ppu_h[i] < NI_MIN_RESOLUTION_WIDTH_SCALER)
+            {
+                ni_log2(p_session_ctx, NI_LOG_ERROR, "%s(): ppu[%d] width x height %ux%u "
+                        "out of range\n", __func__, i, p_ppu_config->ppu_w[i], p_ppu_config->ppu_h[i]);
+                ret = NI_RETCODE_PARAM_INVALID_VALUE;
+                return ret;
+            }
+            if ((p_ppu_config->ppu_w[i] & 1) || (p_ppu_config->ppu_h[i] & 1))
+            {
+                ni_log2(p_session_ctx, NI_LOG_ERROR, "%s(): ppu[%d] wxh %dx%d not align to 2!\n",
+                            __func__, i, p_ppu_config->ppu_w[i], p_ppu_config->ppu_h[i]);
+                ret = NI_RETCODE_PARAM_INVALID_VALUE;
+                return ret;
+            }
+        }
+    }
+    ret = ni_config_instance_set_decoder_ppu_params(
+                p_session_ctx, p_ppu_config, sizeof(ni_ppu_config_t));
+    if (ret == NI_RETCODE_SUCCESS)
+    {
+      p_session_ctx->ppu_reconfig_pkt_pos = p_session_ctx->pkt_num;
+    }
+    return ret;
 }

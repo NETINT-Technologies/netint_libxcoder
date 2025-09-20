@@ -104,10 +104,26 @@ int encoder_open(ni_demo_context_t *p_ctx,
                  int aspect_ratio_idc, int xcoder_guid,
                  niFrameSurface1_t *p_surface, int multi_thread,
                  bool check_zerocopy);
+int encoder_open2(ni_demo_context_t *p_ctx,
+                 ni_session_context_t *enc_ctx_list,
+                 ni_xcoder_params_t *p_api_param_list,
+                 int output_total, char p_enc_conf_params[][2048],
+                 char p_enc_conf_gop[][2048],
+                 ni_frame_t *p_ni_frame, int width[], int height[],
+                 int fps_num, int fps_den, int bitrate,
+                 int codec_format, ni_pix_fmt_t pix_fmt[],
+                 int aspect_ratio_idc, int xcoder_guid,
+                 niFrameSurface1_t *p_surface[], int multi_thread,
+                 bool check_zerocopy);
 int encoder_receive(ni_demo_context_t *p_ctx,
                     ni_session_context_t *enc_ctx_list,
                     ni_session_data_io_t *in_frame,
                     ni_session_data_io_t *pkt, int width, int height,
+                    int output_total, FILE **pfs_list);
+int encoder_receive2(ni_demo_context_t *p_ctx,
+                    ni_session_context_t *enc_ctx_list,
+                    ni_session_data_io_t *in_frame,
+                    ni_session_data_io_t *pkt, int width[], int height[],
                     int output_total, FILE **pfs_list);
 
 void encoder_stat_report_and_close(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc_ctx_list, int output_total);
@@ -118,10 +134,11 @@ void *encoder_receive_thread(void *args);
 void ni_init_pts_queue(ni_pts_queue *q);
 int ni_pts_queue_empty(ni_pts_queue *q);
 int ni_pts_queue_full(ni_pts_queue *q);
-int ni_pts_enqueue(ni_pts_queue *q, int value);
-int ni_pts_dequeue(ni_pts_queue *q, int *value);
+int ni_pts_enqueue(ni_pts_queue *q, int64_t value);
+int ni_pts_dequeue(ni_pts_queue *q, int64_t *value);
 void ni_prepare_pts_queue(ni_pts_queue *q, ni_xcoder_params_t *enc_param, int pts_start);
 
 #ifdef __cplusplus
 }
 #endif
+

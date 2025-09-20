@@ -161,7 +161,7 @@ int main(int argc, char *argv[])
                     ret = -1;
                     goto end;
                 }
-                strcpy(in_filename[i_index], optarg);
+                ni_strcpy(in_filename[i_index], FILE_NAME_LEN, optarg);
                 i_index++;
                 break;
             case 'o':
@@ -182,7 +182,7 @@ int main(int argc, char *argv[])
                     }
                 }
 
-                strcpy(out_filename[o_index], optarg);
+                ni_strcpy(out_filename[o_index], FILE_NAME_LEN, optarg);
                 o_index++;
                 break;
             case 'm':
@@ -303,7 +303,7 @@ int main(int argc, char *argv[])
                     ret = -1;
                     goto end;
                 }
-                strcpy(enc_conf_params[e_index], optarg);
+                ni_strcpy(enc_conf_params[e_index], sizeof(enc_conf_params[e_index]), optarg);
                 e_index++;
                 break;
             case 'g':
@@ -313,7 +313,7 @@ int main(int argc, char *argv[])
                     ret = -1;
                     goto end;
                 }
-                strcpy(enc_gop_params[g_index], optarg);
+                ni_strcpy(enc_gop_params[g_index], sizeof(enc_gop_params[g_index]), optarg);
                 g_index++;
                 break;
             case 'u':
@@ -413,7 +413,8 @@ int main(int argc, char *argv[])
             goto end;
         }
 
-        input_fp[i] = fopen(in_filename[i], "rb");
+        input_fp[i] = NULL;
+        ni_fopen(&(input_fp[i]), in_filename[i], "rb");
 
         if (!input_fp[i])
         {
@@ -432,7 +433,8 @@ int main(int argc, char *argv[])
         if (strcmp(out_filename[i], "null") != 0 &&
             strcmp(out_filename[i], "/dev/null") != 0)
         {
-            output_fp[i] = fopen(out_filename[i], "wb");
+            output_fp[i] = NULL;
+            ni_fopen(&(output_fp[i]), out_filename[i], "wb");
             if (!output_fp[i])
             {
                 ni_log(NI_LOG_ERROR, "Error: Failed to open %s\n", out_filename[i]);

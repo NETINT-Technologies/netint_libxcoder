@@ -20,7 +20,7 @@ The Libxcoder API can be interfaced with directly, or accesed via higher-level A
 
 ## Documentation
 
-Libxcoder documentation is availabled at the [NETINT Docs Portal](https://docs.netint.com/vpu/quadra/documentation/libxcoder)
+Libxcoder documentation is available at the [NETINT Docs Portal](https://docs.netint.com/vpu/quadra/documentation/libxcoder)
 
 Doxygen documentation may be generated with `bash build.sh -d`
 
@@ -84,6 +84,7 @@ The source code is located in `source/examples/`. After building libxcoder, thes
 
 * `ni_xcoder_decode` - Decoding only demo
 * `ni_xcoder_encode` - Encoding only / upload and encode demo
+* `ni_xcoder_scale` - Scaling only demo which supports scaling the same input into multiple resolutions
 * `ni_xcoder_transcode_filter` - Full transcoding pipeline with the ability to insert a filter between decoder and encoder
 * `ni_xcoder_multithread_transcode` - Same functionality as `ni_xcoder_transcode_filter` but runs with individual threads for decoding and encoding
 
@@ -99,6 +100,11 @@ To see all the supported features and options, run each program with `-h` option
 #### Encoding
 ```bash
 ./build/ni_xcoder_encode -c 0 -s 1280x720 -p yuv420p -i bball.yuv -m h -o bball.265
+```
+
+#### Scaling
+```bash
+./build/ni_xcoder_scale -c 0 -s 1280x720 -p yuv420p -i bball.yuv -o bball_540p.yuv -f ni_quadra_scale=width=960:height=540:format=yuv420p -o bball_1080p.yuv -f ni_quadra_scale=width=1920:height=1080:format=nv12
 ```
 
 #### Transcoding

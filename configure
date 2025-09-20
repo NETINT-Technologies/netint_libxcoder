@@ -197,6 +197,12 @@ else
         echo -e "${YELLOW}XCODER_DISABLE_BACKTRACE_PRINT is disabled${BLACK}"
 fi
 
+if [ $XCODER_ENABLE_CPU_AFFINITY = YES ]; then
+        echo -e "${GREEN}XCODER_ENABLE_CPU_AFFINITY is enabled${BLACK}"
+else
+        echo -e "${YELLOW}XCODER_ENABLE_CPU_AFFINITY is disabled${BLACK}"
+fi
+
 if [ $SETUP_SYSTEMD = YES ]; then
         echo -e "${GREEN}SETUP_SYSTEMD is enabled${BLACK}"
         current_user=$(whoami)

@@ -91,7 +91,7 @@ extern "C"
 // NI_XCODER_REVISION[6:7] = optional
 // You must change the name in the comment of REVISION line to your name when
 // you change the version number. If a merge conflict arises on a REVISION line,
-#define NI_XCODER_REVISION "5316sEr3"
+#define NI_XCODER_REVISION "5406sJr2"
 #define NI_XCODER_REVISION_API_MAJOR_VER_IDX 3
 #define NI_XCODER_REVISION_API_MINOR_VER_IDX 4
 
@@ -104,7 +104,7 @@ extern "C"
 #define MACRO_TO_STR(s) #s
 #define MACROS_TO_VER_STR(a, b) MACRO_TO_STR(a.b)
 #define LIBXCODER_API_VERSION_MAJOR 2
-#define LIBXCODER_API_VERSION_MINOR 77
+#define LIBXCODER_API_VERSION_MINOR 79
 #define LIBXCODER_API_VERSION MACROS_TO_VER_STR(LIBXCODER_API_VERSION_MAJOR, \
                                                 LIBXCODER_API_VERSION_MINOR)
 
@@ -275,9 +275,11 @@ typedef unsigned ni_io_event_t;
 #define NI_GET_MIN_HWDESC_P2P_BUF_ID(x)  ((x==1 || x==3 || x==6)?NI_MIN_SR_HWDESC_P2P_BUF_ID:NI_MIN_HWDESC_P2P_BUF_ID)
 #define NI_GET_MAX_HWDESC_P2P_BUF_ID(x)  ((x==1 || x==3 || x==6)?((x==6)?NI_MAX_SR_HWDESC_P2P_BUF_ID_4G:NI_MAX_SR_HWDESC_P2P_BUF_ID):NI_MAX_HWDESC_P2P_BUF_ID)
 
+#ifndef DEPRECATION_AS_ERROR
 //use NI_MAX_DR_HWDESC_FRAME_INDEX or NI_GET_MAX_HWDESC_FRAME_INDEX
 NI_DEPRECATE_MACRO(NI_MAX_HWDESC_FRAME_INDEX)
 #define NI_MAX_HWDESC_FRAME_INDEX NI_DEPRECATED_MACRO NI_MAX_DR_HWDESC_FRAME_INDEX
+#endif
 
 //input param is DDR config of target device
 #define NI_GET_MAX_HWDESC_FRAME_INDEX(x)                                            \
@@ -586,7 +588,8 @@ typedef enum _ni_scaler_opcode
   NI_SCALER_OPCODE_IPOVLY  = 7,
   NI_SCALER_OPCODE_WATERMARK = 8,
   NI_SCALER_OPCODE_DELOGO = 9,
-  NI_SCALER_OPCODE_MERGE = 10
+  NI_SCALER_OPCODE_MERGE = 10,
+  NI_SCALER_OPCODE_AI_ALIGN = 11
 } ni_scaler_opcode_t;
 
 typedef enum _ni_ai_status

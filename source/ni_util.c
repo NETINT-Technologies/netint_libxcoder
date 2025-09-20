@@ -246,25 +246,25 @@ uint32_t ni_get_kernel_max_io_size(const char * p_dev)
 
     // Get Max number of segments from /sys
     memset(file_name, 0, sizeof(file_name));
-    strcpy(file_name, SYS_PARAMS_PREFIX_PATH);
+    ni_strcpy(file_name, KERNEL_NVME_FILE_NAME_MAX_SZ, SYS_PARAMS_PREFIX_PATH);
 #if defined(_ANDROID) || defined(__OPENHARMONY__)
     //start from 11 chars ahead to not copy the "/dev/block/" since we only need whats after it
-    strncat(file_name, (char *)(p_dev + 11), sizeof(file_name) - SYS_PREFIX_SZ);
+    ni_strncat(file_name, KERNEL_NVME_FILE_NAME_MAX_SZ, (char *)(p_dev + 11), sizeof(file_name) - SYS_PREFIX_SZ);
 #else
     //start from 5 chars ahead to not copy the "/dev/" since we only need whats after it
-    strncat(file_name, (char *)(p_dev + 5), sizeof(file_name) - SYS_PREFIX_SZ);
+    ni_strncat(file_name, KERNEL_NVME_FILE_NAME_MAX_SZ, (char *)(p_dev + 5), sizeof(file_name) - SYS_PREFIX_SZ);
 #endif
-    strncat(file_name, KERNEL_NVME_MAX_SEG_PATH,
+    ni_strncat(file_name, KERNEL_NVME_FILE_NAME_MAX_SZ, KERNEL_NVME_MAX_SEG_PATH,
             sizeof(file_name) - SYS_PREFIX_SZ - len);
     ni_log(NI_LOG_DEBUG, "file_name  is %s\n", file_name);
-    p_file = fopen(file_name, "r");
+    ni_fopen(&p_file, file_name, "r");
     if (!p_file)
     {
         ni_log(NI_LOG_ERROR, "file_name failed to open: %s\n", file_name);
         LRETURN;
     }
 
-    err = fscanf(p_file, "%d", &max_segments);
+    err = ni_fscanf(p_file, "%d", &max_segments);
     if (EOF == err)
     {
         ni_log(NI_LOG_ERROR, "fscanf failed on: %s max_segments\n", file_name);
@@ -275,25 +275,25 @@ uint32_t ni_get_kernel_max_io_size(const char * p_dev)
     p_file = NULL;
     // Get Max segment size from /sys
     memset(file_name, 0, sizeof(file_name));
-    strcpy(file_name, SYS_PARAMS_PREFIX_PATH);
+    ni_strcpy(file_name, KERNEL_NVME_FILE_NAME_MAX_SZ, SYS_PARAMS_PREFIX_PATH);
 #if defined(_ANDROID) || defined(__OPENHARMONY__)
     //start from 11 chars ahead to not copy the "/dev/block/" since we only need whats after it
-    strncat(file_name, (char *)(p_dev + 11), sizeof(file_name) - SYS_PREFIX_SZ);
+    ni_strncat(file_name, KERNEL_NVME_FILE_NAME_MAX_SZ, (char *)(p_dev + 11), sizeof(file_name) - SYS_PREFIX_SZ);
 #else
     //start from 5 chars ahead to not copy the "/dev/" since we only need whats after it
-    strncat(file_name, (char *)(p_dev + 5), sizeof(file_name) - SYS_PREFIX_SZ);
+    ni_strncat(file_name, KERNEL_NVME_FILE_NAME_MAX_SZ, (char *)(p_dev + 5), sizeof(file_name) - SYS_PREFIX_SZ);
 #endif
-    strncat(file_name, KERNEL_NVME_MIN_IO_SZ_PATH,
+    ni_strncat(file_name, KERNEL_NVME_FILE_NAME_MAX_SZ, KERNEL_NVME_MIN_IO_SZ_PATH,
             sizeof(file_name) - SYS_PREFIX_SZ - len);
     ni_log(NI_LOG_DEBUG, "file_name  is %s\n", file_name);
-    p_file = fopen(file_name, "r");
+    ni_fopen(&p_file, file_name, "r");
     if (!p_file)
     {
         ni_log(NI_LOG_ERROR, "file_name  failed to open: %s\n", file_name);
         LRETURN;
     }
 
-    err = fscanf(p_file, "%d", &min_io_size);
+    err = ni_fscanf(p_file, "%d", &min_io_size);
     if (EOF == err)
     {
         ni_log(NI_LOG_ERROR, "fscanf failed on: %s min_io_size\n", file_name);
@@ -304,25 +304,25 @@ uint32_t ni_get_kernel_max_io_size(const char * p_dev)
     p_file = NULL;
     //Now get max_hw_sectors_kb
     memset(file_name, 0, sizeof(file_name));
-    strcpy(file_name, SYS_PARAMS_PREFIX_PATH);
+    ni_strcpy(file_name, KERNEL_NVME_FILE_NAME_MAX_SZ, SYS_PARAMS_PREFIX_PATH);
 #if defined(_ANDROID) || defined(__OPENHARMONY__)
     //start from 11 chars ahead to not copy the "/dev/block/" since we only need whats after it
-    strncat(file_name, (char *)(p_dev + 11), sizeof(file_name) - SYS_PREFIX_SZ);
+    ni_strncat(file_name, KERNEL_NVME_FILE_NAME_MAX_SZ, (char *)(p_dev + 11), sizeof(file_name) - SYS_PREFIX_SZ);
 #else
     //start from 5 chars ahead to not copy the "/dev/" since we only need whats after it
-    strncat(file_name, (char *)(p_dev + 5), sizeof(file_name) - SYS_PREFIX_SZ);
+    ni_strncat(file_name, KERNEL_NVME_FILE_NAME_MAX_SZ, (char *)(p_dev + 5), sizeof(file_name) - SYS_PREFIX_SZ);
 #endif
-    strncat(file_name, KERNEL_NVME_MAX_HW_SEC_KB_PATH,
+    ni_strncat(file_name, KERNEL_NVME_FILE_NAME_MAX_SZ, KERNEL_NVME_MAX_HW_SEC_KB_PATH,
             sizeof(file_name) - SYS_PREFIX_SZ - len);
     ni_log(NI_LOG_DEBUG, "file_name  is %s\n", file_name);
-    p_file = fopen(file_name, "r");
+    ni_fopen(&p_file, file_name, "r");
     if (!p_file)
     {
         ni_log(NI_LOG_ERROR, "file_name  failed to open: %s\n", file_name);
         LRETURN;
     }
 
-    err = fscanf(p_file, "%d", &max_hw_sectors_kb);
+    err = ni_fscanf(p_file, "%d", &max_hw_sectors_kb);
     if (EOF == err)
     {
         ni_log(NI_LOG_ERROR, "fscanf failed on: %s min_io_size\n", file_name);
@@ -444,6 +444,625 @@ char *ni_strtok(char *s, const char *delim, char **saveptr)
     }
 
     return tok;
+}
+
+ni_retcode_t ni_strcpy(char *dest, size_t dmax, const char *src)
+{
+#if defined(_MSC_VER)
+    if(strcpy_s(dest, dmax, src))
+        return NI_RETCODE_FAILURE;
+    else
+        return NI_RETCODE_SUCCESS;
+#else
+    if (!dest || !dmax || !src)
+        return NI_RETCODE_INVALID_PARAM;
+
+    if (dest == src)
+        return NI_RETCODE_SUCCESS;
+
+    size_t orig_dmax;
+    char *orig_dest;
+    const char *overlap_bumper;
+    /* hold base of dest in case src was not copied */
+    orig_dmax = dmax;
+    orig_dest = dest;
+
+    if (dest < src) {
+        overlap_bumper = src;
+        while (dmax > 0) {
+            if (dest == overlap_bumper) {
+                (void)orig_dmax;
+                *orig_dest = '\0';
+                return NI_RETCODE_FAILURE;
+            }
+            *dest = *src;
+            if (*dest == '\0') {
+                return NI_RETCODE_SUCCESS;
+            }
+            dmax--;
+            dest++;
+            src++;
+        }
+    } else {
+        overlap_bumper = dest;
+        while (dmax > 0) {
+            if (src == overlap_bumper) {
+                (void)orig_dmax;
+                *orig_dest = '\0';
+                return NI_RETCODE_FAILURE;
+            }
+            *dest = *src;
+            if (*dest == '\0') {
+                return NI_RETCODE_SUCCESS;
+            }
+            dmax--;
+            dest++;
+            src++;
+        }
+    }
+
+    /*
+     * the entire src must have been copied, if not reset dest
+     * to null the string.
+     */
+    (void)orig_dmax;
+    *orig_dest = '\0';
+    return NI_RETCODE_FAILURE;
+#endif
+}
+
+ni_retcode_t ni_strncpy(char *dest, size_t dmax,
+                        const char *src, size_t slen)
+{
+#if defined(_MSC_VER)
+    if(strncpy_s(dest, dmax, src, slen))
+        return NI_RETCODE_FAILURE;
+    else
+        return NI_RETCODE_SUCCESS;
+#else
+    if (slen == 0 && dest && dmax) {
+        *dest = '\0';
+        return NI_RETCODE_SUCCESS;
+    }
+
+    if (!dest || !dmax || !src)
+        return NI_RETCODE_INVALID_PARAM;
+    size_t orig_dmax;
+    char *orig_dest;
+    const char *overlap_bumper;
+    /* hold base in case src was not copied */
+    orig_dmax = dmax;
+    orig_dest = dest;
+
+    if (dest < src) {
+        overlap_bumper = src;
+
+        while (dmax > 0) {
+            if (dest == overlap_bumper) {
+                (void)orig_dmax;
+                *orig_dest = '\0';
+                return NI_RETCODE_FAILURE;
+            }
+
+            if (slen == 0) {
+                /*
+                 * Copying truncated to slen chars.  Note that the TR says to
+                 * copy slen chars plus the NUL char.  We zero the slack.
+                 */
+#ifdef SAFECLIB_STR_NULL_SLACK
+                if (dmax > 0x20)
+                    memset(dest, 0, dmax);
+                else {
+                    while (dmax) {
+                        *dest = '\0';
+                        dmax--;
+                        dest++;
+                    }
+                }
+#else
+                *dest = '\0';
+#endif
+                return NI_RETCODE_SUCCESS;
+            }
+
+            *dest = *src;
+            if (*dest == '\0') {
+#ifdef SAFECLIB_STR_NULL_SLACK
+                if (dmax > 0x20)
+                    memset(dest, 0, dmax);
+                else {
+                    while (dmax) {
+                        *dest = '\0';
+                        dmax--;
+                        dest++;
+                    }
+                }
+#endif
+                return NI_RETCODE_SUCCESS;
+            }
+
+            dmax--;
+            slen--;
+            dest++;
+            src++;
+        }
+    } else {
+        overlap_bumper = dest;
+
+        while (dmax > 0) {
+            if (src == overlap_bumper) {
+                (void)orig_dmax;
+                *orig_dest = '\0';
+                return NI_RETCODE_FAILURE;
+            }
+
+            if (slen == 0) {
+                /*
+                 * Copying truncated to slen chars.  Note that the TR says to
+                 * copy slen chars plus the NUL char.  We zero the slack.
+                 */
+#ifdef SAFECLIB_STR_NULL_SLACK
+                if (dmax > 0x20)
+                    memset(dest, 0, dmax);
+                else {
+                    while (dmax) {
+                        *dest = '\0';
+                        dmax--;
+                        dest++;
+                    }
+                }
+#else
+                *dest = '\0';
+#endif
+                return NI_RETCODE_SUCCESS;
+            }
+
+            *dest = *src;
+            if (*dest == '\0') {
+#ifdef SAFECLIB_STR_NULL_SLACK
+                if (dmax > 0x20)
+                    memset(dest, 0, dmax);
+                else {
+                    while (dmax) {
+                        *dest = '\0';
+                        dmax--;
+                        dest++;
+                    }
+                }
+#endif
+                return NI_RETCODE_SUCCESS;
+            }
+
+            dmax--;
+            slen--;
+            dest++;
+            src++;
+        }
+    }
+
+    /*
+     * the entire src was not copied, so zero the string
+     */
+    (void)orig_dmax;
+    *orig_dest = '\0';
+    return NI_RETCODE_FAILURE;
+#endif
+}
+
+ni_retcode_t ni_strerror(char *dest, size_t dmax, int errnum)
+{
+#if defined(_MSC_VER)
+    if(strerror_s(dest, dmax, errnum))
+        return NI_RETCODE_FAILURE;
+    else
+        return NI_RETCODE_SUCCESS;
+#else
+    if (!dest || !dmax || (dmax >= (size_t)(-1)))
+        return NI_RETCODE_INVALID_PARAM;
+#if 1
+    const char *tmpbuf = strerror(errnum);
+    ni_strcpy(dest, dmax, tmpbuf);
+#else
+    /* strerrorlen_s is supported since c11 */
+    size_t len;
+    len = strerrorlen_s(errnum);
+    if (len < dmax) {
+        const char *tmpbuf = strerror(errnum);
+        ni_strcpy(dest, dmax, tmpbuf);
+    } else if (dmax > 3) { /* truncate */
+        const char *tmpbuf = strerror(errnum);
+        ni_strncpy(dest, dmax, tmpbuf, dmax - 4);
+        ni_strcat(dest, dmax, "...");
+    } else {
+        return NI_RETCODE_INVALID_PARAM;
+    }
+#endif
+
+    return NI_RETCODE_SUCCESS;
+#endif
+}
+
+ni_retcode_t ni_strcat(char *dest, size_t dmax, const char *src)
+{
+#if defined(_MSC_VER)
+    if(strcat_s(dest, dmax, src))
+        return NI_RETCODE_FAILURE;
+    else
+        return NI_RETCODE_SUCCESS;
+#else
+    if (!dest || !dmax || !src)
+        return NI_RETCODE_INVALID_PARAM;
+
+    size_t orig_dmax;
+    char *orig_dest;
+    const char *overlap_bumper;
+    /* hold base of dest in case src was not copied */
+    orig_dmax = dmax;
+    orig_dest = dest;
+
+    if (dest < src) {
+        overlap_bumper = src;
+        /* Find the end of dest */
+        while (*dest != '\0') {
+            if (dest == overlap_bumper) {
+                (void)orig_dmax;
+                *orig_dest = '\0';
+                return NI_RETCODE_FAILURE;
+            }
+            dest++;
+            dmax--;
+            if (dmax == 0) {
+                (void)orig_dmax;
+                *orig_dest = '\0';
+                return NI_RETCODE_FAILURE;
+            }
+        }
+
+        while (dmax > 0) {
+            if (dest == overlap_bumper) {
+                (void)orig_dmax;
+                *orig_dest = '\0';
+                return NI_RETCODE_FAILURE;
+            }
+
+            *dest = *src;
+            if (*dest == '\0') {
+#ifdef SAFECLIB_STR_NULL_SLACK
+                if (dmax > 0x20)
+                    memset(dest, 0, dmax);
+                else {
+                    while (dmax) {
+                        *dest = '\0';
+                        dmax--;
+                        dest++;
+                    }
+                }
+#endif
+                return NI_RETCODE_SUCCESS;
+            }
+
+            dmax--;
+            dest++;
+            src++;
+        }
+    } else {
+        overlap_bumper = dest;
+
+        /* Find the end of dest */
+        while (*dest != '\0') {
+            /*
+             * NOTE: no need to check for overlap here since src comes first
+             * in memory and we're not incrementing src here.
+             */
+            dest++;
+            dmax--;
+            if (dmax == 0) {
+                (void)orig_dmax;
+                *orig_dest = '\0';
+                return NI_RETCODE_FAILURE;
+            }
+        }
+
+        while (dmax > 0) {
+            if (src == overlap_bumper) {
+                (void)orig_dmax;
+                *orig_dest = '\0';
+                return NI_RETCODE_FAILURE;
+            }
+
+            *dest = *src;
+            if (*dest == '\0') {
+                /* null slack to clear any data */
+#ifdef SAFECLIB_STR_NULL_SLACK
+                if (dmax > 0x20)
+                    memset(dest, 0, dmax);
+                else {
+                    while (dmax) {
+                        *dest = '\0';
+                        dmax--;
+                        dest++;
+                    }
+                }
+#endif
+                return NI_RETCODE_SUCCESS;
+            }
+
+            dmax--;
+            dest++;
+            src++;
+        }
+    }
+
+    /* the entire src was not copied, so null the string */
+    (void)orig_dmax;
+    *orig_dest = '\0';
+    return NI_RETCODE_FAILURE;
+#endif
+}
+
+ni_retcode_t ni_strncat(char *dest, size_t dmax,
+                  const char *src, size_t slen)
+{
+    size_t orig_dmax;
+    char *orig_dest;
+    const char *overlap_bumper;
+
+    if (slen == 0 && !dest && !dmax) {
+        /* silent ok as in the msvcrt */
+        return NI_RETCODE_SUCCESS;
+    }
+    if (!dest || !dmax || !src)
+        return NI_RETCODE_INVALID_PARAM;
+    else if (slen == 0) {
+        /* Special case, analog to msvcrt: when dest is big enough
+           return OK, but clear dest. */
+        (void)dmax;
+        *dest = '\0';
+        return NI_RETCODE_SUCCESS;
+    }
+
+    /* hold base of dest in case src was not copied */
+    orig_dmax = dmax;
+    orig_dest = dest;
+
+    if (dest < src) {
+        overlap_bumper = src;
+
+        /* Find the end of dest */
+        while (*dest != '\0') {
+
+            if (dest == overlap_bumper) {
+                (void)orig_dmax;
+                *orig_dest = '\0';
+                return NI_RETCODE_FAILURE;
+            }
+
+            dest++;
+            dmax--;
+            if (dmax == 0) {
+                (void)orig_dmax;
+                *orig_dest = '\0';
+                return NI_RETCODE_FAILURE;
+            }
+        }
+
+        while (dmax > 0) {
+            if (dest == overlap_bumper) {
+                (void)orig_dmax;
+                *orig_dest = '\0';
+                return NI_RETCODE_FAILURE;
+            }
+
+            /*
+             * Copying truncated before the source null is encountered
+             */
+            if (slen == 0) {
+#ifdef SAFECLIB_STR_NULL_SLACK
+                /* null remaining string */
+                if (dmax > 0x20)
+                    memset(dest, 0, dmax);
+                else {
+                    while (dmax) {
+                        *dest = '\0';
+                        dmax--;
+                        dest++;
+                    }
+                }
+#else
+                *dest = '\0';
+#endif
+                return NI_RETCODE_SUCCESS;
+            }
+
+            *dest = *src;
+            if (*dest == '\0') {
+#ifdef SAFECLIB_STR_NULL_SLACK
+                /* null slack to clear data */
+                if (dmax > 0x20)
+                    memset(dest, 0, dmax);
+                else {
+                    while (dmax) {
+                        *dest = '\0';
+                        dmax--;
+                        dest++;
+                    }
+                }
+#endif
+                return NI_RETCODE_SUCCESS;
+            }
+
+            dmax--;
+            slen--;
+            dest++;
+            src++;
+        }
+    } else {
+        overlap_bumper = dest;
+
+        /* Find the end of dest */
+        while (*dest != '\0') {
+
+            /*
+             * NOTE: no need to check for overlap here since src comes first
+             * in memory and we're not incrementing src here.
+             */
+            dest++;
+            dmax--;
+            if (dmax == 0) {
+                (void)orig_dmax;
+                *orig_dest = '\0';
+                return NI_RETCODE_FAILURE;
+            }
+        }
+
+        while (dmax > 0) {
+            if (src == overlap_bumper) {
+                (void)orig_dmax;
+                *orig_dest = '\0';
+                return NI_RETCODE_FAILURE;
+            }
+
+            /*
+             * Copying truncated
+             */
+            if (slen == 0) {
+#ifdef SAFECLIB_STR_NULL_SLACK
+                /* null remaining string */
+                if (dmax > 0x20)
+                    memset(dest, 0, dmax);
+                else {
+                    while (dmax) {
+                        *dest = '\0';
+                        dmax--;
+                        dest++;
+                    }
+                }
+#else
+                *dest = '\0';
+#endif
+                return NI_RETCODE_SUCCESS;
+            }
+
+            *dest = *src;
+            if (*dest == '\0') {
+#ifdef SAFECLIB_STR_NULL_SLACK
+                /* null slack to clear any data */
+                if (dmax > 0x20)
+                    memset(dest, 0, dmax);
+                else {
+                    while (dmax) {
+                        *dest = '\0';
+                        dmax--;
+                        dest++;
+                    }
+                }
+#endif
+                return NI_RETCODE_SUCCESS;
+            }
+
+            dmax--;
+            slen--;
+            dest++;
+            src++;
+        }
+    }
+
+    /*
+     * the entire src was not copied, so the string will be nulled.
+     */
+
+    (void)orig_dmax;
+    *orig_dest = '\0';
+    return NI_RETCODE_FAILURE;
+}
+
+ni_retcode_t ni_fopen(FILE **fp, const char *filename, const char *mode)
+{
+#if defined(_MSC_VER)
+    if(fopen_s(fp, filename, mode))
+        return NI_RETCODE_FAILURE;
+    else
+        return NI_RETCODE_SUCCESS;
+#else
+    if (!fp || !filename || !mode)
+        return NI_RETCODE_INVALID_PARAM;
+
+    *fp = fopen(filename, mode);
+    if (!*fp) {
+        ni_log(NI_LOG_ERROR, "Failed to open file %s with mode %s\n", filename, mode);
+        return NI_RETCODE_FAILURE;
+    }
+    return NI_RETCODE_SUCCESS;
+#endif
+}
+
+struct tm* ni_localtime(struct tm *dest, const time_t *src)
+{
+#if defined(_MSC_VER)
+    if (localtime_s(dest, src))
+        return NULL;
+    else
+        return dest;
+#else
+    if (!dest || !src)
+        return NULL;
+    if (*src < 0) {
+        return NULL;
+    }
+    dest = localtime(src);
+    return dest;
+#endif
+}
+
+int ni_fscanf(FILE *stream, const char *fmt, ...)
+{
+    int ret;
+#if defined(_MSC_VER)
+    va_list args;
+    va_start(args, fmt);
+    ret = vfscanf_s(stream, fmt, args);
+    va_end(args);
+#else
+    if (!stream || !fmt)
+        return EOF;
+    va_list args;
+    va_start(args, fmt);
+    ret = vfscanf(stream, fmt, args);
+    va_end(args);
+#endif
+    return ret;
+}
+
+int ni_vsprintf(char *dest, const size_t dmax, const char *fmt, va_list args)
+{
+#if defined(_MSC_VER)
+    int ret = vsprintf_s(dest, dmax, fmt, args);
+    return ret;
+#else
+    if (!dest || !dmax || !fmt)
+        return -1;
+    // Use vsnprintf on Linux/macOS (which is safe if used correctly)
+    int ret = vsnprintf(dest, dmax, fmt, args);
+    if (ret < 0) {
+        // Encoding error occurred
+        return -1;
+    } else if ((size_t)ret >= dmax) {
+        // Buffer was too small (truncation occurred)
+        char *overrun = dest + dmax - 1; // Point to the last character
+        *overrun = '\0'; // Ensure null-termination
+        return -1;
+    }
+    return ret;
+#endif
+}
+
+int ni_sprintf(char *dest, size_t dmax, const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    int ret = ni_vsprintf(dest, dmax, fmt, args);
+    va_end(args);
+    return ret;
 }
 
 // memory buffer pool operations (one use is for decoder frame buffer pool)
@@ -1518,7 +2137,7 @@ ni_retcode_t ni_queue_init(ni_session_context_t* p_ctx, ni_queue_t *p_queue, con
     {
         return NI_RETCODE_INVALID_PARAM;
     }
-    strcpy(p_queue->name, name);
+    ni_strcpy(p_queue->name, sizeof(p_queue->name), name);
     ni_buffer_pool_initialize(p_ctx, BUFFER_POOL_SZ_PER_CONTEXT);
 
     p_queue->p_first = NULL;
@@ -1851,7 +2470,6 @@ ni_retcode_t ni_queue_free(ni_queue_t *p_queue, ni_queue_buffer_pool_t *p_buffer
 ni_retcode_t ni_queue_print(ni_queue_t *p_queue)
 {
     ni_queue_node_t *temp = NULL;
-    struct tm *ltime = NULL;
     char buff[20] = {0};
 
     if (!p_queue)
@@ -1871,9 +2489,11 @@ ni_retcode_t ni_queue_print(ni_queue_t *p_queue)
 
     //  ni_log(NI_LOG_TRACE, "%s enter: p_first=%" PRId64 ", p_last=%" PRId64 ", count=%d, temp=%" PRId64 "\n", __func__, p_queue->p_first, p_queue->p_last, p_queue->count, temp);
 
+    struct tm *ltime = NULL;
+    struct tm temp_time;
     while (temp)
     {
-        ltime = localtime(&temp->checkout_timestamp);
+        ltime = ni_localtime(&temp_time, &temp->checkout_timestamp);
         if (ltime)
         {
             strftime(buff, 20, "%Y-%m-%d %H:%M:%S", ltime);
@@ -3117,7 +3737,9 @@ struct tensor_rsrc
 static int open_tensor_rsrc_file(struct tensor_rsrc *rsrc, void *data,
                                  uint32_t num)
 {
-    rsrc->private = (void *)fopen((const char *)data, "r");
+    FILE *f = NULL;
+    ni_fopen(&f, (const char *)data, "r");
+    rsrc->private = (void *)f;
     return rsrc->private ? 0 : -1;
 }
 
@@ -3126,7 +3748,7 @@ static int get_tensor_rsrc_from_file(struct tensor_rsrc *rsrc, float *value)
     FILE *fp = (FILE *)rsrc->private;
     float tensor;
 
-    if (fscanf(fp, "%f ", &tensor) == 1)
+    if (ni_fscanf(fp, "%f ", &tensor) == 1)
     {
         *value = tensor;
         return 0;
@@ -3603,6 +4225,7 @@ char* ni_get_libxcoder_api_ver(void)
     return libxcoder_api_ver;
 }
 
+#ifndef DEPRECATION_AS_ERROR
 /*!*****************************************************************************
  *  \brief  Get FW API version libxcoder is compatible with.
  *          Deprecated in favour of `ni_fmt_fw_api_ver_str(&NI_XCODER_REVISION[NI_XCODER_REVISION_API_MAJOR_VER_IDX], &char_buf[0]);`
@@ -3629,6 +4252,7 @@ NI_DEPRECATED char* ni_get_compat_fw_api_ver(void)
     }
     return &compat_fw_api_ver_str[0];
 }
+#endif
 
 /*!*****************************************************************************
  *  \brief  Get formatted FW API version string from unformatted FW API version
@@ -3768,8 +4392,9 @@ int ni_param_get_key_value(char *p_str, char *key, char *value)
         *p = '\0';
         key[0] = '\0';
         value[0] = '\0';
-        strcpy(key, p_str);
-        strcpy(value, p + 1);
+        int64_t key_len = p - p_str;
+        ni_strncpy(key, 64, p_str, key_len);
+        ni_strcpy(value, 64, p + 1);
         return 0;
     }
 }

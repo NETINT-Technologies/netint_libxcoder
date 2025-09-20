@@ -48,7 +48,7 @@
  *
  *  @return
  *******************************************************************************/
-static void getStr(const char *prompt, char *str)
+static void getStr(const char *prompt, char *str, size_t str_len)
 {
   char para[64];
   printf("%s", prompt);
@@ -57,7 +57,7 @@ static void getStr(const char *prompt, char *str)
     size_t len = strlen(para);
     if (len > 0 && para[len - 1] == '\n')
       para[len - 1] = '\0';
-    strcpy(str, para);
+    ni_strcpy(str, str_len, para);
   }
 }
 
@@ -72,7 +72,7 @@ static int getCmd(const char *prompt)
 {
     char cmd[64] = {'\0'};
 
-    getStr(prompt, cmd);
+    getStr(prompt, cmd, sizeof(cmd));
     return (int)cmd[0];
 }
 
@@ -89,7 +89,7 @@ static void change_log_level(void)
     ni_log_level_t log_level;
 
     getStr("set log level to [none, fatal, error, info, debug, trace]: ",
-           log_str);
+           log_str, sizeof(log_str));
 
     log_level = arg_to_ni_log_level(log_str);
     if (log_level != NI_LOG_INVALID)
@@ -111,7 +111,7 @@ static int getInt(const char *prompt)
 {
   char para[64];
 
-  getStr(prompt, para);
+  getStr(prompt, para, sizeof(para));
   return atoi(para);
 }
 
@@ -126,7 +126,7 @@ NI_UNUSED static float getFloat(const char *prompt)
 {
   char para[64];
 
-  getStr(prompt, para);
+  getStr(prompt, para, sizeof(para));
   return (float)atof(para);
 }
 
@@ -141,7 +141,7 @@ NI_UNUSED static long getLong(const char *prompt)
 {
   char para[64];
 
-  getStr(prompt, para);
+  getStr(prompt, para, sizeof(para));
   return atol(para);
 }
 
@@ -194,8 +194,10 @@ static void listModuleId(void)
 #elif __linux__
     if (lockf(p_device_pool->lock, F_LOCK, 0))
     {
+        char errmsg[NI_ERRNO_LEN] = {0};
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         fprintf(stderr, "ERROR: %s() lockf() failed: %s\n", __func__,
-                strerror(NI_ERRNO));
+                errmsg);
     }
 #endif
 
@@ -355,7 +357,7 @@ static void displayRsrcMon(void)
         }
 
         module_count = coders->xcoder_cnt[module_type];
-        strcpy(module_name, g_device_type_str[module_type]);
+        ni_strcpy(module_name, sizeof(module_name), g_device_type_str[module_type]);
 
         module_id_arr = malloc(sizeof(*module_id_arr) * module_count);
         if (!module_id_arr)
@@ -396,10 +398,12 @@ static void displayRsrcMon(void)
                 // Check device can be opened
                 if (NI_INVALID_DEVICE_HANDLE == sessionCtxt->device_handle)
                 {
+                    char errmsg[NI_ERRNO_LEN] = {0};
+                    ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
                     fprintf(stderr,
                             "ERROR: ni_device_open() failed for %s: %s\n",
                             p_device_context->p_device_info->dev_name,
-                            strerror(NI_ERRNO));
+                            errmsg);
                     ni_rsrc_free_device_context(p_device_context);
                     continue;
                 }
@@ -461,7 +465,7 @@ static void addCoder(void)
 {
   char dev[64];
   int should_match_rev = 0;
-  getStr("device name (/dev/*): ", dev);
+  getStr("device name (/dev/*): ", dev, sizeof(dev));
   should_match_rev = getInt("should match current release version, yes (1) no (0): ");
   ni_rsrc_add_device(dev, should_match_rev);
 }
@@ -532,7 +536,7 @@ static void getlocaldevicelist(void)
 static void deleteCoder(void)
 {
   char dev[64];
-  getStr("device name (/dev/*): ", dev);
+  getStr("device name (/dev/*): ", dev, sizeof(dev));
   ni_rsrc_remove_device(dev);
 }
 
@@ -553,7 +557,11 @@ static void checkHWInfo(void)
 {
     int task_mode = 0, device_type = 0, hw_mode = 0, consider_mem = 0;
     printf("Please enter task mode, device type, hw mode and if to consider memory (Divided by spaces)\n");
+#if defined(_MSC_VER)
+    int ret_scanf = scanf_s("%d %d %d %d",&task_mode,&device_type,&hw_mode,&consider_mem);
+#else
     int ret_scanf = scanf("%d %d %d %d",&task_mode,&device_type,&hw_mode,&consider_mem);
+#endif
     if(ret_scanf == EOF || ret_scanf < 4)
     {
         fprintf(stderr, "%s, read parameters failed", __func__);

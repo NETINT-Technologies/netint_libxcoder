@@ -82,6 +82,16 @@ typedef int32_t (LIB_API* PNIGETTIMEOFDAY) (struct timeval *p_tp, void *p_tzp);
 typedef uint64_t (LIB_API* PNIGETTIMENS) (void);
 typedef void (LIB_API* PNIUSLEEP) (int64_t usec);
 typedef char * (LIB_API* PNISTRTOK) (char *s, const char *delim, char **saveptr);
+typedef ni_retcode_t (LIB_API* PNISTRCPY) (char *dest, size_t dmax, const char *src);
+typedef ni_retcode_t (LIB_API* PNISTRNCPY) (char *dest, size_t dmax, const char *src, size_t slen);
+typedef ni_retcode_t (LIB_API* PNISTRERROR) (char *dest, size_t dmax, int errnum);
+typedef ni_retcode_t (LIB_API* PNISTRCAT) (char *dest, size_t dmax, const char *src);
+typedef ni_retcode_t (LIB_API* PNISTRNCAT) (char *dest, size_t dmax, const char *src, size_t slen);
+typedef ni_retcode_t (LIB_API* PNIFOPEN) (FILE **fp, const char *filename, const char *mode);
+typedef struct tm * (LIB_API* PNILOCALTIME) (struct tm *dest, const time_t *src);
+typedef int (LIB_API* PNIFSCANF) (FILE *stream, const char *fmt, ...);
+typedef int (LIB_API* PNIVSPRINTF) (char *dest, const size_t dmax, const char *fmt, va_list args);
+typedef int (LIB_API* PNISPRINTF) (char *dest, size_t dmax, const char *fmt, ...);
 typedef ni_retcode_t (LIB_API* PNINETWORKLAYERCONVERTOUTPUT) (float *dst, uint32_t num, ni_packet_t *p_packet, ni_network_data_t *p_network, uint32_t layer);
 typedef uint32_t (LIB_API* PNIAINETWORKLAYERSIZE) (ni_network_layer_params_t *p_param);
 typedef uint32_t (LIB_API* PNIAINETWORKLAYERDIMS) (ni_network_layer_params_t *p_param);
@@ -91,7 +101,9 @@ typedef ni_retcode_t (LIB_API* PNINETWORKCONVERTDATATOTENSOR) (float *dst, uint3
 typedef void (LIB_API* PNICALCULATESHA256) (const uint8_t aui8Data[], size_t ui32DataLength, uint8_t aui8Hash[]);
 typedef void (LIB_API* PNICOPYHWDESCRIPTORS) (uint8_t *p_dst[NI_MAX_NUM_DATA_POINTERS], uint8_t *p_src[NI_MAX_NUM_DATA_POINTERS]);
 typedef char * (LIB_API* PNIGETLIBXCODERAPIVER) (void);
+#ifndef DEPRECATION_AS_ERROR
 typedef char * (LIB_API* PNIGETCOMPATFWAPIVER) (void);
+#endif
 typedef void (LIB_API* PNIFMTFWAPIVERSTR) (const char ver_str[], char fmt_str[]);
 typedef int (LIB_API* PNICMPFWAPIVER) (const char ver1[], const char ver2[]);
 typedef char * (LIB_API* PNIGETLIBXCODERRELEASEVER) (void);
@@ -128,7 +140,9 @@ typedef ni_event_handle_t (LIB_API* PNICREATEEVENT) (void);
 typedef void (LIB_API* PNICLOSEEVENT) (ni_event_handle_t event_handle);
 typedef ni_device_handle_t (LIB_API* PNIDEVICEOPEN) (const char *dev, uint32_t *p_max_io_size_out);
 typedef void (LIB_API* PNIDEVICECLOSE) (ni_device_handle_t dev);
+#ifndef DEPRECATION_AS_ERROR
 typedef ni_retcode_t (LIB_API* PNIDEVICECAPABILITYQUERY) (ni_device_handle_t device_handle, ni_device_capability_t *p_cap);
+#endif
 typedef ni_retcode_t (LIB_API* PNIDEVICECAPABILITYQUERY2) (ni_device_handle_t device_handle, ni_device_capability_t *p_cap, bool device_in_ctxt);
 typedef ni_retcode_t (LIB_API* PNIDEVICESESSIONOPEN) (ni_session_context_t *p_ctx, ni_device_type_t device_type);
 typedef ni_retcode_t (LIB_API* PNIDEVICESESSIONCLOSE) (ni_session_context_t *p_ctx, int eos_received, ni_device_type_t device_type);
@@ -235,12 +249,15 @@ typedef void (LIB_API* PNIGOPPARAMSCHECKSET) (ni_xcoder_params_t *p_param, char 
 typedef bool (LIB_API* PNIGOPPARAMSCHECK) (ni_xcoder_params_t *p_param);
 typedef ni_retcode_t (LIB_API* PNIRECONFIGMAXFRAMESIZERATIO) (ni_session_context_t *p_ctx, int32_t max_frame_size_ratio);
 typedef ni_retcode_t (LIB_API* PNIRECONFIGINTRAPRD) (ni_session_context_t *p_ctx, int32_t intra_period);
+#ifndef DEPRECATION_AS_ERROR
 typedef ni_retcode_t (LIB_API* PNIP2PXFER) (ni_session_context_t *pSession, niFrameSurface1_t *source, uint64_t ui64DestAddr, uint32_t ui32FrameSize);
+#endif
 typedef ni_retcode_t (LIB_API* PNIP2PSEND) (ni_session_context_t *pSession, niFrameSurface1_t *source, uint64_t ui64DestAddr, uint32_t ui32FrameSize);
 typedef int (LIB_API* PNICALCULATETOTALFRAMESIZE) (const ni_session_context_t *p_upl_ctx, const int linesize[]);
 typedef ni_retcode_t (LIB_API* PNIRECONFIGSLICEARG) (ni_session_context_t *p_ctx, int16_t sliceArg);
 typedef ni_retcode_t (LIB_API* PNIP2PRECV) (ni_session_context_t *pSession, const ni_p2p_sgl_t *dmaAddrs, ni_frame_t *pDstFrame);
 typedef ni_retcode_t (LIB_API* PNIDEVICESESSIONRESTART) (ni_session_context_t *p_ctx, int video_width, int video_height, ni_device_type_t device_type);
+typedef ni_retcode_t (LIB_API* PNIDECRECONFIGPPUPARAMS) (ni_session_context_t *p_session_ctx, ni_xcoder_params_t *p_param, ni_ppu_config_t *p_ppu_config);
 
 /* End API function pointers */
 
@@ -276,6 +293,16 @@ typedef struct _NETINT_LIBXCODER_API_FUNCTION_LIST
     PNIGETTIMENS                         niGettimeNs;                          /** Client should access ::ni_gettime_ns API through this pointer */
     PNIUSLEEP                            niUsleep;                             /** Client should access ::ni_usleep API through this pointer */
     PNISTRTOK                            niStrtok;                             /** Client should access ::ni_strtok API through this pointer */
+    PNISTRCPY                            niStrcpy;                             /** Client should access ::ni_strcpy API through this pointer */
+    PNISTRNCPY                           niStrncpy;                            /** Client should access ::ni_strncpy API through this pointer */
+    PNISTRERROR                          niStrerror;                           /** Client should access ::ni_strerror API through this pointer */
+    PNISTRCAT                            niStrcat;                             /** Client should access ::ni_strcat API through this pointer */
+    PNISTRNCAT                           niStrncat;                            /** Client should access ::ni_strncat API through this pointer */
+    PNIFOPEN                             niFopen;                              /** Client should access ::ni_fopen API through this pointer */
+    PNILOCALTIME                         niLocaltime;                          /** Client should access ::ni_localtime API through this pointer */
+    PNIFSCANF                            niFscanf;                             /** Client should access ::ni_fscanf API through this pointer */
+    PNIVSPRINTF                          niVsprintf;                           /** Client should access ::ni_vsprintf API through this pointer */
+    PNISPRINTF                           niSprintf;                            /** Client should access ::ni_sprintf API through this pointer */
     PNINETWORKLAYERCONVERTOUTPUT         niNetworkLayerConvertOutput;          /** Client should access ::ni_network_layer_convert_output API through this pointer */
     PNIAINETWORKLAYERSIZE                niAiNetworkLayerSize;                 /** Client should access ::ni_ai_network_layer_size API through this pointer */
     PNIAINETWORKLAYERDIMS                niAiNetworkLayerDims;                 /** Client should access ::ni_ai_network_layer_dims API through this pointer */
@@ -285,7 +312,9 @@ typedef struct _NETINT_LIBXCODER_API_FUNCTION_LIST
     PNICALCULATESHA256                   niCalculateSha256;                    /** Client should access ::ni_calculate_sha256 API through this pointer */
     PNICOPYHWDESCRIPTORS                 niCopyHwDescriptors;                  /** Client should access ::ni_copy_hw_descriptors API through this pointer */
     PNIGETLIBXCODERAPIVER                niGetLibxcoderApiVer;                 /** Client should access ::ni_get_libxcoder_api_ver API through this pointer */
+#ifndef DEPRECATION_AS_ERROR
     PNIGETCOMPATFWAPIVER                 niGetCompatFwApiVer;                  /** Client should access ::ni_get_compat_fw_api_ver API through this pointer */
+#endif
     PNIFMTFWAPIVERSTR                    niFmtFwApiVerStr;                     /** Client should access ::ni_fmt_fw_api_ver_str API through this pointer */
     PNICMPFWAPIVER                       niCmpFwApiVer;                        /** Client should access ::ni_cmp_fw_api_ver API through this pointer */
     PNIGETLIBXCODERRELEASEVER            niGetLibxcoderReleaseVer;             /** Client should access ::ni_get_libxcoder_release_ver API through this pointer */
@@ -320,7 +349,9 @@ typedef struct _NETINT_LIBXCODER_API_FUNCTION_LIST
     PNICLOSEEVENT                        niCloseEvent;                         /** Client should access ::ni_close_event API through this pointer */
     PNIDEVICEOPEN                        niDeviceOpen;                         /** Client should access ::ni_device_open API through this pointer */
     PNIDEVICECLOSE                       niDeviceClose;                        /** Client should access ::ni_device_close API through this pointer */
+#ifndef DEPRECATION_AS_ERROR
     PNIDEVICECAPABILITYQUERY             niDeviceCapabilityQuery;              /** Client should access ::ni_device_capability_query API through this pointer */
+#endif
     PNIDEVICECAPABILITYQUERY2            niDeviceCapabilityQuery2;             /** Client should access ::ni_device_capability_query2 API through this pointer */
     PNIDEVICESESSIONOPEN                 niDeviceSessionOpen;                  /** Client should access ::ni_device_session_open API through this pointer */
     PNIDEVICESESSIONCLOSE                niDeviceSessionClose;                 /** Client should access ::ni_device_session_close API through this pointer */
@@ -429,13 +460,16 @@ typedef struct _NETINT_LIBXCODER_API_FUNCTION_LIST
     PNIGOPPARAMSCHECK                    niGopParamsCheck;                     /** Client should access ::ni_gop_params_check API through this pointer */
     PNIRECONFIGMAXFRAMESIZERATIO         niReconfigMaxFrameSizeRatio;          /** Client should access ::ni_reconfig_max_frame_size_ratio API through this pointer */
     PNIRECONFIGINTRAPRD                  niReconfigIntraprd;                   /** Client should access ::ni_reconfig_intraprd API through this pointer */
+#ifndef DEPRECATION_AS_ERROR
     PNIP2PXFER                           niP2PXfer;                            /** Client should access ::ni_p2p_xfer API through this pointer */
+#endif
     PNIP2PSEND                           niP2PSend;                            /** Client should access ::ni_p2p_send API through this pointer */
     PNICALCULATETOTALFRAMESIZE           niCalculateTotalFrameSize;            /** Client should access ::ni_calculate_total_frame_size API through this pointer */
     PNIRECONFIGSLICEARG                  niReconfigSliceArg;                   /** Client should access ::ni_reconfig_slice_arg API through this pointer */
     PNIP2PRECV                           niP2PRecv;                            /** Client should access ::ni_p2p_recv API through this pointer */
     PNIDEVICESESSIONRESTART              niDeviceSessionRestart;               /** Client should access ::ni_device_session_restart API through this pointer */
     PNIDEVICESESSIONQUERYBUFFERAVAIL     niDeviceSessionQueryBufferAvail;      /** Client should access ::ni_device_session_query_buffer_avail API through this pointer */
+    PNIDECRECONFIGPPUPARAMS              niDecReconfigPpuParams;               /** Client should access ::ni_dec_reconfig_ppu_params API through this pointer */
 } NETINT_LIBXCODER_API_FUNCTION_LIST;
 
 class NETINTLibxcoderAPI {
@@ -473,6 +507,16 @@ public:
         functionList->niGettimeNs = reinterpret_cast<decltype(ni_gettime_ns)*>(dlsym(lib,"ni_gettime_ns"));
         functionList->niUsleep = reinterpret_cast<decltype(ni_usleep)*>(dlsym(lib,"ni_usleep"));
         functionList->niStrtok = reinterpret_cast<decltype(ni_strtok)*>(dlsym(lib,"ni_strtok"));
+        functionList->niStrcpy = reinterpret_cast<decltype(ni_strcpy)*>(dlsym(lib,"ni_strcpy"));
+        functionList->niStrncpy = reinterpret_cast<decltype(ni_strncpy)*>(dlsym(lib,"ni_strncpy"));
+        functionList->niStrerror = reinterpret_cast<decltype(ni_strerror)*>(dlsym(lib,"ni_strerror"));
+        functionList->niStrcat = reinterpret_cast<decltype(ni_strcat)*>(dlsym(lib,"ni_strcat"));
+        functionList->niStrncat = reinterpret_cast<decltype(ni_strncat)*>(dlsym(lib,"ni_strncat"));
+        functionList->niFopen = reinterpret_cast<decltype(ni_fopen)*>(dlsym(lib,"ni_fopen"));
+        functionList->niLocaltime = reinterpret_cast<decltype(ni_localtime)*>(dlsym(lib,"ni_localtime"));
+        functionList->niFscanf = reinterpret_cast<decltype(ni_fscanf)*>(dlsym(lib,"ni_fscanf"));
+        functionList->niVsprintf = reinterpret_cast<decltype(ni_vsprintf)*>(dlsym(lib,"ni_vsprintf"));
+        functionList->niSprintf = reinterpret_cast<decltype(ni_sprintf)*>(dlsym(lib,"ni_sprintf"));
         functionList->niNetworkLayerConvertOutput = reinterpret_cast<decltype(ni_network_layer_convert_output)*>(dlsym(lib,"ni_network_layer_convert_output"));
         functionList->niAiNetworkLayerSize = reinterpret_cast<decltype(ni_ai_network_layer_size)*>(dlsym(lib,"ni_ai_network_layer_size"));
         functionList->niAiNetworkLayerDims = reinterpret_cast<decltype(ni_ai_network_layer_dims)*>(dlsym(lib,"ni_ai_network_layer_dims"));
@@ -482,7 +526,9 @@ public:
         functionList->niCalculateSha256 = reinterpret_cast<decltype(ni_calculate_sha256)*>(dlsym(lib,"ni_calculate_sha256"));
         functionList->niCopyHwDescriptors = reinterpret_cast<decltype(ni_copy_hw_descriptors)*>(dlsym(lib,"ni_copy_hw_descriptors"));
         functionList->niGetLibxcoderApiVer = reinterpret_cast<decltype(ni_get_libxcoder_api_ver)*>(dlsym(lib,"ni_get_libxcoder_api_ver"));
+#ifndef DEPRECATION_AS_ERROR
         functionList->niGetCompatFwApiVer = reinterpret_cast<decltype(ni_get_compat_fw_api_ver)*>(dlsym(lib,"ni_get_compat_fw_api_ver"));
+#endif
         functionList->niFmtFwApiVerStr = reinterpret_cast<decltype(ni_fmt_fw_api_ver_str)*>(dlsym(lib,"ni_fmt_fw_api_ver_str"));
         functionList->niCmpFwApiVer = reinterpret_cast<decltype(ni_cmp_fw_api_ver)*>(dlsym(lib,"ni_cmp_fw_api_ver"));
         functionList->niGetLibxcoderReleaseVer = reinterpret_cast<decltype(ni_get_libxcoder_release_ver)*>(dlsym(lib,"ni_get_libxcoder_release_ver"));
@@ -517,7 +563,9 @@ public:
         functionList->niCloseEvent = reinterpret_cast<decltype(ni_close_event)*>(dlsym(lib,"ni_close_event"));
         functionList->niDeviceOpen = reinterpret_cast<decltype(ni_device_open)*>(dlsym(lib,"ni_device_open"));
         functionList->niDeviceClose = reinterpret_cast<decltype(ni_device_close)*>(dlsym(lib,"ni_device_close"));
+#ifndef DEPRECATION_AS_ERROR
         functionList->niDeviceCapabilityQuery = reinterpret_cast<decltype(ni_device_capability_query)*>(dlsym(lib,"ni_device_capability_query"));
+#endif
         functionList->niDeviceCapabilityQuery2 = reinterpret_cast<decltype(ni_device_capability_query2)*>(dlsym(lib,"ni_device_capability_query2"));
         functionList->niDeviceSessionOpen = reinterpret_cast<decltype(ni_device_session_open)*>(dlsym(lib,"ni_device_session_open"));
         functionList->niDeviceSessionClose = reinterpret_cast<decltype(ni_device_session_close)*>(dlsym(lib,"ni_device_session_close"));
@@ -627,12 +675,15 @@ public:
         functionList->niGopParamsCheck = reinterpret_cast<decltype(ni_gop_params_check)*>(dlsym(lib,"ni_gop_params_check"));
         functionList->niReconfigMaxFrameSizeRatio = reinterpret_cast<decltype(ni_reconfig_max_frame_size_ratio)*>(dlsym(lib,"ni_reconfig_max_frame_size_ratio"));
         functionList->niReconfigIntraprd = reinterpret_cast<decltype(ni_reconfig_intraprd)*>(dlsym(lib,"ni_reconfig_intraprd"));
+#ifndef DEPRECATION_AS_ERROR
         functionList->niP2PXfer = reinterpret_cast<decltype(ni_p2p_xfer)*>(dlsym(lib,"ni_p2p_xfer"));
+#endif
         functionList->niP2PSend = reinterpret_cast<decltype(ni_p2p_send)*>(dlsym(lib,"ni_p2p_send"));
         functionList->niCalculateTotalFrameSize = reinterpret_cast<decltype(ni_calculate_total_frame_size)*>(dlsym(lib,"ni_calculate_total_frame_size"));
         functionList->niReconfigSliceArg = reinterpret_cast<decltype(ni_reconfig_slice_arg)*>(dlsym(lib,"ni_reconfig_slice_arg"));
         functionList->niP2PRecv = reinterpret_cast<decltype(ni_p2p_recv)*>(dlsym(lib,"ni_p2p_recv"));
         functionList->niDeviceSessionRestart = reinterpret_cast<decltype(ni_device_session_restart)*>(dlsym(lib,"ni_device_session_restart"));
+        functionList->niDecReconfigPpuParams = reinterpret_cast<decltype(ni_dec_reconfig_ppu_params)*>(dlsym(lib,"ni_dec_reconfig_ppu_params"));
     }
 };
 

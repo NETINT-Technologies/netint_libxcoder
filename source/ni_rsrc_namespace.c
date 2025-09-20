@@ -36,6 +36,7 @@
 
 #include "ni_device_api.h"
 #include "ni_nvme.h"
+#include "ni_util.h"
 #ifdef _WIN32
 #include "ni_getopt.h"
 #else
@@ -65,6 +66,7 @@ static void usage(void)
            "        Eg. '1' to select the first virtual SR-IOV device tied \n"
            "        to the physical block device defined by '-d' option.\n"
            "        Default: 0\n"
+           "  -c    Persist the configuration of the namespace\n"
            "  -h    help info.\n");
 }
 
@@ -72,10 +74,12 @@ int send_config_ns_command(char* dev, int ns, int sr)
 {
     ni_device_handle_t handle = ni_device_open(dev, NULL);
     ni_retcode_t retval;
+    char errmsg[NI_ERRNO_LEN] = {0};
     if (handle == NI_INVALID_DEVICE_HANDLE)
     {
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         fprintf(stderr, "ERROR: open %s failure for %s\n", dev,
-                strerror(NI_ERRNO));
+                errmsg);
         exit(-1);
     } else
     {
@@ -85,8 +89,9 @@ int send_config_ns_command(char* dev, int ns, int sr)
     retval = ni_device_config_namespace_num(handle, ns, sr);
     if (retval != NI_RETCODE_SUCCESS)
     {
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         fprintf(stderr, "ERROR: Config setting failure for %s\n",
-                strerror(NI_ERRNO));
+                errmsg);
     }
     ni_device_close(handle);
     return retval;
@@ -96,10 +101,12 @@ int send_config_qos_mode(char *dev, int value)
 {
     ni_device_handle_t handle = ni_device_open(dev, NULL);
     ni_retcode_t retval;
+    char errmsg[NI_ERRNO_LEN] = {0};
     if (handle == NI_INVALID_DEVICE_HANDLE)
     {
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         fprintf(stderr, "ERROR: open %s failure for %s\n", dev,
-                strerror(NI_ERRNO));
+                errmsg);
         exit(-1);
     } else
     {
@@ -109,8 +116,9 @@ int send_config_qos_mode(char *dev, int value)
     retval = ni_device_config_qos(handle, value);
     if (retval != NI_RETCODE_SUCCESS)
     {
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         fprintf(stderr, "ERROR: Config setting failure for %s\n",
-                strerror(NI_ERRNO));
+                errmsg);
     }
     ni_device_close(handle);
     return retval;
@@ -120,10 +128,12 @@ int send_config_qos_op(char *dev, char *devt, int op)
 {
     ni_retcode_t retval;
     ni_device_handle_t handle = ni_device_open(dev, NULL);
+    char errmsg[NI_ERRNO_LEN] = {0};
     if (handle == NI_INVALID_DEVICE_HANDLE)
     {
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         fprintf(stderr, "ERROR: open %s failure for %s\n", dev,
-                strerror(NI_ERRNO));
+                errmsg);
         exit(-1);
     } else
     {
@@ -132,8 +142,9 @@ int send_config_qos_op(char *dev, char *devt, int op)
     ni_device_handle_t handle_t = ni_device_open(devt, NULL);
     if (handle_t == NI_INVALID_DEVICE_HANDLE)
     {
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         fprintf(stderr, "ERROR: open %s failure for %s\n", devt,
-                strerror(NI_ERRNO));
+                errmsg);
         ni_device_close(handle);
         exit(-1);
     } else
@@ -144,8 +155,9 @@ int send_config_qos_op(char *dev, char *devt, int op)
     retval = ni_device_config_qos_op(handle, handle_t, op);
     if (retval != NI_RETCODE_SUCCESS)
     {
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         fprintf(stderr, "ERROR: Config setting failure for %s\n",
-                strerror(NI_ERRNO));
+                errmsg);
     }
     ni_device_close(handle);
     ni_device_close(handle_t);
@@ -163,11 +175,12 @@ int main(int argc, char *argv[])
     int i32_over_provision_percent = 0;
     int sriov_index = 0;
     int qos_mode = -1;
+    int persistence = 0;
 #ifdef __linux__
     struct stat sb;
 #endif
 
-    while ((opt = getopt(argc, argv, "d:D:n:p:q:s:hv")) != EOF)
+    while ((opt = getopt(argc, argv, "d:D:n:p:q:s:chv")) != EOF)
     {
         switch (opt)
         {
@@ -183,7 +196,7 @@ int main(int argc, char *argv[])
                        NI_SW_RELEASE_TIME, NI_SW_RELEASE_ID);
                 exit(0);
             case 'd':
-                strcpy(device_namespace, optarg);
+                ni_strcpy(device_namespace, NI_NAMESPACE_SZ, optarg);
 #ifdef __linux__
                 if (lstat(device_namespace, &sb) != 0 ||
                     (sb.st_mode & S_IFMT) != S_IFBLK)
@@ -195,7 +208,7 @@ int main(int argc, char *argv[])
 #endif
                 break;
             case 'D':
-                strcpy(device_namespace_OP, optarg);
+                ni_strcpy(device_namespace_OP, NI_NAMESPACE_SZ, optarg);
                 break;
             case 'n':
                 // A maximum of 64 namespaces are supported for firmware
@@ -237,6 +250,9 @@ int main(int argc, char *argv[])
                             sriov_index);
                     exit(-1);
                 }
+                break;
+            case 'c':
+                persistence = 1;
                 break;
             default:
                 fprintf(stderr, "ERROR: Invalid option: %c\n", opt);
@@ -298,6 +314,7 @@ int main(int argc, char *argv[])
         return retval;
     }
 
+    if (persistence) namespace_num += 256;
     retval = send_config_ns_command(device_namespace, namespace_num, sriov_index);
     if (retval == NI_RETCODE_SUCCESS)
     {

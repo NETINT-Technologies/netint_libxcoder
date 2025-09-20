@@ -15,10 +15,7 @@ cc_library {
         "ni_rsrc_api.cpp",
     ],
 	
-	vendor_available: true,
-	vndk: {
-        enabled: false,
-    },
+    vendor_available: true,
 
     local_include_dirs: [""],
 

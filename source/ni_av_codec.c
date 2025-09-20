@@ -755,9 +755,9 @@ static int set_roi_map(ni_session_context_t *p_enc_ctx,
                            "zero.\n");
             continue;
         }
-        if (api_params->cfg_enc_params.customize_roi_qp_level) {
+        if (api_params->cfg_enc_params.customize_roi_qp_level == NI_CUS_ROI_MAPFILE) {
             // set_qp in range [1, 10] mean it need to reset qp after
-            // rate control in fw when customize_roi_qp_level > 0.
+            // rate control in fw when customize_roi_qp_level is 1.
             // set_qp is the level in customize qp map, it choose dst qp
             // in customize qp map base on the rate control qp and set_qp
             set_qp = (int32_t)((float)roi->qoffset.num * 1.0f /
@@ -2128,7 +2128,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
 
         p_enc_ctx->enc_change_params->crf = (uint8_t)crf;
         p_enc_ctx->enc_change_params->crfDecimal =
-              (float)((crf - (float)p_enc_ctx->enc_change_params->crf) * 100);
+              (uint8_t)((crf - (float)p_enc_ctx->enc_change_params->crf) * 100);
         p_enc_frame->reconf_len = sizeof(ni_encoder_change_params_t);
     }
 
@@ -2549,7 +2549,7 @@ LIB_API int ni_enc_insert_timecode(ni_session_context_t *p_enc_ctx, ni_frame_t *
 
     ni_bs_writer_put(&pb, 1, 1);
     ni_bs_writer_align_zero(&pb);
-    payload_len = ((ni_bs_writer_tell(&pb) + 7) / 8) - header_len;
+    payload_len = (uint32_t)((ni_bs_writer_tell(&pb) + 7) / 8) - header_len;
     ni_bs_writer_copy(dst, &pb);
     ni_bs_writer_clear(&pb);
 
@@ -3082,7 +3082,9 @@ int ni_dec_packet_parse(ni_session_context_t *p_session_ctx, ni_xcoder_params_t 
     int ret = 0;
     int nalu_count = 0;
     ni_bitstream_reader_t br;
-    uint32_t temporal_id;
+    int temporal_id;
+    const uint8_t *next = NULL;
+    int sei_size = 0, i = 0;
 
     if (pkt_nal_bitmap & NI_GENERATE_ALL_NAL_HEADER_BIT)
     {
@@ -3147,23 +3149,49 @@ int ni_dec_packet_parse(ni_session_context_t *p_session_ctx, ni_xcoder_params_t 
             // check whether the packet contains SEI NAL after VCL units
             if (6 /*H264_NAL_SEI */ == nalu_type)
             {
-                sei_type = *ptr;
-                if (vcl_found ||
-                    custom_sei_type == sei_type ||
-                    p_param->dec_input_params.custom_sei_passthru == sei_type ||
-                    p_param->dec_input_params.enable_all_sei_passthru)
+                // Find the end of the SEI NAL unit
+                next = ni_find_start_code(ptr, end, &stc);
+                if (*(next - 5) == 0)
+                    next -= 5; // long start code
+                else
+                    next -= 4; // short start code
+
+                // More SEI messages in the NAL unit if remaining data larger than 1 byte
+                while (next - ptr > 1)
                 {
-                    // SEI after VCL found or SEI type indicated then extract
-                    // the SEI unit;
-                    // ret = ni_quadra_extract_custom_sei(ni_dec_ctx, data, size,
-                    //                                    ptr + 1 - data, p_packet,
-                    //                                    sei_type, vcl_found);
-                    ret =  ni_extract_custom_sei(data, size,
-                                                ptr + 1 - data, p_packet,
-                                                sei_type, vcl_found);
-                    if (ret != 0)
+                    sei_type = *ptr;
+                    if (vcl_found ||
+                        custom_sei_type == sei_type ||
+                        p_param->dec_input_params.custom_sei_passthru == sei_type ||
+                        p_param->dec_input_params.enable_all_sei_passthru)
                     {
-                        return ret;
+                        // SEI after VCL found or SEI type indicated then extract
+                        // the SEI unit;
+                        // ret = ni_quadra_extract_custom_sei(ni_dec_ctx, data, size,
+                        //                                    ptr + 1 - data, p_packet,
+                        //                                    sei_type, vcl_found);
+                        ret =  ni_extract_custom_sei(data, size,
+                                                    (long)(ptr + 1 - data), p_packet,
+                                                    sei_type, vcl_found);
+                        if (ret != 0)
+                        {
+                            return ret;
+                        }
+                    }
+
+                    // Skip the current SEI message including any emulation prevention bytes
+                    ptr++;
+                    sei_size = 0;
+                    while (ptr < next && *ptr == 0xff)
+                    {
+                        sei_size += *ptr++;
+                    }
+                    sei_size += *ptr++;
+                    for (i = 0; i < sei_size; i++)
+                    {
+                        if (i >= 2 && *(ptr - 2) == 0 && *(ptr - 1) == 0 && *ptr == 3)
+                            sei_size++;
+                        ptr++;
                     }
                 }
             } else if (nalu_type >= 1 /* H264_NAL_SLICE */ &&
@@ -3233,22 +3261,51 @@ int ni_dec_packet_parse(ni_session_context_t *p_session_ctx, ni_xcoder_params_t 
             if (39 /* HEVC_NAL_SEI_PREFIX */ == nalu_type ||
                 40 /* HEVC_NAL_SEI_SUFFIX */ == nalu_type)
             {
-                sei_type = *(ptr + 1);
-                if (vcl_found ||
-                    custom_sei_type == sei_type ||
-                    p_param->dec_input_params.custom_sei_passthru == sei_type ||
-                    p_param->dec_input_params.enable_all_sei_passthru)
+                // Find the end of the SEI NAL unit
+                next = ni_find_start_code(ptr, end, &stc);
+                if (*(next - 5) == 0)
+                    next -= 5; // long start code
+                else
+                    next -= 4; // short start code
+
+                // Skip NAL unit header
+                ptr++;
+
+                // More SEI messages in the NAL unit if remaining data larger than 1 byte
+                while (next - ptr > 1)
                 {
-                    // SEI after VCL found or SEI type indicated then extract
-                    // the SEI unit;
-                    // ret = ni_quadra_extract_custom_sei(ni_dec_ctx, data, size,
-                    //                                    ptr + 2 - data, p_packet,
-                    //                                    sei_type, vcl_found);
-                    ret = ni_extract_custom_sei(data, size, ptr + 2 - data, p_packet,
-                                                sei_type, vcl_found);
-                    if (ret != 0)
+                    sei_type = *ptr;
+                    if (vcl_found ||
+                        custom_sei_type == sei_type ||
+                        p_param->dec_input_params.custom_sei_passthru == sei_type ||
+                        p_param->dec_input_params.enable_all_sei_passthru)
                     {
-                        return ret;
+                        // SEI after VCL found or SEI type indicated then extract
+                        // the SEI unit;
+                        // ret = ni_quadra_extract_custom_sei(ni_dec_ctx, data, size,
+                        //                                    ptr + 2 - data, p_packet,
+                        //                                    sei_type, vcl_found);
+                        ret = ni_extract_custom_sei(data, size, (long)(ptr + 1 - data), p_packet,
+                                                    sei_type, vcl_found);
+                        if (ret != 0)
+                        {
+                            return ret;
+                        }
+                    }
+
+                    // Skip the current SEI message including any emulation prevention bytes
+                    ptr++;
+                    sei_size = 0;
+                    while (ptr < next && *ptr == 0xff)
+                    {
+                        sei_size += *ptr++;
+                    }
+                    sei_size += *ptr++;
+                    for (i = 0; i < sei_size; i++)
+                    {
+                        if (i >= 2 && *(ptr - 2) == 0 && *(ptr - 1) == 0 && *ptr == 3)
+                            sei_size++;
+                        ptr++;
                     }
                 }
             } else if (nalu_type >= 0 /* HEVC_NAL_TRAIL_N */ &&

@@ -463,19 +463,6 @@ typedef struct _ni_timecode
     uint32_t time_offset_value;
 } ni_timecode_t;
 
-// This is for decoder to reset the ppu value
-// ppu_set_enable & (0x1 << idx) is which ppu[idx] enabled
-// for examle, ppu_set_enable is 3, so ppu0 amd ppu1 is enabled
-// 0x03 & (0x01 << 0) is not 0 and 0x03 &(0x01 << 1) is not 0
-// 0: all ppu disabled. 1: ppu0 enabled. 2: ppu1 enabled
-// 3: ppu0 ppu1 enabled. 4: ppu2 enabled. 5: ppu0 ppu2 enabled
-// 6: ppu1 ppu enabled. 7: all ppu enabled others: disabled
-typedef struct _ni_ppu_config{
-    uint8_t ppu_set_enable;
-    uint16_t ppu_w[NI_MAX_NUM_OF_DECODER_OUTPUTS];
-    uint16_t ppu_h[NI_MAX_NUM_OF_DECODER_OUTPUTS];
-}ni_ppu_config_t;
-
 /*!*****************************************************************************
  *  \brief  Whether SEI should be sent together with this frame to encoder
  *

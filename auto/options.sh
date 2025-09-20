@@ -17,6 +17,7 @@ XCODER_INCLUDEDIR=NO
 XCODER_SHAREDDIR=NO
 XCODER_SYSTEMDIR=NO
 XCODER_DISABLE_BACKTRACE_PRINT=NO
+XCODER_ENABLE_CPU_AFFINITY=NO
 XCODER_SSIM_INFO_LEVEL_LOGGING=NO
 SETUP_SYSTEMD=NO
 
@@ -55,6 +56,9 @@ Options:
 
   --with-backtrace-print          enable print backtrace (default)
   --without-backtrace-print       disable print backtrace
+
+  --enable-cpu-affinity           enable cpu affinity
+  --disable-cpu-affinity          disable cpu affinity (default)
 
   --with-setup-systemd            Setup service to initilize libxcoder and resource monitor
   --without-setup-systemd         Do not setup service to initilize libxcoder and resource monitor (default)
@@ -121,6 +125,8 @@ function parse_user_option() {
             --without-backtrace-print)  XCODER_DISABLE_BACKTRACE_PRINT=YES;;
             --with-info-level-ssim-log)     XCODER_SSIM_INFO_LEVEL_LOGGING=YES;;
             --without-info-level-ssim-log)  XCODER_SSIM_INFO_LEVEL_LOGGING=NO;;
+            --enable-cpu-affinity)      XCODER_ENABLE_CPU_AFFINITY=YES;;
+            --disable-cpu-affinity)     XCODER_ENABLE_CPU_AFFINITY=NO;;
             --with-setup-systemd)       SETUP_SYSTEMD=YES;;
             --without-setup-systemd)    SETUP_SYSTEMD=NO;;
             --prefix*)                  extract_arg "\-\-prefix" $1 $2; eprc=$?;
@@ -178,6 +184,7 @@ function regenerate_options() {
     if [ "$XCODER_LINUX_VIRT_IO_DRIVER" = YES ]; then XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --with-linux-virt-io-driver"; else XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --without-linux-virt-io-driver"; fi
     if [ "$XCODER_DISABLE_BACKTRACE_PRINT" = YES ]; then XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --without-backtrace-print"; else XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --with-backtrace-print"; fi
     if [ "$XCODER_SSIM_INFO_LEVEL_LOGGING" = YES ]; then XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --with-info-level-ssim-log"; else XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --without-info-level-ssim-log"; fi
+    if [ "$XCODER_ENABLE_CPU_AFFINITY" = YES ]; then XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --enable-cpu-affinity"; else XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --disable-cpu-affinity"; fi
     if [ "$SETUP_SYSTEMD" = YES ]; then XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --with-setup-systemd"; else XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --without-setup-systemd"; fi
     echo "regenerate config: ${XCODER_AUTO_CONFIGURE}"
 }
@@ -196,6 +203,7 @@ function check_option_conflicts() {
     if [ "$XCODER_LINUX_VIRT_IO_DRIVER" = RESERVED ]; then echo "you must specify for the vm linux virt-io driver, see: ./configure --help"; __check_ok=NO; fi
     if [ "$XCODER_DUMP_DATA" = RESERVED ]; then echo "you must specify whether to compile data-dump macro, see: ./configure --help"; __check_ok=NO; fi
     if [ "$XCODER_DISABLE_BACKTRACE_PRINT" = RESERVED ]; then echo "you must specify whether to compile with print backtrace, see: ./configure --help"; __check_ok=NO; fi
+    if [ "$XCODER_ENABLE_CPU_AFFINITY" = RESERVED ]; then echo "you must specify whether to compile with cpu affinity, see: ./configure --help"; __check_ok=NO; fi
     if [ "$SETUP_SYSTEMD" = RESERVED ]; then echo "you must specify whether to setup systemd service for libxcoder, see: ./configure --help"; __check_ok=NO; fi
 }
 

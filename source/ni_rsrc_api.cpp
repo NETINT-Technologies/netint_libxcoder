@@ -57,10 +57,12 @@ static const char *ni_dec_name_str[] = {"h264_ni_quadra_dec", "h265_ni_quadra_de
 static const char *ni_enc_name_str[] = {"h264_ni_quadra_enc", "h265_ni_quadra_enc", "empty",
                                         "jpeg_ni_quadra_enc", "av1_ni_quadra_enc"};
 
+#ifndef DEPRECATION_AS_ERROR
 NI_DEPRECATED char **g_xcoder_refresh_dev_names = NULL;
 NI_DEPRECATED int g_xcoder_refresh_dev_count = 0;
 NI_DEPRECATED bool g_device_in_ctxt = false;
 NI_DEPRECATED ni_device_handle_t g_dev_handle = NI_INVALID_DEVICE_HANDLE;
+#endif
 
 // return true if string key is found in array of strings, false otherwise
 static bool is_str_in_str_array(const char key[],
@@ -169,8 +171,10 @@ ni_retcode_t ni_rsrc_refresh(int should_match_rev)
     saved_coders = (ni_device_t *)malloc(sizeof(ni_device_t));
     if (!saved_coders)
     {
+        char errmsg[NI_ERRNO_LEN] = {0};
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         ni_log(NI_LOG_ERROR, "ERROR %s() failed to malloc memory: %s\n",
-               __func__, strerror(NI_ERRNO));
+               __func__, errmsg);
         return NI_RETCODE_FAILURE;
     }
     memset(saved_coders, 0, sizeof(ni_device_t));
@@ -185,7 +189,7 @@ ni_retcode_t ni_rsrc_refresh(int should_match_rev)
         for (i = 0; i < saved_coders->xcoder_cnt[NI_DEVICE_TYPE_ENCODER];
               i++)
         {
-            strcpy(xcoder_dev_names[i],
+            ni_strcpy(xcoder_dev_names[i], sizeof(xcoder_dev_names[i]),
                     saved_coders->xcoders[NI_DEVICE_TYPE_ENCODER][i]
                         .dev_name);
         }
@@ -213,7 +217,7 @@ ni_retcode_t ni_rsrc_refresh(int should_match_rev)
         for (i = 0; i < xcoder_dev_count; i++)
         {
             xcoder_refresh_dev_names[i] = (char *)malloc(NI_MAX_DEVICE_NAME_LEN);
-            strcpy(xcoder_refresh_dev_names[i], xcoder_dev_names[i]);
+            ni_strcpy(xcoder_refresh_dev_names[i], NI_MAX_DEVICE_NAME_LEN, xcoder_dev_names[i]);
         }
         xcoder_refresh_dev_count = xcoder_dev_count;
     }
@@ -323,6 +327,7 @@ int ni_rsrc_android_init()
 
 #ifdef _WIN32
 
+#ifndef DEPRECATION_AS_ERROR
 /*!******************************************************************************
  *  \brief  Scans system for all NVMe devices and returns the system device
  *   names to the user which were identified as NETINT transcoder deivices.
@@ -350,6 +355,7 @@ NI_DEPRECATED int ni_rsrc_get_local_device_list(
   }
   return ni_rsrc_enumerate_devices(ni_devices, max_handles);
 }
+#endif
 
 /*!*****************************************************************************
  *  \brief  Scans system for all NVMe devices and returns the system device
@@ -443,8 +449,10 @@ ni_device_pool_t* ni_rsrc_get_device_pool(void)
   p_device_pool = (ni_device_pool_t *)malloc(sizeof(ni_device_pool_t));
   if (NULL == p_device_pool)
   {
+      char errmsg[NI_ERRNO_LEN] = {0};
+      ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
       ni_log(NI_LOG_ERROR, "ERROR %s() malloc() ni_device_pool_t: %s\n", __func__,
-             strerror(NI_ERRNO));
+             errmsg);
       UnmapViewOfFile(p_device_queue);
   }
   else
@@ -603,13 +611,15 @@ ni_device_context_t* ni_rsrc_get_device_context(ni_device_type_t device_type, in
   p_device_context = (ni_device_context_t *)malloc(sizeof(ni_device_context_t));
   if (NULL == p_device_context)
   {
+      char errmsg[NI_ERRNO_LEN] = {0};
+      ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
       ni_log(NI_LOG_ERROR, "ERROR %s() malloc() ni_device_context_t: %s\n",
-             __func__, strerror(NI_ERRNO));
+             __func__, errmsg);
       p_device_context = NULL;
       LRETURN;
   }
 
-  strncpy(p_device_context->shm_name, shm_name, sizeof(p_device_context->shm_name));
+  ni_strncpy(p_device_context->shm_name, NI_MAX_DEVICE_NAME_LEN, shm_name, (NI_MAX_DEVICE_NAME_LEN-1));
   p_device_context->lock = mutex_handle;
   p_device_context->p_device_info = p_device_queue;
 
@@ -649,6 +659,7 @@ END:
 #define DEV_NAME_PREFIX "nvme"
 #endif
 
+#ifndef DEPRECATION_AS_ERROR
 /*!*****************************************************************************
  *  \brief  Scans system for all NVMe devices and returns the system device
  *          names to the user which were identified as NETINT transcoder
@@ -789,8 +800,8 @@ NI_DEPRECATED int ni_rsrc_get_local_device_list(char ni_devices[][NI_MAX_DEVICE_
                          "ni_rsrc_get_local_device_list()\n");
                   continue;
               }
-              strncpy(device_info.blk_name, device_info.dev_name,
-                      NI_MAX_DEVICE_NAME_LEN);
+              ni_strncpy(device_info.blk_name, NI_MAX_DEVICE_NAME_LEN, device_info.dev_name,
+                      (NI_MAX_DEVICE_NAME_LEN-1));
               memset(&device_capabilites, 0, sizeof(ni_device_capability_t));
 
               g_device_in_ctxt = false;
@@ -825,7 +836,7 @@ NI_DEPRECATED int ni_rsrc_get_local_device_list(char ni_devices[][NI_MAX_DEVICE_
                               device_capabilites.device_is_xcoder))
                       {
                           ni_devices[xcoder_device_cnt][0] = '\0';
-                          strcat(ni_devices[xcoder_device_cnt],
+                          ni_strcat(ni_devices[xcoder_device_cnt], NI_MAX_DEVICE_NAME_LEN,
                                  device_info.dev_name);
                           xcoder_device_cnt++;
                       }
@@ -869,6 +880,7 @@ NI_DEPRECATED int ni_rsrc_get_local_device_list(char ni_devices[][NI_MAX_DEVICE_
 
   return xcoder_device_cnt;
 }
+#endif
 
 /*!*****************************************************************************
  *  \brief  Scans system for all NVMe devices and returns the system device
@@ -1013,8 +1025,8 @@ int ni_rsrc_get_local_device_list2(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
                          "ni_rsrc_get_local_device_list2()\n");
                   continue;
               }
-              strncpy(device_info.blk_name, device_info.dev_name,
-                      NI_MAX_DEVICE_NAME_LEN);
+              ni_strncpy(device_info.blk_name, NI_MAX_DEVICE_NAME_LEN, device_info.dev_name,
+                      (NI_MAX_DEVICE_NAME_LEN-1));
               memset(&device_capabilites, 0, sizeof(ni_device_capability_t));
 
               device_in_ctxt = false;
@@ -1048,7 +1060,7 @@ int ni_rsrc_get_local_device_list2(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
                             device_capabilites.device_is_xcoder))
                     {
                         ni_devices[xcoder_device_cnt][0] = '\0';
-                        strcat(ni_devices[xcoder_device_cnt],
+                        ni_strcat(ni_devices[xcoder_device_cnt], NI_MAX_DEVICE_NAME_LEN,
                                 device_info.dev_name);
                         xcoder_device_cnt++;
                     }
@@ -1131,8 +1143,10 @@ ni_device_pool_t* ni_rsrc_get_device_pool(void)
 
   p_device_pool = (ni_device_pool_t *)malloc(sizeof(ni_device_pool_t));
   if (! p_device_pool) {
+    char errmsg[NI_ERRNO_LEN] = {0};
+    ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
     ni_log(NI_LOG_ERROR, "ERROR %s() malloc() ni_device_pool_t: %s\n",
-          __func__, strerror(NI_ERRNO));
+          __func__, errmsg);
     ni_rsrc_munmap_shm((void *)p_device_queue, sizeof(ni_device_queue_t));
   } else {
     p_device_pool->lock = lock;
@@ -1289,13 +1303,15 @@ ni_device_context_t* ni_rsrc_get_device_context(ni_device_type_t device_type, in
 
   p_device_context = (ni_device_context_t *)malloc(sizeof(ni_device_context_t));
   if (!p_device_context) {
+    char errmsg[NI_ERRNO_LEN] = {0};
+    ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
     ni_log(NI_LOG_ERROR, "ERROR %s() malloc() ni_device_context_t: %s\n",
-           __func__, strerror(NI_ERRNO));
+           __func__, errmsg);
     ni_rsrc_munmap_shm((void *)p_device_queue, sizeof(ni_device_info_t));
     LRETURN;
   }
 
-  strncpy(p_device_context->shm_name, shm_name, sizeof(p_device_context->shm_name));
+  ni_strncpy(p_device_context->shm_name, NI_MAX_DEVICE_NAME_LEN, shm_name, (NI_MAX_DEVICE_NAME_LEN-1));
   p_device_context->lock = lock;
   p_device_context->p_device_info = p_device_queue;
 
@@ -1532,7 +1548,7 @@ ni_retcode_t ni_rsrc_list_all_devices2(ni_device_t* p_device, bool list_uninitia
          dev_index < p_device->xcoder_cnt[NI_DEVICE_TYPE_ENCODER]; dev_index++)
     {
         p_dev_info = &p_device->xcoders[NI_DEVICE_TYPE_ENCODER][dev_index];
-        strcpy(initialized_dev_names[dev_index], p_dev_info->dev_name);
+        ni_strcpy(initialized_dev_names[dev_index], NI_MAX_DEVICE_NAME_LEN, p_dev_info->dev_name);
     }
 
     /* Retrieve uninitialized devices. */
@@ -1592,7 +1608,7 @@ ni_retcode_t ni_rsrc_list_all_devices2(ni_device_t* p_device, bool list_uninitia
                    sizeof(capability.fw_build_time));
             memcpy(p_dev_info->fw_build_id, capability.fw_build_id,
                    sizeof(capability.fw_build_id));
-            strcpy(p_dev_info->dev_name, dev_names[dev_index]);
+            ni_strcpy(p_dev_info->dev_name, NI_MAX_DEVICE_NAME_LEN, dev_names[dev_index]);
             memcpy(p_dev_info->blk_name, p_dev_info->dev_name,
                    sizeof(p_dev_info->dev_name));
             p_dev_info->device_type = (ni_device_type_t)dev_type;
@@ -1696,8 +1712,10 @@ void ni_rsrc_print_all_devices_capability(void)
     device = (ni_device_t *)malloc(sizeof(ni_device_t));
     if (!device)
     {
+        char errmsg[NI_ERRNO_LEN] = {0};
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         ni_log(NI_LOG_ERROR, "ERROR %s() failed to malloc memory: %s\n",
-               __func__, strerror(NI_ERRNO));
+               __func__, errmsg);
         return;
     }
     memset(device, 0, sizeof(ni_device_t));
@@ -1728,8 +1746,10 @@ void ni_rsrc_print_all_devices_capability2(bool list_uninitialized)
     device = (ni_device_t *)malloc(sizeof(ni_device_t));
     if (!device)
     {
+        char errmsg[NI_ERRNO_LEN] = {0};
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         ni_log(NI_LOG_ERROR, "ERROR %s() failed to malloc memory: %s\n",
-               __func__, strerror(NI_ERRNO));
+               __func__, errmsg);
         return;
     }
     memset(device, 0, sizeof(ni_device_t));
@@ -2001,8 +2021,10 @@ void ni_rsrc_release_resource(ni_device_context_t *p_device_context,
 #if __linux__ || __APPLE__
     if (msync((void *)p_device_context->p_device_info, sizeof(ni_device_info_t), MS_SYNC | MS_INVALIDATE))
     {
+        char errmsg[NI_ERRNO_LEN] = {0};
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         ni_log(NI_LOG_ERROR, "ERROR %s() msync() p_device_context->"
-               "p_device_info: %s\n", __func__, strerror(NI_ERRNO));
+               "p_device_info: %s\n", __func__, errmsg);
     }
 #endif
   }
@@ -2228,6 +2250,7 @@ int ni_rsrc_remove_device(const char* dev)
     ni_device_pool_t *p_device_pool = NULL;
     ni_device_queue_t *p_device_queue;
     ni_device_type_t device_type;
+    char errmsg[NI_ERRNO_LEN] = {0};
 
     if (!dev)
     {
@@ -2311,13 +2334,14 @@ int ni_rsrc_remove_device(const char* dev)
             }
             else
             {
+                ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
                 ni_log(NI_LOG_ERROR,
                        "ERROR: %s(): %s %s %s failed to delete %s\n",
                        __FUNCTION__,
                        dev,
                        GET_XCODER_DEVICE_TYPE_STR(device_type),
                        p_device_context->shm_name,
-                       strerror(NI_ERRNO));
+                       errmsg);
                 return_value = NI_RETCODE_FAILURE;
             }
 #endif
@@ -2336,13 +2360,14 @@ int ni_rsrc_remove_device(const char* dev)
             }
             else
             {
+                ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
                 ni_log(NI_LOG_ERROR,
                        "ERROR: %s(): %s %s %s failed to delete %s\n",
                        __FUNCTION__,
                        dev,
                        GET_XCODER_DEVICE_TYPE_STR(device_type),
                        lck_name,
-                       strerror(NI_ERRNO));
+                       errmsg);
                 return_value = NI_RETCODE_FAILURE;
             }
 #endif
@@ -2392,11 +2417,12 @@ int ni_rsrc_remove_device(const char* dev)
     }
     else
     {
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         ni_log(NI_LOG_ERROR,
                "ERROR: %s(): msync() failed to delete %s: %s\n",
                __FUNCTION__,
                dev,
-               strerror(NI_ERRNO));
+               errmsg);
         return_value = NI_RETCODE_FAILURE;
     }
 #endif
@@ -2432,8 +2458,10 @@ int ni_rsrc_remove_all_devices(void)
     saved_coders = (ni_device_t *)malloc(sizeof(ni_device_t));
     if (!saved_coders)
     {
+        char errmsg[NI_ERRNO_LEN] = {0};
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         ni_log(NI_LOG_ERROR, "ERROR %s() failed to malloc memory: %s\n",
-               __func__, strerror(NI_ERRNO));
+               __func__, errmsg);
         return NI_RETCODE_FAILURE;
     }
     memset(saved_coders, 0, sizeof(ni_device_t));
@@ -2448,7 +2476,7 @@ int ni_rsrc_remove_all_devices(void)
         for (i = 0; i < saved_coders->xcoder_cnt[NI_DEVICE_TYPE_ENCODER];
              i++)
         {
-            strcpy(xcoder_dev_names[i],
+            ni_strcpy(xcoder_dev_names[i], NI_MAX_DEVICE_NAME_LEN,
                     saved_coders->xcoders[NI_DEVICE_TYPE_ENCODER][i]
                         .dev_name);
             ni_log(NI_LOG_INFO, "device %d %s retrieved\n", i,
@@ -2673,14 +2701,16 @@ int ni_rsrc_lock_and_open(int device_type, ni_lock_handle_t* lock)
 
   int count = 0;
   int status = NI_RETCODE_ERROR_LOCK_DOWN_DEVICE;
+  char errmsg[NI_ERRNO_LEN] = {0};
 #ifdef _WIN32
   *lock = CreateMutex(NULL, FALSE, XCODERS_RETRY_LCK_NAME[device_type]);
 
   if (NULL == *lock)
   {
+      ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
       ni_log(NI_LOG_ERROR, "ERROR: %s() CreateMutex() %s failed: %s\n",
              __func__, XCODERS_RETRY_LCK_NAME[device_type],
-             strerror(NI_ERRNO));
+             errmsg);
       return NI_RETCODE_ERROR_LOCK_DOWN_DEVICE;
   }
 #else
@@ -2692,7 +2722,8 @@ int ni_rsrc_lock_and_open(int device_type, ni_lock_handle_t* lock)
 
     if (*lock < 0)
     {
-        ni_log(NI_LOG_ERROR, "Can not lock down the file lock. Error: %s\n", strerror(errno));
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
+        ni_log(NI_LOG_ERROR, "Can not lock down the file lock. Error: %s\n", errmsg);
         return NI_RETCODE_ERROR_LOCK_DOWN_DEVICE;
     }
   }
@@ -2715,8 +2746,9 @@ int ni_rsrc_lock_and_open(int device_type, ni_lock_handle_t* lock)
         status = NI_RETCODE_SUCCESS;
     } else if (WAIT_TIMEOUT != ret)
     {
+        ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
         ni_log(NI_LOG_ERROR, "ERROR: %s() failed to obtain mutex: %s\n",
-               __func__, strerror(NI_ERRNO));
+               __func__, errmsg);
     }
 #else
     status = lockf(*lock, F_LOCK, 0);
@@ -2799,6 +2831,48 @@ int ni_rsrc_is_fw_compat(uint8_t fw_rev[8])
     } else {
         return 0;
     }
+}
+
+
+/*!******************************************************************************
+ *  \brief     get linux numa_node
+ *
+ *  \param[in] char *device_name
+ *
+ *  \return    int atoi(cmd_ret)
+ *******************************************************************************/
+int ni_rsrc_get_numa_node(char *device_name)
+{
+#ifndef __linux__
+    return -1;
+#else
+  int ret = -1;
+  FILE *cmd_fp;
+  char *ptr = NULL;
+  char cmd[128] = {0};
+  char cmd_ret[64] = {0};
+
+  if(!device_name)
+  {
+    return ret;
+  }
+  ptr = device_name + 5;
+  snprintf(cmd, sizeof(cmd) - 1, "cat /sys/block/%s/device/*/numa_node",ptr);
+  cmd_fp = popen(cmd, "r");
+  if (!cmd_fp)
+  {
+    return ret;
+  }
+  if (fgets(cmd_ret, sizeof(cmd_ret)/sizeof(cmd_ret[0]), cmd_fp) == 0)
+  {
+    goto get_numa_node_ret;
+  }
+  ret = atoi(cmd_ret);
+
+get_numa_node_ret:
+  pclose(cmd_fp);
+  return ret;
+#endif
 }
 
 static int int_cmp(const void *a, const void *b)
@@ -4176,9 +4250,11 @@ ni_device_context_t *ni_rsrc_allocate_auto(
 
         if (NI_INVALID_DEVICE_HANDLE == p_session_context.device_handle)
         {
+            char errmsg[NI_ERRNO_LEN] = {0};
+            ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
             ni_log(NI_LOG_ERROR, "ERROR %s() ni_device_open() %s: %s\n",
                    __func__, p_device_context->p_device_info->dev_name,
-                   strerror(NI_ERRNO));
+                   errmsg);
             ni_rsrc_free_device_context(p_device_context);
             continue;
         }

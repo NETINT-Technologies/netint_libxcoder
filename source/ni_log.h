@@ -48,6 +48,8 @@
   #define LIB_API_LOG
 #endif
 
+#define NI_ERRNO_LEN 256
+
 #ifdef __cplusplus
 extern "C" {
 #endif

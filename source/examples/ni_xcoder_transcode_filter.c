@@ -94,15 +94,17 @@ int main(int argc, char *argv[])
     char in_filename[FILE_NAME_LEN] = {0};
     char out_filename[MAX_OUTPUT_FILES][FILE_NAME_LEN] = {0};
     FILE *output_fp[MAX_OUTPUT_FILES] = {0};
-    int o_index = 0, e_index = 0, g_index = 0;
+    int o_index = 0, e_index = 0, g_index = 0, f_index = 0;
     int output_total = 0;
-    int input_width = 0, input_height = 0, output_width = 0, output_height = 0, bit_depth = 8;
+    int input_width = 0, input_height = 0, bit_depth = 8;
+    int output_width[MAX_OUTPUT_FILES] = {0};
+    int output_height[MAX_OUTPUT_FILES] = {0};
     int dec_codec_format = -1, enc_codec_format = -1;
     ni_log_level_t log_level;
     int xcoderGUID = 0;
     char *n;
     char dec_conf_params[2048] = {0};
-    char filter_conf_params[2048] = {0};
+    char filter_conf_params[MAX_OUTPUT_FILES][2048] = {0};
     char enc_conf_params[MAX_OUTPUT_FILES][2048] = {0};
     char enc_gop_params[MAX_OUTPUT_FILES][2048] = {0};
     int user_data_sei_passthru = 0;
@@ -113,7 +115,7 @@ int main(int argc, char *argv[])
     ni_xcoder_params_t *p_enc_api_param = NULL;
     ni_session_context_t dec_ctx = {0};
     ni_session_context_t enc_ctx[MAX_OUTPUT_FILES] = {0};
-    ni_session_context_t sca_ctx = {0};
+    ni_session_context_t sca_ctx[MAX_OUTPUT_FILES] = {0};
     ni_session_context_t crop_ctx = {0};
     ni_session_context_t pad_ctx = {0};
     ni_session_context_t ovly_ctx = {0};
@@ -124,15 +126,18 @@ int main(int argc, char *argv[])
     uint64_t current_time, previous_time;
     ni_session_data_io_t in_pkt = {0};
     ni_session_data_io_t out_frame = {0};
-    ni_session_data_io_t filter_out_frame = {0};
-    ni_session_data_io_t *frame_to_enc = NULL;
+    ni_session_data_io_t filter_out_frame[MAX_OUTPUT_FILES] = {0};
+    ni_session_data_io_t *frame_to_enc[MAX_OUTPUT_FILES];
     ni_session_data_io_t enc_in_frame = {0};
     ni_session_data_io_t out_packet[MAX_OUTPUT_FILES] = {0};
     niFrameSurface1_t *p_hwframe = NULL;
+    niFrameSurface1_t *p_hwframe2[MAX_OUTPUT_FILES];
     int encoder_opened = 0, end_of_all_streams = 0;
-    ni_scale_params_t scale_params = {0};
+    ni_scale_params_t scale_params[MAX_OUTPUT_FILES] = {0};
     ni_drawbox_params_t drawbox_params = {0};
-    ni_pix_fmt_t enc_pix_fmt = NI_PIX_FMT_YUV420P;
+    ni_pix_fmt_t enc_pix_fmt[MAX_OUTPUT_FILES];
+    int hw_frame_ref_flag = 0;
+    int recycle_hw_frame_for_scaler = 0;
 
     int opt;
     int opt_index;
@@ -168,7 +173,7 @@ int main(int argc, char *argv[])
                 ret = 0;
                 goto end;
             case 'i':
-                strcpy(in_filename, optarg);
+                ni_strcpy(in_filename, FILE_NAME_LEN, optarg);
                 break;
             case 'o':
                 if (o_index == MAX_OUTPUT_FILES)
@@ -188,7 +193,7 @@ int main(int argc, char *argv[])
                     }
                 }
 
-                strcpy(out_filename[o_index], optarg);
+                ni_strcpy(out_filename[o_index], FILE_NAME_LEN, optarg);
                 o_index++;
                 break;
             case 'm':
@@ -278,7 +283,7 @@ int main(int argc, char *argv[])
                 }
                 break;
             case 'd':
-                strcpy(dec_conf_params, optarg);
+                ni_strcpy(dec_conf_params, sizeof(dec_conf_params), optarg);
                 break;
             case 'e':
                 if (e_index == MAX_OUTPUT_FILES)
@@ -287,7 +292,7 @@ int main(int argc, char *argv[])
                     ret = -1;
                     goto end;
                 }
-                strcpy(enc_conf_params[e_index], optarg);
+                ni_strcpy(enc_conf_params[e_index], sizeof(enc_conf_params[e_index]), optarg);
                 e_index++;
                 break;
             case 'g':
@@ -297,14 +302,21 @@ int main(int argc, char *argv[])
                     ret = -1;
                     goto end;
                 }
-                strcpy(enc_gop_params[g_index], optarg);
+                ni_strcpy(enc_gop_params[g_index], sizeof(enc_gop_params[g_index]), optarg);
                 g_index++;
                 break;
             case 'u':
                 user_data_sei_passthru = 1;
                 break;
             case 'f':
-                strcpy(filter_conf_params, optarg);
+                if (f_index == MAX_OUTPUT_FILES)
+                {
+                    ni_log(NI_LOG_ERROR, "Error: number of filter config cannot exceed %d\n", MAX_OUTPUT_FILES);
+                    ret = -1;
+                    goto end;
+                }
+                ni_strcpy(filter_conf_params[f_index], sizeof(filter_conf_params[f_index]), optarg);
+                f_index++;
                 break;
             default:
                 print_usage();
@@ -350,7 +362,8 @@ int main(int argc, char *argv[])
         if (strcmp(out_filename[i], "null") != 0 &&
             strcmp(out_filename[i], "/dev/null") != 0)
         {
-            output_fp[i] = fopen(out_filename[i], "wb");
+            output_fp[i] = NULL;
+            ni_fopen(&(output_fp[i]), out_filename[i], "wb");
             if (!output_fp[i])
             {
                 ni_log(NI_LOG_ERROR, "Error: Failed to open %s\n", out_filename[i]);
@@ -363,6 +376,10 @@ int main(int argc, char *argv[])
             output_fp[i] = NULL;
             ni_log(NI_LOG_INFO, "Note: Requested NULL output for index %d, no output file will be generated\n", i);
         }
+
+        frame_to_enc[i] = NULL;
+        enc_pix_fmt[i] = NI_PIX_FMT_YUV420P;
+        p_hwframe2[i] = NULL;
     }
 
     p_dec_api_param = malloc(sizeof(ni_xcoder_params_t));
@@ -486,6 +503,8 @@ int main(int argc, char *argv[])
     for (i = 0; i < output_total; i++)
     {
         enc_ctx[i].codec_format = enc_codec_format;
+        output_width[i] = input_width;
+        output_height[i] = input_height;
     }
 
     if (dec_codec_format == NI_CODEC_FORMAT_H264)
@@ -499,65 +518,74 @@ int main(int argc, char *argv[])
         fps_den = vp9_info.timebase.num;
     }
 
-    output_width = input_width;
-    output_height = input_height;
-
-    if (filter_conf_params[0])
+    for (i = 0; i < output_total; i++)
     {
-        if (!dec_ctx.hw_action) {
-            ni_log(NI_LOG_ERROR, "Error: filters are only supported when hwframe is enabled (out=hw)\n");
-            ret = -1;
-            goto end;
-        }
-        ret = retrieve_filter_params(filter_conf_params, &scale_params, &drawbox_params);
-        if (ret)
+        if (filter_conf_params[i][0])
         {
-            ni_log(NI_LOG_ERROR, "Error: failed to parse filter parameters: %s\n", filter_conf_params);
-            goto end;
+            if (!dec_ctx.hw_action) {
+                ni_log(NI_LOG_ERROR, "Error: filters are only supported when hwframe is enabled (out=hw)\n");
+                ret = -1;
+                goto end;
+            }
+
+            ret = retrieve_filter_params(filter_conf_params[i], &scale_params[i], &drawbox_params);
+            if (ret)
+            {
+                ni_log(NI_LOG_ERROR, "Error: failed to parse filter parameters: %s\n", filter_conf_params[i]);
+                goto end;
+            }
+        }
+
+        if (scale_params[i].enabled)
+        {
+            ret = ni_device_session_context_init(&sca_ctx[i]);
+            if (ret)
+            {
+                ni_log(NI_LOG_ERROR, "Error: Failed to init scale context\n");
+                goto end;
+            }
+            output_width[i] = scale_params[i].width;
+            output_height[i] = scale_params[i].height;
+        }
+        else if ((drawbox_params.enabled)) // drawbox is only supported for a single instance in this example.
+        {
+            ret = ni_device_session_context_init(&crop_ctx);
+            if (ret)
+            {
+                ni_log(NI_LOG_ERROR, "Error: Failed to init crop context\n");
+                goto end;
+            }
+            ret = ni_device_session_context_init(&pad_ctx);
+            if (ret)
+            {
+                ni_log(NI_LOG_ERROR, "Error: Failed to init pad context\n");
+                goto end;
+            }
+            ret = ni_device_session_context_init(&ovly_ctx);
+            if (ret)
+            {
+                ni_log(NI_LOG_ERROR, "Error: Failed to init overlay context\n");
+                goto end;
+            }
+            ret = ni_device_session_context_init(&fmt_ctx);
+            if (ret)
+            {
+                ni_log(NI_LOG_ERROR, "Error: Failed to init format context\n");
+                goto end;
+            }
+            break;
         }
     }
 
-    if (scale_params.enabled)
+    for (i = 0; i < output_total; i++)
     {
-        ret = ni_device_session_context_init(&sca_ctx);
-        if (ret)
-        {
-            ni_log(NI_LOG_ERROR, "Error: Failed to init scale context\n");
+        if (drawbox_params.enabled && scale_params[i].enabled){
+            ni_log(NI_LOG_ERROR, "Error: Mixing scale and drawbox filter is not supported in this demo\n");
             goto end;
         }
-        output_width = scale_params.width;
-        output_height = scale_params.height;
+        ni_log(NI_LOG_INFO, "(Task %d) Starting to transcode: HWFrames %d, video resolution %dx%d -> %dx%d\n",
+               i, dec_ctx.hw_action, input_width, input_height, output_width[i], output_height[i]);
     }
-    else if (drawbox_params.enabled)
-    {
-        ret = ni_device_session_context_init(&crop_ctx);
-        if (ret)
-        {
-            ni_log(NI_LOG_ERROR, "Error: Failed to init crop context\n");
-            goto end;
-        }
-        ret = ni_device_session_context_init(&pad_ctx);
-        if (ret)
-        {
-            ni_log(NI_LOG_ERROR, "Error: Failed to init pad context\n");
-            goto end;
-        }
-        ret = ni_device_session_context_init(&ovly_ctx);
-        if (ret)
-        {
-            ni_log(NI_LOG_ERROR, "Error: Failed to init overlay context\n");
-            goto end;
-        }
-        ret = ni_device_session_context_init(&fmt_ctx);
-        if (ret)
-        {
-            ni_log(NI_LOG_ERROR, "Error: Failed to init format context\n");
-            goto end;
-        }
-    }
-
-    ni_log(NI_LOG_INFO, "Starting to transcode: HWFrames %d, video resolution %dx%d -> %dx%d\n",
-           dec_ctx.hw_action, input_width, input_height, output_width, output_height);
 
     ctx.start_time = ni_gettime_ns();
     previous_time = ctx.start_time;
@@ -579,7 +607,12 @@ decode_send:
         // YUV Receiving: not writing to file
         receive_rc = decoder_receive_data(&ctx, &dec_ctx, &out_frame, input_width,
                                           input_height, NULL, 0, &rx_size);
-        frame_to_enc = &out_frame;
+
+        for (i = 0; i < output_total; i++)
+        {
+            frame_to_enc[i] = &out_frame;
+        }
+
         if (receive_rc < 0)
         {
             ni_log(NI_LOG_ERROR, "Error: decoder receive frame failed\n");
@@ -609,41 +642,75 @@ decode_send:
         }
         else if (receive_rc != NI_TEST_RETCODE_END_OF_STREAM)
         {
-            if (scale_params.enabled)
+
+            p_hwframe = (niFrameSurface1_t *)out_frame.data.frame.p_data[3];
+            recycle_hw_frame_for_scaler = 1;
+            for (i = 0; i < output_total; i++)
             {
-                p_hwframe = (niFrameSurface1_t *)out_frame.data.frame.p_data[3];
-                ni_hw_frame_ref(p_hwframe);
-                scale_filter(&sca_ctx, &out_frame.data.frame, &filter_out_frame, xcoderGUID, scale_params.width,
-                            scale_params.height, ni_to_gc620_pix_fmt(dec_ctx.pixel_format), scale_params.format);
-                ni_hw_frame_unref(p_hwframe->ui16FrameIdx);
-                frame_to_enc = &filter_out_frame;
+                if (scale_params[i].enabled)
+                {
+                    if(!hw_frame_ref_flag)
+                    {
+                        hw_frame_ref_flag = 1;
+                        ni_hw_frame_ref(p_hwframe);
+                    }
+
+                    scale_filter(&sca_ctx[i], &out_frame.data.frame, &filter_out_frame[i], xcoderGUID, scale_params[i].width,
+                                scale_params[i].height, ni_to_gc620_pix_fmt(dec_ctx.pixel_format), scale_params[i].format);
+                    frame_to_enc[i] = &filter_out_frame[i];
+                }
+                else if (drawbox_params.enabled)
+                {
+                    if(!hw_frame_ref_flag)
+                    {
+                        hw_frame_ref_flag = 1;
+                        ni_hw_frame_ref(p_hwframe);
+                    }
+
+                    drawbox_filter(&crop_ctx, &pad_ctx, &ovly_ctx, &fmt_ctx, &out_frame.data.frame, &filter_out_frame[0],
+                                   &drawbox_params, xcoderGUID, ni_to_gc620_pix_fmt(dec_ctx.pixel_format), GC620_I420);
+                    for (i = 0; i < output_total; i++)
+                    {
+                        frame_to_enc[i] = &filter_out_frame[0];
+                    }
+                    break;
+                }
+
+                if (!scale_params[i].enabled)
+                    recycle_hw_frame_for_scaler = 0;
             }
-            else if (drawbox_params.enabled)
+
+            // If the decoder generates a hardware frame, that frame is passed to the filter or the encoder directly.
+            // Once the (scaler) filter has used it, the frame should be recycled/unreferenced. (It is done here.)
+            // The filter then creates a new hardware frame, which is sent to the encoder and later recycled.
+            // When one transcoder uses a filter and another transcoder does not, the hardware frame produced
+            // by the decoder must NOT be recycled after the filter, because it will still be used by
+            // the encoder and will be recycled later. recycle_hw_frame_for_scaler is a flag for this purpose.
+            if((hw_frame_ref_flag) && (recycle_hw_frame_for_scaler))
             {
-                p_hwframe = (niFrameSurface1_t *)out_frame.data.frame.p_data[3];
-                ni_hw_frame_ref(p_hwframe);
-                drawbox_filter(&crop_ctx, &pad_ctx, &ovly_ctx, &fmt_ctx, &out_frame.data.frame, &filter_out_frame,
-                               &drawbox_params, xcoderGUID, ni_to_gc620_pix_fmt(dec_ctx.pixel_format), GC620_I420);
+                hw_frame_ref_flag = 0;
                 ni_hw_frame_unref(p_hwframe->ui16FrameIdx);
-                frame_to_enc = &filter_out_frame;
             }
 
             if (!encoder_opened)
             {
-                p_hwframe = dec_ctx.hw_action == NI_CODEC_HW_ENABLE ?
-                (niFrameSurface1_t *)frame_to_enc->data.frame.p_data[3] : NULL;
+                for (i = 0; i < output_total; i++)
+                {
+                    p_hwframe2[i] = dec_ctx.hw_action == NI_CODEC_HW_ENABLE ?
+                    (niFrameSurface1_t *)frame_to_enc[i]->data.frame.p_data[3] : NULL;
 
-                if (scale_params.enabled)
-                    enc_pix_fmt = gc620_to_ni_pix_fmt(scale_params.format);
-                else if (drawbox_params.enabled)
-                    enc_pix_fmt = NI_PIX_FMT_YUV420P;
-                else
-                    enc_pix_fmt = dec_ctx.pixel_format;
+                    if (scale_params[i].enabled)
+                        enc_pix_fmt[i] = gc620_to_ni_pix_fmt(scale_params[i].format);
+                    else if (drawbox_params.enabled)
+                        enc_pix_fmt[i] = NI_PIX_FMT_YUV420P;
+                    else
+                        enc_pix_fmt[i] = dec_ctx.pixel_format;
+                }
 
-                ret = encoder_open(&ctx, enc_ctx, p_enc_api_param, output_total, enc_conf_params,
+                ret = encoder_open2(&ctx, enc_ctx, p_enc_api_param, output_total, enc_conf_params,
                                    enc_gop_params, &out_frame.data.frame, output_width, output_height,
                                    fps_num, fps_den, bitrate, enc_codec_format, enc_pix_fmt,
-                                   out_frame.data.frame.aspect_ratio_idc, xcoderGUID, p_hwframe, 0, false);
+                                   out_frame.data.frame.aspect_ratio_idc, xcoderGUID, p_hwframe2, 0, false);
                 if (ret != 0)
                 {
                     break;
@@ -652,7 +719,7 @@ decode_send:
 
                 do
                 {
-                    receive_rc = encoder_receive(&ctx, enc_ctx, &enc_in_frame, out_packet,
+                    receive_rc = encoder_receive2(&ctx, enc_ctx, &enc_in_frame, out_packet,
                                                  output_width, output_height, output_total, output_fp);
                 }
                 while (receive_rc == NI_TEST_RETCODE_EAGAIN);
@@ -675,16 +742,17 @@ decode_send:
         {
             ctx.curr_enc_index = i;
             // YUV Sending
-            send_rc = encoder_send_data2(&ctx, &enc_ctx[i], frame_to_enc, &enc_in_frame, output_width, output_height);
+            send_rc = encoder_send_data2(&ctx, &enc_ctx[i], frame_to_enc[i], &enc_in_frame, output_width[i], output_height[i]);
+
             if (send_rc < 0)   //Error
             {
                 if (dec_ctx.hw_action)
                 {
-                    p_hwframe = (niFrameSurface1_t *)frame_to_enc->data.frame.p_data[3];
+                    p_hwframe = (niFrameSurface1_t *)frame_to_enc[i]->data.frame.p_data[3];
                     ni_hw_frame_ref(p_hwframe);
                 } else
                 {
-                    ni_decoder_frame_buffer_free(&frame_to_enc->data.frame);
+                    ni_decoder_frame_buffer_free(&frame_to_enc[i]->data.frame);
                 }
                 break;
             } else if (send_rc == NI_TEST_RETCODE_EAGAIN)
@@ -694,26 +762,29 @@ decode_send:
                 continue;
             } else if (dec_ctx.hw_action && !ctx.enc_eos_sent[i])
             {
-                p_hwframe = (niFrameSurface1_t *)frame_to_enc->data.frame.p_data[3];
+                p_hwframe = (niFrameSurface1_t *)frame_to_enc[i]->data.frame.p_data[3];
                 ni_hw_frame_ref(p_hwframe);
+            }
+
+            // encoder send handling
+            if (dec_ctx.hw_action)
+            {
+                ni_frame_wipe_aux_data(&frame_to_enc[i]->data.frame);
+            } else
+            {
+                ni_decoder_frame_buffer_free(&frame_to_enc[i]->data.frame);
             }
         }
 
-        // encoder send handling
         if (send_rc < 0)
         {
             break;
-        } else if (dec_ctx.hw_action)
-        {
-            ni_frame_wipe_aux_data(&frame_to_enc->data.frame);
-        } else
-        {
-            ni_decoder_frame_buffer_free(&frame_to_enc->data.frame);
         }
 
 encode_recv:
-        receive_rc = encoder_receive(&ctx, enc_ctx, &enc_in_frame, out_packet,
+        receive_rc = encoder_receive2(&ctx, enc_ctx, &enc_in_frame, out_packet,
                                      output_width, output_height, output_total, output_fp);
+
         for (i = 0; receive_rc >= 0 && i < output_total; i++)
         {
             if (!ctx.enc_eos_received[i])
@@ -757,7 +828,11 @@ end:
     {
         ni_decoder_frame_buffer_free(&out_frame.data.frame);
     }
-    ni_frame_buffer_free(&filter_out_frame.data.frame);
+    for (i = 0; i < output_total; i++)
+    {
+        ni_frame_buffer_free(&filter_out_frame[i].data.frame);
+    }
+
     ni_frame_buffer_free(&enc_in_frame.data.frame);
     for (i = 0; i < output_total; i++)
     {
@@ -772,10 +847,10 @@ end:
         {
             fclose(output_fp[i]);
         }
-    }
-    if (scale_params.enabled)
-    {
-        ni_device_session_context_clear(&sca_ctx);
+        if (scale_params[i].enabled)
+        {
+            ni_device_session_context_clear(&sca_ctx[i]);
+        }
     }
     if (drawbox_params.enabled)
     {

@@ -418,6 +418,18 @@ uint32_t ni_get_kernel_max_io_size(const char * p_dev);
 LIB_API uint64_t ni_gettime_ns(void);
 LIB_API void ni_usleep(int64_t usec);
 LIB_API char *ni_strtok(char *s, const char *delim, char **saveptr);
+LIB_API ni_retcode_t ni_strncpy(char *dest, size_t dmax,
+                        const char *src, size_t slen);
+LIB_API ni_retcode_t ni_strcpy(char *dest, size_t dmax, const char *src);
+LIB_API ni_retcode_t ni_strerror(char *dest, size_t dmax, int errnum);
+LIB_API ni_retcode_t ni_strcat(char *dest, size_t dmax, const char *src);
+LIB_API ni_retcode_t ni_strncat(char *dest, size_t dmax, const char *src, size_t slen);
+LIB_API ni_retcode_t ni_fopen(FILE **fp, const char *filename, const char *mode);
+LIB_API struct tm* ni_localtime(struct tm *dest, const time_t *src);
+LIB_API int ni_fscanf(FILE *stream, const char *fmt, ...);
+LIB_API int ni_vsprintf(char *dest, const size_t dmax, const char *fmt, va_list args);
+LIB_API int ni_sprintf(char *dest, size_t dmax, const char *fmt, ...);
+
 LIB_API ni_retcode_t
 ni_network_layer_convert_output(float *dst, uint32_t num, ni_packet_t *p_packet,
                                 ni_network_data_t *p_network, uint32_t layer);
@@ -457,12 +469,14 @@ LIB_API void ni_copy_hw_descriptors(uint8_t *p_dst[NI_MAX_NUM_DATA_POINTERS],
  ******************************************************************************/
 LIB_API char* ni_get_libxcoder_api_ver(void);
 
+#ifndef DEPRECATION_AS_ERROR
 /*!*****************************************************************************
  *  \brief  Get FW API version libxcoder is compatible with
  *
  *  \return char pointer to FW API version libxcoder is compatible with
  ******************************************************************************/
 LIB_API NI_DEPRECATED char* ni_get_compat_fw_api_ver(void);
+#endif
 
 /*!*****************************************************************************
  *  \brief  Get formatted FW API version string from unformatted FW API version

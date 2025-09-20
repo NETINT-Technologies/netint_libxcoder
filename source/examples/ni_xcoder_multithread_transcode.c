@@ -166,7 +166,7 @@ int main(int argc, char *argv[])
                 ret = 0;
                 goto end;
             case 'i':
-                strcpy(in_filename, optarg);
+                ni_strcpy(in_filename, FILE_NAME_LEN, optarg);
                 break;
             case 'o':
                 if (o_index == MAX_OUTPUT_FILES)
@@ -186,7 +186,7 @@ int main(int argc, char *argv[])
                     }
                 }
 
-                strcpy(out_filename[o_index], optarg);
+                ni_strcpy(out_filename[o_index], FILE_NAME_LEN, optarg);
                 o_index++;
                 break;
             case 'm':
@@ -276,7 +276,7 @@ int main(int argc, char *argv[])
                 }
                 break;
             case 'd':
-                strcpy(dec_conf_params, optarg);
+                ni_strcpy(dec_conf_params, sizeof(dec_conf_params), optarg);
                 break;
             case 'e':
                 if (e_index == MAX_OUTPUT_FILES)
@@ -285,7 +285,7 @@ int main(int argc, char *argv[])
                     ret = -1;
                     goto end;
                 }
-                strcpy(enc_conf_params[e_index], optarg);
+                ni_strcpy(enc_conf_params[e_index], sizeof(enc_conf_params[e_index]), optarg);
                 e_index++;
                 break;
             case 'g':
@@ -295,14 +295,14 @@ int main(int argc, char *argv[])
                     ret = -1;
                     goto end;
                 }
-                strcpy(enc_gop_params[g_index], optarg);
+                ni_strcpy(enc_gop_params[g_index], sizeof(enc_gop_params[g_index]), optarg);
                 g_index++;
                 break;
             case 'u':
                 user_data_sei_passthru = 1;
                 break;
             case 'f':
-                strcpy(filter_conf_params, optarg);
+                ni_strcpy(filter_conf_params, sizeof(filter_conf_params), optarg);
                 break;
             default:
                 print_usage();
@@ -348,7 +348,8 @@ int main(int argc, char *argv[])
         if (strcmp(out_filename[i], "null") != 0 &&
             strcmp(out_filename[i], "/dev/null") != 0)
         {
-            output_fp[i] = fopen(out_filename[i], "wb");
+            output_fp[i] = NULL;
+            ni_fopen(&(output_fp[i]), out_filename[i], "wb");
             if (!output_fp[i])
             {
                 ni_log(NI_LOG_ERROR, "Error: Failed to open %s\n", out_filename[i]);
