@@ -391,8 +391,8 @@ static void displayRsrcMon(void)
             if (p_device_context)
             {
                 sessionCtxt->device_handle =
-                    ni_device_open(p_device_context->p_device_info->dev_name,
-                                   &sessionCtxt->max_nvme_io_size);
+                    ni_device_open2(p_device_context->p_device_info->dev_name,
+                                    NI_DEVICE_READ_ONLY);
                 sessionCtxt->blk_io_handle = sessionCtxt->device_handle;
 
                 // Check device can be opened
@@ -401,7 +401,7 @@ static void displayRsrcMon(void)
                     char errmsg[NI_ERRNO_LEN] = {0};
                     ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
                     fprintf(stderr,
-                            "ERROR: ni_device_open() failed for %s: %s\n",
+                            "ERROR: ni_device_open2() failed for %s: %s\n",
                             p_device_context->p_device_info->dev_name,
                             errmsg);
                     ni_rsrc_free_device_context(p_device_context);

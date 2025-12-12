@@ -246,7 +246,9 @@ typedef struct _ni_device_extra_info
     int32_t on_die_temp;
     uint32_t power_consumption;
     uint32_t current_consumption;
-    uint32_t reserve[3];
+    uint8_t fw_flavour;
+    uint8_t reserve8[3];
+    uint32_t reserve[2];
 } ni_device_extra_info_t;
 
 typedef enum

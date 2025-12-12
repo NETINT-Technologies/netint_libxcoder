@@ -101,7 +101,15 @@ int main(int argc, char *argv[])
         }
   }
 
-#if __linux__ || __APPLE__
+#if __linux__
+  ni_retcode_t retval = ni_rsrc_init(should_match_rev, timeout_seconds);
+  int ret_ts = system("host_ts.sh");
+  if (ret_ts != 0)
+  {
+    printf("Unable to send Host time\n");
+  }
+  return retval;
+#elif __APPLE__
   return ni_rsrc_init(should_match_rev, timeout_seconds);
 #elif _WIN32
   ni_retcode_t retval = ni_rsrc_init(should_match_rev, timeout_seconds);

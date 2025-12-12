@@ -1051,6 +1051,10 @@ int h265_parse_ptl(ni_bitstream_reader_t *br, PTL *ptl, int max_num_sub_layers)
 
     ptl->general_ptl.level_idc = ni_bs_reader_get_bits(br, 8);
 
+    if (max_num_sub_layers > HEVC_MAX_SUB_LAYERS)
+    {
+        max_num_sub_layers = HEVC_MAX_SUB_LAYERS;
+    }
     for (i = 0; i < max_num_sub_layers - 1; i++)
     {
         ptl->sub_layer_profile_present_flag[i] = ni_bs_reader_get_bits(br, 1);

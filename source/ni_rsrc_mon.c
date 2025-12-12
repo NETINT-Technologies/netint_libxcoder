@@ -43,6 +43,7 @@
 #include "ni_rsrc_api.h"
 #include "ni_rsrc_priv.h"
 #include "ni_util.h"
+#include "ni_quadraprobe.h"
 
 #define MAX_DEVICE_NAME_SIZE (9)
 #define ABSOLUTE_TEMP_ZERO (-273)
@@ -342,8 +343,8 @@ bool open_and_query(ni_device_type_t device_type,
   } else
   {
       p_session_context->device_handle =
-          ni_device_open(p_device_context->p_device_info->dev_name,
-                         &p_session_context->max_nvme_io_size);
+          ni_device_open2(p_device_context->p_device_info->dev_name,
+                         NI_DEVICE_READ_ONLY);
       if (p_session_context->device_handle != NI_INVALID_DEVICE_HANDLE)
       {
           device_handles[xcoder_device_type][module_id] =
@@ -356,7 +357,7 @@ bool open_and_query(ni_device_type_t device_type,
     char errmsg[NI_ERRNO_LEN] = {0};
     ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
     fprintf(stderr,
-            "ERROR: ni_device_open() failed for %s: %s\n",
+            "ERROR: ni_device_open2() failed for %s: %s\n",
             p_device_context->p_device_info->dev_name,
             errmsg);
     ni_rsrc_free_device_context(p_device_context);
@@ -431,14 +432,14 @@ bool open_and_get_log(ni_device_context_t *p_device_context,
     return false;
 
   p_session_context->device_handle =
-    ni_device_open(p_device_context->p_device_info->blk_name,
-                   &p_session_context->max_nvme_io_size);
+    ni_device_open2(p_device_context->p_device_info->blk_name,
+                   NI_DEVICE_READ_ONLY);
   if (p_session_context->device_handle == NI_INVALID_DEVICE_HANDLE)
   {
     char errmsg[NI_ERRNO_LEN] = {0};
     ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
     fprintf(stderr,
-            "ERROR: ni_device_open() failed for %s: %s\n",
+            "ERROR: ni_device_open2() failed for %s: %s\n",
             p_device_context->p_device_info->blk_name,
             errmsg);
     ni_rsrc_free_device_context(p_device_context);
@@ -1121,6 +1122,17 @@ void print_json_detail(ni_device_queue_t *p_device_queue, ni_session_context_t *
       continue;
     }
 
+    if(first_device_type_printed)
+    {
+      strcat_dyn_buf(&output_buf, ",\n");
+    }
+    strcat_dyn_buf(&output_buf,
+                    "\t\"%s\" :"
+                    "[\n",
+                    device_name
+                    );
+    first_item_printed = 0;
+
     for (i = 0; i < device_count; i++)
     {
       p_device_context =
@@ -1134,17 +1146,6 @@ void print_json_detail(ni_device_queue_t *p_device_queue, ni_session_context_t *
         continue;
       }
 
-      if(first_device_type_printed)
-      {
-        strcat_dyn_buf(&output_buf, ",\n");
-      }
-
-      strcat_dyn_buf(&output_buf,
-                         "\t\"%s\" :"
-                         "[\n",
-                         device_name
-                         );
-      first_item_printed = 0;
       for(index = 0; index < NI_MAX_CONTEXTS_PER_HW_INSTANCE; index++)
       {
         if(detail_data_v1->sInstDetailStatus[index].ui16FrameRate)
@@ -1221,12 +1222,13 @@ void print_json_detail(ni_device_queue_t *p_device_queue, ni_session_context_t *
           first_item_printed = 1;
         }
       }
-      strcat_dyn_buf(&output_buf, "\n");
-      strcat_dyn_buf(&output_buf,
-                      "\t]"
-                      );
-      first_device_type_printed = 1;
     }
+
+    strcat_dyn_buf(&output_buf, "\n");
+    strcat_dyn_buf(&output_buf,
+                "\t]"
+                );
+    first_device_type_printed = 1;
   }
 
   strcat_dyn_buf(&output_buf, "\n");
@@ -2431,8 +2433,8 @@ void print_extra(ni_device_queue_t *p_device_queue, ni_session_context_t *p_sess
     } else
     {
         p_session_context->device_handle =
-            ni_device_open(p_device_context->p_device_info->dev_name,
-                          &p_session_context->max_nvme_io_size);
+            ni_device_open2(p_device_context->p_device_info->dev_name,
+                            NI_DEVICE_READ_ONLY);
         if (p_session_context->device_handle != NI_INVALID_DEVICE_HANDLE)
         {
             device_handles[xcoder_device_type][module_id] =
@@ -2445,7 +2447,7 @@ void print_extra(ni_device_queue_t *p_device_queue, ni_session_context_t *p_sess
       char errmsg[NI_ERRNO_LEN] = {0};
       ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
       fprintf(stderr,
-              "ERROR: ni_device_open() failed for %s: %s\n",
+              "ERROR: ni_device_open2() failed for %s: %s\n",
               p_device_context->p_device_info->dev_name,
               errmsg);
       ni_rsrc_free_device_context(p_device_context);
@@ -2466,11 +2468,12 @@ void print_extra(ni_device_queue_t *p_device_queue, ni_session_context_t *p_sess
     if (!internal_call)
     {
       strcat_dyn_buf(&output_buf,
-                "%-4s %-8s %-14s\n", "TEMP", "POWER", "DEVICE");
+                "%-4s %-8s %-8s %-14s\n", "TEMP", "POWER", "FLAVOR", "DEVICE");
       strcat_dyn_buf(&output_buf,
-                "%-4d %-8s %-14s\n",
+                "%-4d %-8s %-8c %-14s\n",
                 p_dev_extra_info.composite_temp + ABSOLUTE_TEMP_ZERO,
                 (p_dev_extra_info.power_consumption + 1) ? power_consumption : "N/A",
+                p_dev_extra_info.fw_flavour,
                 p_device_context->p_device_info->dev_name);
     }
     else
@@ -2478,12 +2481,13 @@ void print_extra(ni_device_queue_t *p_device_queue, ni_session_context_t *p_sess
       if (instance_count == 0)
       {
         strcat_dyn_buf(&output_buf,
-                       "%-8s %-8s %-8s %-8.8s %-8.8s \n", "INDEX", "TEMP", "POWER", "FR", "SN");
+                       "%-8s %-8s %-8s %-8s %-8.8s %-8.8s \n", "INDEX", "TEMP", "POWER", "FLAVOR", "FR", "SN");
       }
         strcat_dyn_buf(&output_buf,
-                       "%-8d %-8d %-8s %-8.8s %-8.*s \n",
+                       "%-8d %-8d %-8s %-8c %-8.8s %-8.*s \n",
                        instance_count++ , p_dev_extra_info.composite_temp + ABSOLUTE_TEMP_ZERO,
                        (p_dev_extra_info.power_consumption + 1) ? power_consumption : "N/A",
+                       p_dev_extra_info.fw_flavour,
                        p_device_context->p_device_info->fw_rev,
                        (int)sizeof(p_device_context->p_device_info->serial_number), p_device_context->p_device_info->serial_number);
 
@@ -2519,6 +2523,7 @@ int main(int argc, char *argv[])
   enum outFormat printFormat = FMT_TEXT;
   checkInterval = 0;
   bool fw_log_dump = false;
+  bool core_reset_log_dump = false;
   int devid = -1;
   int refresh_device_pool = 1;
   bool is_first_query = true;
@@ -2531,7 +2536,7 @@ int main(int argc, char *argv[])
 #endif
 
   // arg handling
-  while ((opt = getopt(argc, argv, "n:o:D:k:R:rt:Sl:hvd")) != -1)
+  while ((opt = getopt(argc, argv, "n:o:D:C:k:R:rt:Sl:hvd")) != -1)
   {
     switch (opt)
     {
@@ -2578,6 +2583,11 @@ int main(int argc, char *argv[])
     case 'D':
       fw_log_dump = atoi(optarg);
       break;
+    case 'C':
+      core_reset_log_dump = atoi(optarg);
+      if (core_reset_log_dump)
+        fw_log_dump = true;
+      break;
     case 'k':
       devid = atoi(optarg);
       break;
@@ -2619,6 +2629,7 @@ int main(int argc, char *argv[])
              "-o  Output format. [text, simple, full, json, json1, json2, extra]\n"
              "    Default: text\n"
              "-D  Dump firmware logs to current directory. Default: 0(not dump fw log).\n"
+             "-C  Dump firmware core reset logs to current directory. Default: 0(not dump fw log).\n"
              "-k  Specify to dump which card's firmware logs.\n"
              "    Default: -1(dump fw log of all cards).\n"
              "-r  Initialize Quadra device regardless firmware release version to\n"
@@ -2652,6 +2663,7 @@ int main(int argc, char *argv[])
              "Additional information only in text(Default) mode \n"
              "TEMP          current temperature (degrees Celsius)\n"
              "POWER         current power(mW), N/A when query power not supported\n"
+             "FLAVOR        current Flavor, N/A when query flavor not supported\n"
              "FR            current firmware revision\n"
              "SN            serial number of the Quadra device\n"
              "\n"
@@ -2670,7 +2682,7 @@ int main(int argc, char *argv[])
              "LOAD          VPU load\n"
              "FW_LOAD       system load\n"
              "\n"
-             "Extra output shows TEMP and POWER of the Quadra device \n",
+             "Extra output shows TEMP and POWER and FLAVOR of the Quadra device \n",
               NI_XCODER_REVISION);
       return 0;
     case 'v':
@@ -2733,6 +2745,26 @@ int main(int argc, char *argv[])
     if (ret == NI_RETCODE_ERROR_RESOURCE_UNAVAILABLE) {
       ni_rsrc_refresh(should_match_rev);
       fprintf(stderr, "FATAL: NI resource unavailable\n");
+#if defined(__linux__)
+      if (fw_log_dump)
+      {
+        fprintf(stderr, "Proceeding to dump firmware logs as root\n");
+        if (geteuid() != 0)
+        {
+          fprintf(stderr, "This operation requires root (sudo). Please rerun: sudo %s \n", argv[0]);
+          exit(1);
+        }
+        int rc = ni_rsrc_log_dump(".", core_reset_log_dump);
+        if (rc == 0)
+          fprintf(stderr, "Firmware log dump: all devices successful.\n");
+        else if (rc == 1)
+          fprintf(stderr, "Firmware log dump: No Quadra devices found. Nothing to dump.\n");
+        else if (rc == 2)
+          fprintf(stderr, "Firmware log dump: One or more device logs failed to dump. Check previous error messages for details.\n");
+        else
+          fprintf(stderr, "Firmware log dump: Unexpected error, return code %d\n", rc);
+      }
+#endif
       ret = 0;
     } else
     {
@@ -2912,7 +2944,30 @@ int main(int argc, char *argv[])
         perror("ERROR: cannot unlock p_device_pool");
     }
 #endif
-    dump_fw_log(coders, p_xCtxt, devid);
+#if defined(__linux__)
+    if (core_reset_log_dump)
+    {
+        fprintf(stderr, "Proceeding to dump firmware logs as root\n");
+        if (geteuid() != 0)
+        {
+          fprintf(stderr, "This operation requires root (sudo). Please rerun: sudo %s \n", argv[0]);
+          exit(1);
+        }
+        int rc = ni_rsrc_log_dump(".", core_reset_log_dump);
+        if (rc == 0)
+          fprintf(stderr, "Firmware log dump: all devices successful.\n");
+        else if (rc == 1)
+          fprintf(stderr, "Firmware log dump: No Quadra devices found. Nothing to dump.\n");
+        else if (rc == 2)
+          fprintf(stderr, "Firmware log dump: One or more device logs failed to dump. Check previous error messages for details.\n");
+        else
+          fprintf(stderr, "Firmware log dump: Unexpected error, return code %d\n", rc);
+    }
+    else
+#endif
+    {
+      dump_fw_log(coders, p_xCtxt, devid);
+    }
   }
 
   // close all opened devices

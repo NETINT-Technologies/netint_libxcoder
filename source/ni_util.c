@@ -36,6 +36,10 @@
 #include <unistd.h>
 #endif
 
+#if __linux__
+#include <linux/fs.h>
+#endif
+
 #include "ni_nvme.h"
 #include "ni_util.h"
 
@@ -5051,7 +5055,12 @@ uint32_t ni_decode_power_measurement(uint32_t current_data, const uint8_t *seria
     }
     else if ((strncmp(pcb_config, "M0", 2) == 0) || (strncmp(pcb_config, "M1", 2) == 0))
     {
-        current_ma = ((((current_value * 1000) / (TPS25946_R_IMON_T1M * TPS25946_GAIN_IMON_T1M)) * 1000) * MCU_REF_VOLTAGE) / MCU_FSR_ADC;
+        current_ma = ((((current_value * 1000) / (TPS25974_R_IMON_T1M * TPS25974_GAIN_IMON)) * 1000) * MCU_REF_VOLTAGE) / MCU_FSR_ADC;
+        voltage_mv = 3300.0f;
+    }
+    else if (strncmp(pcb_config, "M", 1) == 0) // Other than M0 and M1
+    {
+        current_ma = ((current_value * 1000) / (TPS25974_R_IMON_T1M * TPS25974_GAIN_IMON)) * 1000;
         voltage_mv = 3300.0f;
     }
     else
@@ -5062,11 +5071,9 @@ uint32_t ni_decode_power_measurement(uint32_t current_data, const uint8_t *seria
     return power_mw;
 }
 
-
-
 /*!******************************************************************************
  *  \brief   Check a device can be read by ni_device_capability_query()
- *           by checking the size of the device using blockdev
+ *           by checking the size of the device using ioctl
  *
  *           INFO OR ERROR logs will not be printed in this function
  *
@@ -5083,204 +5090,46 @@ uint32_t ni_decode_power_measurement(uint32_t current_data, const uint8_t *seria
  *           returns 0 when the result can not be determined
  *
  *******************************************************************************/
-static int ni_device_size_precheck_blockdev(const char *p_dev, const uint64_t size_needed )
+static int ni_device_size_precheck_ioctl(const char *p_dev, const uint64_t size_needed)
 {
-#ifndef __linux__
-    (void) p_dev;
-    (void) size_needed;
+#if defined(_WIN32) || !defined(BLKGETSIZE64)
+    (void)p_dev;
+    (void)size_needed;
     return 0;
 #else
-
+    int fd = -1;
+    int call_ret = 0;
     int ret = 0;
-
-    const char blockdev_command_dev[] = "blockdev --getsize64 %s 2>/dev/null";
-    FILE *blockdev_file = NULL;
-    char *blockdev_command = NULL;
-    char blockdev_result [70] = {0};
+    uint64_t bytes = 0;
 
     if (!p_dev)
     {
         return -1;
     }
 
-    const size_t path_len = strlen(p_dev);
+    fd = open(p_dev, O_RDONLY);
 
-    blockdev_command = (char *)calloc(1, sizeof(blockdev_command_dev) + path_len);
-    if (!blockdev_command)
+    if (fd < 0)
     {
-        LRETURN;
+        return 0;
     }
 
-    snprintf(blockdev_command, sizeof(blockdev_command_dev) + path_len, blockdev_command_dev, p_dev);
-
-    ni_log2(NULL, NI_LOG_DEBUG, "%s() blockdev command %s\n", __func__, blockdev_command);
-
-    blockdev_file = popen(blockdev_command, "r");
-
-    if (!blockdev_file)
+    call_ret = ioctl(fd, BLKGETSIZE64, &bytes);
+    if (call_ret < 0)
     {
-        LRETURN;
+        ret = 0;
+    }
+    else if (bytes < size_needed)
+    {
+        ret = -1;
+    }
+    else
+    {
+        ret = 1;
     }
 
-    if (fgets(blockdev_result, sizeof(blockdev_result), blockdev_file) == NULL)
-    {
-        LRETURN;
-    }
-
-    int status = pclose(blockdev_file);
-    blockdev_file = NULL;
-
-    if (status == 0) // no errors
-    {
-        if (*blockdev_result != '\0')
-        {
-            char *endptr = NULL;
-            errno = 0;
-            unsigned long long this_size = strtoull(blockdev_result, &endptr, 10);
-
-            if (errno != 0 || endptr == blockdev_result)
-            {
-                ret = 0;
-            }
-            else if (this_size < size_needed)
-            {
-                ni_log2(NULL, NI_LOG_DEBUG, "%s() blockdev size check failed. size: %" PRIu64 "\n", __func__, this_size);
-                ret = -1;
-            }
-            else
-            {
-                ret = 1;
-            }
-        }
-    }
-
-END:
-    if (blockdev_command)
-    {
-        free(blockdev_command);
-    }
-
-    if (blockdev_file)
-    {
-        pclose(blockdev_file);
-    }
-
+    close(fd);
     return ret;
-
-#endif
-}
-
-/*!******************************************************************************
- *  \brief   Check a device can be read by ni_device_capability_query()
- *           by checking the size of the device using lsblk
- *
- *           INFO OR ERROR logs will not be printed in this function
- *
- *  \param[in]   p_dev Device path string. eg: "/dev/nvme1n2"
- *  \param[in]   size_needed The minimum required size
- *
- *  \return
- *           returns -1
- *           when the device can not be read by ni_device_capability_query()
- *
- *           returns 1
- *           when the device can be read by ni_device_capability_query()
- *
- *           returns 0 when the result can not be determined
- *
- *******************************************************************************/
-static int ni_device_size_precheck_lsblk(const char *p_dev, const uint64_t size_needed)
-{
-#ifndef __linux__
-    (void) p_dev;
-    (void) size_needed;
-    return 0;
-#else
-
-    int ret = 0;
-    const char lsblk_command_dev[] = "lsblk -b -o SIZE %s 2>/dev/null";
-    char *lsblk_command = NULL;
-    FILE *lsblk_file = NULL;
-    char lsblk_result [70] = {0};
-    char *fgets_result = NULL;
-
-    if (!p_dev)
-    {
-        return -1;
-    }
-
-    const size_t path_len = strlen(p_dev);
-
-    lsblk_command = (char *)calloc(1, sizeof(lsblk_command_dev) + path_len);
-    if (!lsblk_command)
-    {
-        LRETURN;
-    }
-
-    snprintf(lsblk_command, sizeof(lsblk_command_dev) + path_len, lsblk_command_dev, p_dev);
-
-    ni_log2(NULL, NI_LOG_DEBUG, "%s() lsblk command %s\n", __func__, lsblk_command);
-
-    lsblk_file = popen(lsblk_command, "r");
-    if (!lsblk_file)
-    {
-        LRETURN;
-    }
-
-    fgets_result = fgets(lsblk_result, sizeof(lsblk_result), lsblk_file);//get the first line
-    if (!fgets_result)
-    {
-        LRETURN;
-    }
-
-    memset(lsblk_result, 0, sizeof(lsblk_result));
-
-    fgets_result = fgets(lsblk_result, sizeof(lsblk_result), lsblk_file);//get the next line
-    if (fgets_result)
-    {
-        LRETURN;
-    }
-
-    int status = pclose(lsblk_file);
-    lsblk_file = NULL;
-
-    if (status == 0) // no errors
-    {
-        if (*lsblk_result != '\0')
-        {
-            char *endptr = NULL;
-            errno = 0;
-            unsigned long long this_size = strtoull(lsblk_result, &endptr, 10);
-
-            if (errno != 0 || endptr == lsblk_result)
-            {
-                ret = 0;
-            }
-            else if (this_size < size_needed)
-            {
-                ni_log2(NULL, NI_LOG_DEBUG, "%s() lsblk size check failed. size: %" PRIu64 "\n", __func__, this_size);
-                ret = -1;
-            }
-            else
-            {
-                ret = 1;
-            }
-        }
-    }
-
-END:
-    if (lsblk_command)
-    {
-        free(lsblk_command);
-    }
-
-    if (lsblk_file)
-    {
-        pclose(lsblk_file);
-    }
-
-    return ret;
-
 #endif
 }
 
@@ -5518,17 +5367,7 @@ ni_retcode_t ni_quadra_card_identify_precheck(const char *p_dev)
         return NI_RETCODE_FAILURE;
     }
 
-    ret = ni_device_size_precheck_blockdev(p_dev, SIZE_NEEDED);
-    if (ret > 0)
-    {
-        return NI_RETCODE_SUCCESS;
-    }
-    if (ret < 0)
-    {
-        return NI_RETCODE_FAILURE;
-    }
-
-    ret = ni_device_size_precheck_lsblk(p_dev, SIZE_NEEDED);
+    ret = ni_device_size_precheck_ioctl(p_dev, SIZE_NEEDED);
     if (ret > 0)
     {
         return NI_RETCODE_SUCCESS;

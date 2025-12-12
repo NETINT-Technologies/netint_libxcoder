@@ -13,6 +13,7 @@ cc_library {
         "ni_bitstream.c",
         "ni_rsrc_priv.cpp",
         "ni_rsrc_api.cpp",
+        "ni_quadraprobe.c",
     ],
 	
     vendor_available: true,

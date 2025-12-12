@@ -694,7 +694,6 @@ NI_DEPRECATED int ni_rsrc_get_local_device_list(char ni_devices[][NI_MAX_DEVICE_
   ni_device_capability_t device_capabilites;
   ni_device_handle_t dev_handle = NI_INVALID_DEVICE_HANDLE;
   ni_retcode_t rc;
-  uint32_t tmp_io_size;
   g_device_in_ctxt = false;
 
   if ((ni_devices == NULL)||(max_handles == 0))
@@ -823,7 +822,7 @@ NI_DEPRECATED int ni_rsrc_get_local_device_list(char ni_devices[][NI_MAX_DEVICE_
               {
                 continue;
               }
-              dev_handle = ni_device_open(device_info.dev_name, &tmp_io_size);
+              dev_handle = ni_device_open2(device_info.dev_name, NI_DEVICE_READ_ONLY);
 
               if (NI_INVALID_DEVICE_HANDLE != dev_handle)
               {
@@ -919,7 +918,6 @@ int ni_rsrc_get_local_device_list2(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
   ni_device_capability_t device_capabilites;
   ni_device_handle_t dev_handle = NI_INVALID_DEVICE_HANDLE;
   ni_retcode_t rc;
-  uint32_t tmp_io_size;
   bool device_in_ctxt = false;
 
   if ((ni_devices == NULL)||(max_handles == 0))
@@ -1048,7 +1046,7 @@ int ni_rsrc_get_local_device_list2(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
               {
                   continue;
               }
-              dev_handle = ni_device_open(device_info.dev_name, &tmp_io_size);
+              dev_handle = ni_device_open2(device_info.dev_name, NI_DEVICE_READ_ONLY);
 
               if (NI_INVALID_DEVICE_HANDLE != dev_handle)
               {
@@ -1557,7 +1555,6 @@ ni_retcode_t ni_rsrc_list_all_devices2(ni_device_t* p_device, bool list_uninitia
     int dev_count = ni_rsrc_get_local_device_list2(dev_names, NI_MAX_DEVICE_CNT,
                                                     NULL, 0);
 
-    uint32_t tmp_io_size;
     ni_device_capability_t capability;
     ni_device_handle_t fd;
 
@@ -1569,7 +1566,7 @@ ni_retcode_t ni_rsrc_list_all_devices2(ni_device_t* p_device, bool list_uninitia
             continue;
         }
 
-        fd = ni_device_open(dev_names[dev_index], &tmp_io_size);
+        fd = ni_device_open2(dev_names[dev_index], NI_DEVICE_READ_ONLY);
         if (NI_INVALID_DEVICE_HANDLE == fd)
         {
             ni_log(NI_LOG_ERROR, "Failed to open device: %s\n",
@@ -2053,7 +2050,6 @@ int ni_rsrc_check_hw_available(int guid, ni_device_type_t device_type)
     ni_device_context_t *p_device_ctx = NULL;
     ni_session_context_t session_ctx = {0};
     ni_xcoder_params_t api_param = {0};
-    uint32_t max_nvme_io_size = 0;
     bool b_release_pool_mtx = false;
     ni_retcode_t retval = NI_RETCODE_SUCCESS;
     int retry_cnt = 0;
@@ -2131,8 +2127,8 @@ int ni_rsrc_check_hw_available(int guid, ni_device_type_t device_type)
     p_device_ctx = ni_rsrc_get_device_context(device_type, guid);
     if (p_device_ctx)
     {
-        session_ctx.device_handle = ni_device_open(
-            p_device_ctx->p_device_info->dev_name, &max_nvme_io_size);
+        session_ctx.device_handle = ni_device_open2(
+            p_device_ctx->p_device_info->dev_name, NI_DEVICE_READ_WRITE);
         session_ctx.blk_io_handle = session_ctx.device_handle;
         if (NI_INVALID_DEVICE_HANDLE == session_ctx.device_handle)
         {
@@ -2759,6 +2755,11 @@ int ni_rsrc_lock_and_open(int device_type, ni_lock_handle_t* lock)
       if (count > MAX_LOCK_RETRY)
       {
         ni_log(NI_LOG_ERROR, "Can not put down the lock after 6s");
+#ifdef _WIN32
+        CloseHandle(*lock);
+#else
+        close(*lock);
+#endif
         return NI_RETCODE_ERROR_LOCK_DOWN_DEVICE;
       }
     }
@@ -2803,6 +2804,11 @@ int ni_rsrc_unlock(int device_type, ni_lock_handle_t lock)
       if (count > MAX_LOCK_RETRY)
       {
           ni_log(NI_LOG_ERROR, "Can not unlock the lock after 6s");
+#ifdef _WIN32
+          CloseHandle(lock);
+#else
+          close(lock);
+#endif
           return NI_RETCODE_ERROR_UNLOCK_DEVICE;
       }
   } while (status != (ni_lock_handle_t)(0));
@@ -3858,44 +3864,52 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
 
     for(i = 0; i < p_hw_device_info->available_card_num; ++i)
     {
+        memset(&xCtxt, 0, sizeof(xCtxt));
+        p_device_context = ni_rsrc_get_device_context(all_need_device_type[0], module_id_arr[i]);
+        if (p_device_context)
+        {
+            xCtxt.blk_io_handle = ni_device_open2(p_device_context->p_device_info->blk_name,
+                                                  NI_DEVICE_READ_ONLY);
+            xCtxt.device_handle = xCtxt.blk_io_handle;
+            //Check device can be opend
+            if (NI_INVALID_DEVICE_HANDLE == xCtxt.device_handle)
+            {
+                ni_log(NI_LOG_ERROR, "Error open device %s, blk device %s\n",
+                        p_device_context->p_device_info->dev_name,
+                        p_device_context->p_device_info->blk_name);
+                ni_rsrc_free_device_context(p_device_context);
+                card_remove[i] = 1;
+                continue;
+            }
+#ifdef _WIN32
+            xCtxt.event_handle = ni_create_event();
+            if (NI_INVALID_EVENT_HANDLE == xCtxt.event_handle)
+            {
+                ni_rsrc_free_device_context(p_device_context);
+                ni_device_close(xCtxt.device_handle);
+                ni_log(NI_LOG_ERROR, "ERROR %d: print_perf() create event\n", NI_ERRNO);
+                card_remove[i] = 1;
+                continue;
+            }
+#endif
+        }
+        else
+        {
+            ni_log(NI_LOG_ERROR, "ERROR %d: Failed to get device context\n", NI_ERRNO);
+            p_hw_device_info->err_code = NI_RETCODE_ERROR_MEM_ALOC;
+            LRETURN;
+        }
+
         for(int j = 0; j < device_type_num; ++j)//need to fix this
         {
-            memset(&xCtxt, 0, sizeof(xCtxt));
-            p_device_context = ni_rsrc_get_device_context(all_need_device_type[j], module_id_arr[i]);
+            if (j != 0)
+                p_device_context = ni_rsrc_get_device_context(all_need_device_type[j], module_id_arr[i]);
             if(p_device_context)
             {
-                xCtxt.blk_io_handle = ni_device_open(p_device_context->p_device_info->blk_name,
-                                                  &(xCtxt.max_nvme_io_size));
-                xCtxt.device_handle = xCtxt.blk_io_handle;
-                //Check device can be opend
-                if (NI_INVALID_DEVICE_HANDLE == xCtxt.device_handle)
-                {
-                    ni_log(NI_LOG_ERROR, "Error open device %s, blk device %s\n",
-                            p_device_context->p_device_info->dev_name,
-                            p_device_context->p_device_info->blk_name);
-                    ni_rsrc_free_device_context(p_device_context);
-                    card_remove[i] = 1;
-                    continue;
-                }
-#ifdef _WIN32
-                xCtxt.event_handle = ni_create_event();
-                if (NI_INVALID_EVENT_HANDLE == xCtxt.event_handle)
-                {
-                    ni_rsrc_free_device_context(p_device_context);
-                    ni_device_close(xCtxt.device_handle);
-                    ni_log(NI_LOG_ERROR, "ERROR %d: print_perf() create event\n", NI_ERRNO);
-                    card_remove[i] = 1;
-                    continue;
-                }
-#endif
                 //Check decode/encode can be queired
                 xCtxt.hw_id = p_device_context->p_device_info->hw_id;
                 if (NI_RETCODE_SUCCESS != ni_device_session_query(&xCtxt, all_need_device_type[j]))
                 {
-                    ni_device_close(xCtxt.device_handle);
-#ifdef _WIN32
-                    ni_close_event(xCtxt.event_handle);
-#endif
                     ni_log(NI_LOG_ERROR, "Error query %s %s %s.%d\n",
                                           (all_need_device_type[j] == NI_DEVICE_TYPE_DECODER) ? "decoder" :
                                           (all_need_device_type[j] == NI_DEVICE_TYPE_ENCODER) ? "encoder" :
@@ -3907,10 +3921,7 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
                     card_remove[i] = 1;
                     continue;
                 }
-                ni_device_close(xCtxt.device_handle);
-#ifdef _WIN32
-                ni_close_event(xCtxt.event_handle);
-#endif
+
                 if (0 == xCtxt.load_query.total_contexts)
                 {
                     xCtxt.load_query.current_load = 0;
@@ -3945,10 +3956,17 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
             {
                 ni_log(NI_LOG_ERROR, "ERROR %d: Failed to get device context\n", NI_ERRNO);
                 p_hw_device_info->err_code = NI_RETCODE_ERROR_MEM_ALOC;
+                ni_device_close(xCtxt.device_handle);
+#ifdef _WIN32
+                ni_close_event(xCtxt.event_handle);
+#endif
                 LRETURN;
             }
         }
-
+        ni_device_close(xCtxt.device_handle);
+#ifdef _WIN32
+        ni_close_event(xCtxt.event_handle);
+#endif
     }
 
     if(coder_param->decoder_param)
@@ -4245,14 +4263,14 @@ ni_device_context_t *ni_rsrc_allocate_auto(
 
         // p_first retrieve status from f/w and update storage
 
-        p_session_context.blk_io_handle = ni_device_open(p_device_context->p_device_info->dev_name, &p_session_context.max_nvme_io_size);
+        p_session_context.blk_io_handle = ni_device_open2(p_device_context->p_device_info->dev_name, NI_DEVICE_READ_ONLY);
         p_session_context.device_handle = p_session_context.blk_io_handle;
 
         if (NI_INVALID_DEVICE_HANDLE == p_session_context.device_handle)
         {
             char errmsg[NI_ERRNO_LEN] = {0};
             ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
-            ni_log(NI_LOG_ERROR, "ERROR %s() ni_device_open() %s: %s\n",
+            ni_log(NI_LOG_ERROR, "ERROR %s() ni_device_open2() %s: %s\n",
                    __func__, p_device_context->p_device_info->dev_name,
                    errmsg);
             ni_rsrc_free_device_context(p_device_context);

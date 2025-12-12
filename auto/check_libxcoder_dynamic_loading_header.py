@@ -7,7 +7,7 @@ import re
 default_dl_header = '../source/ni_libxcoder_dynamic_loading.h'
 # libxcoder header files to check for in. These must be in same folder with
 # ni_libxcoder_dynamic_loading.h
-header_files = ['ni_av_codec.h', 'ni_util.h', 'ni_device_api.h']
+header_files = ['ni_av_codec.h', 'ni_util.h', 'ni_device_api.h', 'ni_quadraprobe.h']
 
 function_name_to_api_function_name_keyword_replacements = {'420p': '420P',
                                                            '444p': '444P',

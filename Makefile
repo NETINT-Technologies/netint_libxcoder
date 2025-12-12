@@ -71,7 +71,7 @@ TARGET_LIB = lib${TARGETNAME}.a
 TARGET_LIB_SHARED = lib${TARGETNAME}.so
 TARGET_VERSION = $(shell grep 'Version: '.* < build/xcoder.pc  | cut -d ' ' -f 2)
 ifeq ($(WINDOWS), FALSE)
-	TARGET_INCS = ni_device_api.h ni_rsrc_api.h ni_defs.h ni_av_codec.h ni_bitstream.h ni_util.h ni_log.h ni_release_info.h ni_libxcoder_dynamic_loading.h ni_p2p_ioctl.h
+	TARGET_INCS = ni_device_api.h ni_rsrc_api.h ni_defs.h ni_av_codec.h ni_bitstream.h ni_util.h ni_log.h ni_release_info.h ni_libxcoder_dynamic_loading.h ni_p2p_ioctl.h ni_quadraprobe.h
 else
 	TARGET_INCS = ni_device_api.h ni_rsrc_api.h ni_defs.h ni_av_codec.h ni_bitstream.h ni_util.h ni_log.h ni_release_info.h
 endif
@@ -79,6 +79,12 @@ TARGET_PC = xcoder.pc
 SERVICE_FILE = nilibxcoder.service
 OBJECTS = ni_nvme.o ni_device_api_priv.o ni_device_api.o ni_util.o ni_lat_meas.o ni_log.o ni_rsrc_priv.o ni_rsrc_api.o ni_av_codec.o ni_bitstream.o
 LINK_OBJECTS = ${OBJS_PATH}/ni_nvme.o ${OBJS_PATH}/ni_device_api_priv.o ${OBJS_PATH}/ni_device_api.o ${OBJS_PATH}/ni_util.o ${OBJS_PATH}/ni_lat_meas.o ${OBJS_PATH}/ni_log.o ${OBJS_PATH}/ni_rsrc_priv.o ${OBJS_PATH}/ni_rsrc_api.o ${OBJS_PATH}/ni_av_codec.o ${OBJS_PATH}/ni_bitstream.o
+ifeq ($(WINDOWS), FALSE)
+ifneq ($(UNAME), Darwin)
+    OBJECTS += ni_quadraprobe.o
+    LINK_OBJECTS += ${OBJS_PATH}/ni_quadraprobe.o
+endif
+endif
 DEMO_OBJECTS = ni_xcoder_decode.o ni_xcoder_encode.o ni_xcoder_scale.o ni_xcoder_transcode_filter.o ni_xcoder_multithread_transcode.o ni_generic_utils.o ni_decode_utils.o ni_encode_utils.o ni_filter_utils.o
 DEMO_LINK_OBJECTS = ${OBJS_PATH}/ni_generic_utils.o ${OBJS_PATH}/ni_decode_utils.o ${OBJS_PATH}/ni_encode_utils.o ${OBJS_PATH}/ni_filter_utils.o 
 ALL_OBJECTS = init_rsrc.o test_rsrc_api.o ni_rsrc_mon.o ni_rsrc_update.o ni_rsrc_list.o ni_rsrc_namespace.o ${OBJECTS} ${DEMO_OBJECTS}
@@ -188,6 +194,7 @@ endif
 	${INSTALL} -m 755 ${OBJS_PATH}/ni_rsrc_update ${BINDIR}/.
 	${INSTALL} -m 755 ${OBJS_PATH}/ni_rsrc_list ${BINDIR}/.
 	${INSTALL} -m 755 ${OBJS_PATH}/init_rsrc ${BINDIR}/.
+	${INSTALL} -m 755 host_ts.sh ${BINDIR}/.
 ifeq ($(SETUP_SYSTEMD), TRUE)
 	mkdir -p ${SYSTEMDIR}/
 	$(COPY_CMD) $(SERVICE_FILE) $(SYSTEMDIR)

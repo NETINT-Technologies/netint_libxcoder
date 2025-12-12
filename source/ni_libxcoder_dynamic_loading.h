@@ -41,10 +41,12 @@
 #include <ni_av_codec.h>
 #include <ni_util.h>
 #include <ni_device_api.h>
+#include <ni_quadraprobe.h>
 #else
 #include "ni_av_codec.h"
 #include "ni_util.h"
 #include "ni_device_api.h"
+#include "ni_quadraprobe.h"
 #endif
 
 #pragma GCC diagnostic pop
@@ -138,7 +140,10 @@ typedef void (LIB_API* PNIDEVICESESSIONCONTEXTCLEAR) (ni_session_context_t *p_ct
 typedef void (LIB_API* PNIDEVICESESSIONCONTEXTFREE) (ni_session_context_t *p_ctx);
 typedef ni_event_handle_t (LIB_API* PNICREATEEVENT) (void);
 typedef void (LIB_API* PNICLOSEEVENT) (ni_event_handle_t event_handle);
+#ifndef DEPRECATION_AS_ERROR
 typedef ni_device_handle_t (LIB_API* PNIDEVICEOPEN) (const char *dev, uint32_t *p_max_io_size_out);
+#endif
+typedef ni_device_handle_t (LIB_API* PNIDEVICEOPEN2) (const char *dev, ni_device_mode_t mode);
 typedef void (LIB_API* PNIDEVICECLOSE) (ni_device_handle_t dev);
 #ifndef DEPRECATION_AS_ERROR
 typedef ni_retcode_t (LIB_API* PNIDEVICECAPABILITYQUERY) (ni_device_handle_t device_handle, ni_device_capability_t *p_cap);
@@ -258,6 +263,10 @@ typedef ni_retcode_t (LIB_API* PNIRECONFIGSLICEARG) (ni_session_context_t *p_ctx
 typedef ni_retcode_t (LIB_API* PNIP2PRECV) (ni_session_context_t *pSession, const ni_p2p_sgl_t *dmaAddrs, ni_frame_t *pDstFrame);
 typedef ni_retcode_t (LIB_API* PNIDEVICESESSIONRESTART) (ni_session_context_t *p_ctx, int video_width, int video_height, ni_device_type_t device_type);
 typedef ni_retcode_t (LIB_API* PNIDECRECONFIGPPUPARAMS) (ni_session_context_t *p_session_ctx, ni_xcoder_params_t *p_param, ni_ppu_config_t *p_ppu_config);
+//
+// Function pointers for ni_quadraprobe.h
+//
+typedef int (LIB_API* PNIRSRCLOGDUMP) (const char *outdir, bool core_reset_log);
 
 /* End API function pointers */
 
@@ -347,7 +356,10 @@ typedef struct _NETINT_LIBXCODER_API_FUNCTION_LIST
     PNIDEVICESESSIONCONTEXTFREE          niDeviceSessionContextFree;           /** Client should access ::ni_device_session_context_free API through this pointer */
     PNICREATEEVENT                       niCreateEvent;                        /** Client should access ::ni_create_event API through this pointer */
     PNICLOSEEVENT                        niCloseEvent;                         /** Client should access ::ni_close_event API through this pointer */
+#ifndef DEPRECATION_AS_ERROR
     PNIDEVICEOPEN                        niDeviceOpen;                         /** Client should access ::ni_device_open API through this pointer */
+#endif
+    PNIDEVICEOPEN2                       niDeviceOpen2;                        /** Client should access ::ni_device_open2 API through this pointer */
     PNIDEVICECLOSE                       niDeviceClose;                        /** Client should access ::ni_device_close API through this pointer */
 #ifndef DEPRECATION_AS_ERROR
     PNIDEVICECAPABILITYQUERY             niDeviceCapabilityQuery;              /** Client should access ::ni_device_capability_query API through this pointer */
@@ -470,6 +482,10 @@ typedef struct _NETINT_LIBXCODER_API_FUNCTION_LIST
     PNIDEVICESESSIONRESTART              niDeviceSessionRestart;               /** Client should access ::ni_device_session_restart API through this pointer */
     PNIDEVICESESSIONQUERYBUFFERAVAIL     niDeviceSessionQueryBufferAvail;      /** Client should access ::ni_device_session_query_buffer_avail API through this pointer */
     PNIDECRECONFIGPPUPARAMS              niDecReconfigPpuParams;               /** Client should access ::ni_dec_reconfig_ppu_params API through this pointer */
+//
+// Function pointers for ni_quadraprobe.h
+//
+    PNIRSRCLOGDUMP                       niRsrcLogDump;                        /** Client should access ::ni_rsrc_log_dump API through this pointer */
 } NETINT_LIBXCODER_API_FUNCTION_LIST;
 
 class NETINTLibxcoderAPI {
@@ -561,7 +577,10 @@ public:
         functionList->niDeviceSessionContextFree = reinterpret_cast<decltype(ni_device_session_context_free)*>(dlsym(lib,"ni_device_session_context_free"));
         functionList->niCreateEvent = reinterpret_cast<decltype(ni_create_event)*>(dlsym(lib,"ni_create_event"));
         functionList->niCloseEvent = reinterpret_cast<decltype(ni_close_event)*>(dlsym(lib,"ni_close_event"));
+#ifndef DEPRECATION_AS_ERROR
         functionList->niDeviceOpen = reinterpret_cast<decltype(ni_device_open)*>(dlsym(lib,"ni_device_open"));
+#endif
+        functionList->niDeviceOpen2 = reinterpret_cast<decltype(ni_device_open2)*>(dlsym(lib,"ni_device_open2"));
         functionList->niDeviceClose = reinterpret_cast<decltype(ni_device_close)*>(dlsym(lib,"ni_device_close"));
 #ifndef DEPRECATION_AS_ERROR
         functionList->niDeviceCapabilityQuery = reinterpret_cast<decltype(ni_device_capability_query)*>(dlsym(lib,"ni_device_capability_query"));
@@ -684,6 +703,11 @@ public:
         functionList->niP2PRecv = reinterpret_cast<decltype(ni_p2p_recv)*>(dlsym(lib,"ni_p2p_recv"));
         functionList->niDeviceSessionRestart = reinterpret_cast<decltype(ni_device_session_restart)*>(dlsym(lib,"ni_device_session_restart"));
         functionList->niDecReconfigPpuParams = reinterpret_cast<decltype(ni_dec_reconfig_ppu_params)*>(dlsym(lib,"ni_dec_reconfig_ppu_params"));
+        //
+        // Function pointers for ni_quadraprobe.h
+        //
+        functionList->niRsrcLogDump = reinterpret_cast<decltype(ni_rsrc_log_dump)*>(dlsym(lib,"ni_rsrc_log_dump"));
+
     }
 };
 

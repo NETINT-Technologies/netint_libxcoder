@@ -49,11 +49,11 @@ static void print_usage(void)
         "-i | --input                   (Required) Input file path.\n"
         "                               Can be specified multiple (max %d) times\n"
         "                               to concatenate inputs with different resolution together (sequence change)\n"
-        "-o | --output                  (Required) Output file path.\n"
+        "-o | --output                  (Required) Output file path or name.\n"
         "                               Can be specified multiple (max %d) times\n"
         "                               to run multiple encoding instances simultaneously.\n"
         "-m | --enc-codec               (Required) Encoder codec format.\n"
-        "                               [a|avc, h|hevc, x|av1, o|obu]\n"
+        "                               [a|avc, h|hevc, j|jpeg, x|av1, o|obu]\n"
         "                               (x is in ivf container format, o is output raw AV1 OBU only)\n"
         "-l | --loglevel                Set loglevel of this application and libxcoder API.\n"
         "                               [none, fatal, error, info, debug, trace]\n"
@@ -89,8 +89,10 @@ int main(int argc, char *argv[])
     ni_demo_context_t ctx = {0};
     char in_filename[MAX_INPUT_FILES][FILE_NAME_LEN] = {0};
     char out_filename[MAX_OUTPUT_FILES][FILE_NAME_LEN] = {0};
+    char jpeg_filename[MAX_OUTPUT_FILES][FILE_NAME_LEN*2] = {0};
     FILE* input_fp[MAX_INPUT_FILES] = {0};
     FILE* output_fp[MAX_OUTPUT_FILES] = {0};
+    uint64_t prev_num_pkt[MAX_OUTPUT_FILES] = {0};
     int i_index = 0, s_index = 0, o_index = 0, e_index = 0, g_index = 0;
     int input_total = 0, output_total = 0;
     int enc_codec_format = -1;
@@ -198,6 +200,10 @@ int main(int argc, char *argv[])
                 else if (strcmp(optarg, "h") == 0 || strcmp(optarg, "hevc") == 0)
                 {
                     enc_codec_format = NI_CODEC_FORMAT_H265;
+                }
+                else if (strcmp(optarg, "j") == 0 || strcmp(optarg, "jpeg") == 0)
+                {
+                    enc_codec_format = NI_CODEC_FORMAT_JPEG;
                 }
                 else if (strcmp(optarg, "x") == 0 || strcmp(optarg, "av1") == 0)
                 {
@@ -333,7 +339,7 @@ int main(int argc, char *argv[])
     }
 
     if (o_index == 0) {
-        ni_log(NI_LOG_ERROR, "Error: Missing output file argument (-o | --output)\n");
+        ni_log(NI_LOG_ERROR, "Error: Missing output filepath (or filename) argument (-o | --output)\n");
         ret = -1;
         goto end;
     }
@@ -434,14 +440,25 @@ int main(int argc, char *argv[])
             strcmp(out_filename[i], "/dev/null") != 0)
         {
             output_fp[i] = NULL;
-            ni_fopen(&(output_fp[i]), out_filename[i], "wb");
+            if (enc_codec_format == NI_CODEC_FORMAT_JPEG)
+            {
+                snprintf(jpeg_filename[i], sizeof(jpeg_filename[i]), "%s/%" PRIu64 ".png",
+                    out_filename[i], ctx.num_packets_received[i]);
+                ni_fopen(&(output_fp[i]), jpeg_filename[i], "wb");
+            } else
+            {
+                ni_fopen(&(output_fp[i]), out_filename[i], "wb");
+            }
             if (!output_fp[i])
             {
-                ni_log(NI_LOG_ERROR, "Error: Failed to open %s\n", out_filename[i]);
+                ni_log(NI_LOG_ERROR, "Error: Failed to open %s\n", enc_codec_format == NI_CODEC_FORMAT_JPEG ? jpeg_filename[i] : out_filename[i]);
                 ret = -1;
                 goto end;
             }
-            ni_log(NI_LOG_INFO, "Opened output file: %s\n", out_filename[i]);
+            if (enc_codec_format != NI_CODEC_FORMAT_JPEG)
+            {
+                ni_log(NI_LOG_INFO, "Opened output file: %s\n", out_filename[i]);
+            }
         } else
         {
             output_fp[i] = NULL;
@@ -518,24 +535,27 @@ int main(int argc, char *argv[])
             goto end;
         }
 
-        do
+        //unlike video codecs (1st packet is header), there is no header for Jpeg
+        if (enc_codec_format != NI_CODEC_FORMAT_JPEG)
         {
-            receive_rc = encoder_receive(&ctx, enc_ctx, &in_frame, out_packet,
-                                         video_width[0], video_height[0], output_total, output_fp);
-        }
-        while (receive_rc == NI_TEST_RETCODE_EAGAIN);
+            do
+            {
+                receive_rc = encoder_receive(&ctx, enc_ctx, &in_frame, out_packet,
+                                             video_width[0], video_height[0], output_total, output_fp);
+            }
+            while (receive_rc == NI_TEST_RETCODE_EAGAIN);
 
-        if (receive_rc == NI_TEST_RETCODE_SUCCESS)
-        {
-            ni_log(NI_LOG_INFO, "Got encoded sequence header packet\n");
+            if (receive_rc == NI_TEST_RETCODE_SUCCESS)
+            {
+                ni_log(NI_LOG_INFO, "Got encoded sequence header packet\n");
+            }
+            else
+            {
+                ni_log(NI_LOG_ERROR, "Failed to get encoded sequence header packet, retcode %d\n", receive_rc);
+                ret = receive_rc;
+                goto end;
+            }
         }
-        else
-        {
-            ni_log(NI_LOG_ERROR, "Failed to get encoded sequence header packet, retcode %d\n", receive_rc);
-            ret = receive_rc;
-            goto end;
-        }
-
         while (!end_of_all_streams &&
             (send_rc == NI_TEST_RETCODE_SUCCESS || receive_rc== NI_TEST_RETCODE_SUCCESS ||
              (send_rc == NI_TEST_RETCODE_EAGAIN && receive_rc == NI_TEST_RETCODE_EAGAIN)))
@@ -589,12 +609,35 @@ int main(int argc, char *argv[])
                 break;
 
 receive_pkt:
+            for (i = 0; i < output_total; i++)
+            {
+                prev_num_pkt[i] = ctx.num_packets_received[i];
+            }
+
             receive_rc = encoder_receive(&ctx, enc_ctx, p_in_frame, out_packet,
                                          video_width[0], video_height[0], output_total, output_fp);
             for (i = 0; receive_rc >= 0 && i < output_total; i++)
             {
                 if (!ctx.enc_eos_received[i])
                 {
+                    if (enc_ctx[i].codec_format == NI_CODEC_FORMAT_JPEG &&
+                        prev_num_pkt[i] < ctx.num_packets_received[i] &&
+                        output_fp[i] != NULL)
+                    {
+                        fclose(output_fp[i]);
+                        output_fp[i] = NULL;
+                        ni_log(NI_LOG_DEBUG, "Save jpeg file : %s\n", jpeg_filename[i]);
+                        snprintf(jpeg_filename[i], sizeof(jpeg_filename[i]), "%s/%" PRIu64 ".png",
+                            out_filename[i], ctx.num_packets_received[i]);
+                        ni_fopen(&(output_fp[i]), jpeg_filename[i], "wb");
+                        if (!output_fp[i])
+                        {
+                            ni_log(NI_LOG_ERROR, "Error: Failed to open %s\n", jpeg_filename[i]);
+                            ret = -1;
+                            break;
+                        }
+                    }
+
                     ni_log(NI_LOG_DEBUG, "enc %d continues to read!\n", i);
                     end_of_all_streams = 0;
                     break;
@@ -638,22 +681,26 @@ receive_pkt:
             goto end;
         }
 
-        do
+        //unlike video codecs (1st packet is header), there is no header for Jpeg
+        if (enc_codec_format != NI_CODEC_FORMAT_JPEG)
         {
-            receive_rc = encoder_receive(&ctx, enc_ctx, &in_frame, out_packet,
-                                         video_width[0], video_height[0], output_total, output_fp);
-        }
-        while (receive_rc == NI_TEST_RETCODE_EAGAIN);
+            do
+            {
+                receive_rc = encoder_receive(&ctx, enc_ctx, &in_frame, out_packet,
+                                             video_width[0], video_height[0], output_total, output_fp);
+            }
+            while (receive_rc == NI_TEST_RETCODE_EAGAIN);
 
-        if (receive_rc == NI_TEST_RETCODE_SUCCESS)
-        {
-            ni_log(NI_LOG_INFO, "Got encoded sequence header packet\n");
-        }
-        else
-        {
-            ni_log(NI_LOG_ERROR, "Failed to get encoded sequence header packet, retcode %d\n", receive_rc);
-            ret = receive_rc;
-            goto end;
+            if (receive_rc == NI_TEST_RETCODE_SUCCESS)
+            {
+                ni_log(NI_LOG_INFO, "Got encoded sequence header packet\n");
+            }
+            else
+            {
+                ni_log(NI_LOG_ERROR, "Failed to get encoded sequence header packet, retcode %d\n", receive_rc);
+                ret = receive_rc;
+                goto end;
+            }
         }
 
         ni_log(NI_LOG_INFO, "Starting to encode: video resolution %dx%d\n", video_width[0], video_height[0]);
@@ -713,12 +760,35 @@ receive_pkt:
                 }
             }
 
+            for (i = 0; i < output_total; i++)
+            {
+                prev_num_pkt[i] = ctx.num_packets_received[i];
+            }
+
             receive_rc = encoder_receive(&ctx, enc_ctx, &in_frame, out_packet,
                                         video_width[0], video_height[0], output_total, output_fp);
             for (i = 0; receive_rc >= 0 && i < output_total; i++)
             {
                 if (!ctx.enc_eos_received[i])
                 {
+                    if (enc_ctx[i].codec_format == NI_CODEC_FORMAT_JPEG &&
+                        prev_num_pkt[i] < ctx.num_packets_received[i] &&
+                        output_fp[i] != NULL)
+                    {
+                        fclose(output_fp[i]);
+                        output_fp[i] = NULL;
+                        ni_log(NI_LOG_DEBUG, "Save jpeg file : %s\n", jpeg_filename[i]);
+                        snprintf(jpeg_filename[i], sizeof(jpeg_filename[i]), "%s/%" PRIu64 ".png",
+                            out_filename[i], ctx.num_packets_received[i]);
+                        ni_fopen(&(output_fp[i]), jpeg_filename[i], "wb");
+                        if (!output_fp[i])
+                        {
+                            ni_log(NI_LOG_ERROR, "Error: Failed to open %s\n", jpeg_filename[i]);
+                            ret = -1;
+                            break;
+                        }
+                    }
+
                     ni_log(NI_LOG_DEBUG, "enc %d continues to read!\n", i);
                     end_of_all_streams = 0;
                     break;
@@ -739,6 +809,22 @@ receive_pkt:
                         ctx.enc_total_bytes_received);
                     previous_time = current_time;
                 }
+            }
+        }
+    }
+
+    //delete jpeg file that are 0 bytes in size
+    for (i = 0; i < output_total; i++)
+    {
+        if (enc_ctx[i].codec_format == NI_CODEC_FORMAT_JPEG &&
+            output_fp[i] != NULL)
+        {
+            fseek(output_fp[i], 0, SEEK_END);
+            if (ftell(output_fp[i]) == 0)
+            {
+                fclose(output_fp[i]);
+                output_fp[i] = NULL;
+                remove(jpeg_filename[i]);
             }
         }
     }

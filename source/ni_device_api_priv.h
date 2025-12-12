@@ -218,7 +218,8 @@ typedef struct _ni_metadata_common
   } ui64_data;
   uint16_t frame_width;
   uint16_t frame_height;
-  uint16_t frame_type;
+  uint8_t frame_type;
+  uint8_t num_frame_dropped; /* frame dropped since the last good frame */
   uint8_t has_b_frame;
   uint8_t pkt_delay_cnt;
 } ni_metadata_common_t;
@@ -293,7 +294,8 @@ typedef struct _ni_metadata_enc_bstream
     uint16_t      inter_total_count; // the inter includ the skip mode
     uint16_t      intra_total_count;
     uint8_t       gop_size;
-    uint8_t       reserved_byte[3];
+    uint8_t       ppsInitQp; //Utilize reserved in Revision 6sM
+    uint8_t       reserved_byte[2];
     uint16_t      ui16psnr_y;
     uint32_t      reconLumaSize;
     uint32_t      reconChromaSize;
@@ -306,7 +308,11 @@ typedef struct _ni_metadata_enc_bstream
     uint8_t       ui8StillImage;
     uint8_t       ui8Reserved[2];
     float         pass1Cost;
-    uint32_t      ui32Reserved[2];
+    uint32_t      cuInfoSize; //Utilize reserved in Revision 6sM
+    uint32_t      skipCu8Num; //Utilize reserved in Revision 6sM
+    //Added fro Revision 6sM
+    uint16_t      cuInfoTableSize;
+    uint16_t      aqInfoSize;
 } ni_metadata_enc_bstream_t;
 
 /*!****** encoder paramters *********************************************/
@@ -316,6 +322,7 @@ typedef struct _ni_metadata_enc_bstream
 
 typedef enum _ni_gop_preset_idx
 {
+    GOP_PRESET_IDX_NONE = -2,
     GOP_PRESET_IDX_DEFAULT =
         -1, /*!*< Default, gop decided by gopSize. E.g gopSize=0 is Adpative gop, gopsize adjusted dynamically */
     GOP_PRESET_IDX_CUSTOM = 0,
@@ -662,7 +669,223 @@ typedef struct _ni_encoder_config_t
   int32_t i32spatialLayerBitrate[NI_MAX_SPATIAL_LAYERS];
   uint8_t ui8disableAv1TimingInfo;
   uint8_t ui8av1OpLevel[NI_MAX_SPATIAL_LAYERS];
+  uint8_t ui8adaptiveLamdaMode;
+  uint8_t ui8getCuInfo;
+  uint8_t ui8adaptiveCrfMode;
+  uint8_t ui8intraCompensateMode;
 } ni_encoder_config_t;
+
+
+// ----- Quadra encoder CU info -----
+#define CU_INFO_OUTPUT_SIZE_V1 26 //208 bits
+#define CU_INFO_OUTPUT_SIZE_V2 16 //128 bits
+#define CU_INFO_OUTPUT_SIZE_V3 19 //152 bits
+
+// HEVC & AV1
+#define CU_LOCATION_HOR_BIT_OFFSET (0)
+#define CU_LOCATION_HOR_BYTE_OFFSET (CU_LOCATION_HOR_BIT_OFFSET / 8)
+#define CU_LOCATION_HOR_BIT_POSITION (CU_LOCATION_HOR_BIT_OFFSET % 8)
+#define CU_LOCATION_HOR_BITS (3)
+
+#define CU_LOCATION_VER_BIT_OFFSET (3)
+#define CU_LOCATION_VER_BYTE_OFFSET (CU_LOCATION_VER_BIT_OFFSET / 8)
+#define CU_LOCATION_VER_BIT_POSITION (CU_LOCATION_VER_BIT_OFFSET % 8)
+#define CU_LOCATION_VER_BITS (3)
+
+#define CU_SIZE_BIT_OFFSET (6)
+#define CU_SIZE_BYTE_OFFSET (CU_SIZE_BIT_OFFSET / 8)
+#define CU_SIZE_BIT_POSITION (CU_SIZE_BIT_OFFSET % 8)
+#define CU_SIZE_BITS (2)
+
+#define CU_MODE_BIT_OFFSET (8)
+#define CU_MODE_BYTE_OFFSET (CU_MODE_BIT_OFFSET / 8)
+#define CU_MODE_BIT_POSITION (CU_MODE_BIT_OFFSET % 8)
+#define CU_MODE_BITS (1)
+
+#define RDCOST_BIT_OFFSET (9)
+#define RDCOST_BYTE_OFFSET (RDCOST_BIT_OFFSET / 8)
+#define RDCOST_BIT_POSITION (RDCOST_BIT_OFFSET % 8)
+#define RDCOST_BITS (25)
+
+#define INTER_PRED_IDC_BIT_OFFSET (34)
+#define INTER_PRED_IDC_BYTE_OFFSET (INTER_PRED_IDC_BIT_OFFSET / 8)
+#define INTER_PRED_IDC_BIT_POSITION (INTER_PRED_IDC_BIT_OFFSET % 8)
+#define INTER_PRED_IDC_BITS (2)
+
+#define MV0_REFIDX_BIT_OFFSET (36)
+#define MV0_REFIDX_BYTE_OFFSET (MV0_REFIDX_BIT_OFFSET / 8)
+#define MV0_REFIDX_BIT_POSITION (MV0_REFIDX_BIT_OFFSET % 8)
+#define MV0_REFIDX_BITS (2)
+
+#define MV0_MVX_BIT_OFFSET (38)
+#define MV0_MVX_BYTE_OFFSET (MV0_MVX_BIT_OFFSET / 8)
+#define MV0_MVX_BIT_POSITION (MV0_MVX_BIT_OFFSET % 8)
+#define MV0_MVX_BITS (14)
+
+#define MV0_MVY_BIT_OFFSET (52)
+#define MV0_MVY_BYTE_OFFSET (MV0_MVY_BIT_OFFSET / 8)
+#define MV0_MVY_BIT_POSITION (MV0_MVY_BIT_OFFSET % 8)
+#define MV0_MVY_BITS (14)
+
+#define MV1_REFIDX_BIT_OFFSET (66)
+#define MV1_REFIDX_BYTE_OFFSET (MV1_REFIDX_BIT_OFFSET / 8)
+#define MV1_REFIDX_BIT_POSITION (MV1_REFIDX_BIT_OFFSET % 8)
+#define MV1_REFIDX_BITS (2)
+
+#define MV1_MVX_BIT_OFFSET (68)
+#define MV1_MVX_BYTE_OFFSET (MV1_MVX_BIT_OFFSET / 8)
+#define MV1_MVX_BIT_POSITION (MV1_MVX_BIT_OFFSET % 8)
+#define MV1_MVX_BITS (14)
+
+#define MV1_MVY_BIT_OFFSET (82)
+#define MV1_MVY_BYTE_OFFSET (MV1_MVY_BIT_OFFSET / 8)
+#define MV1_MVY_BIT_POSITION (MV1_MVY_BIT_OFFSET % 8)
+#define MV1_MVY_BITS (14)
+
+#define INTRA_PART_MODE_BIT_OFFSET (34)
+#define INTRA_PART_MODE_BYTE_OFFSET (INTRA_PART_MODE_BIT_OFFSET / 8)
+#define INTRA_PART_MODE_BIT_POSITION (INTRA_PART_MODE_BIT_OFFSET % 8)
+#define INTRA_PART_MODE_BITS (1)
+
+#define INTRA_PRED_MODE0_BIT_OFFSET (35)
+#define INTRA_PRED_MODE0_BYTE_OFFSET (INTRA_PRED_MODE0_BIT_OFFSET / 8)
+#define INTRA_PRED_MODE0_BIT_POSITION (INTRA_PRED_MODE0_BIT_OFFSET % 8)
+#define INTRA_PRED_MODE0_BITS (6)
+
+#define INTRA_PRED_MODE1_BIT_OFFSET (41)
+#define INTRA_PRED_MODE1_BYTE_OFFSET (INTRA_PRED_MODE1_BIT_OFFSET / 8)
+#define INTRA_PRED_MODE1_BIT_POSITION (INTRA_PRED_MODE1_BIT_OFFSET % 8)
+#define INTRA_PRED_MODE1_BITS (6)
+
+#define INTRA_PRED_MODE2_BIT_OFFSET (47)
+#define INTRA_PRED_MODE2_BYTE_OFFSET (INTRA_PRED_MODE2_BIT_OFFSET / 8)
+#define INTRA_PRED_MODE2_BIT_POSITION (INTRA_PRED_MODE2_BIT_OFFSET % 8)
+#define INTRA_PRED_MODE2_BITS (6)
+
+#define INTRA_PRED_MODE3_BIT_OFFSET (53)
+#define INTRA_PRED_MODE3_BYTE_OFFSET (INTRA_PRED_MODE3_BIT_OFFSET / 8)
+#define INTRA_PRED_MODE3_BIT_POSITION (INTRA_PRED_MODE3_BIT_OFFSET % 8)
+#define INTRA_PRED_MODE3_BITS (6)
+
+#define MEAN_BIT_OFFSET (96)
+#define MEAN_BYTE_OFFSET (MEAN_BIT_OFFSET / 8)
+#define MEAN_BIT_POSITION (MEAN_BIT_OFFSET % 8)
+#define MEAN_BITS (10)
+
+#define VARIANCE_BIT_OFFSET (106)
+#define VARIANCE_BYTE_OFFSET (VARIANCE_BIT_OFFSET / 8)
+#define VARIANCE_BIT_POSITION (VARIANCE_BIT_OFFSET % 8)
+#define VARIANCE_BITS (18)
+
+#define QP_BIT_OFFSET (124)
+#define QP_BYTE_OFFSET (QP_BIT_OFFSET / 8)
+#define QP_BIT_POSITION (QP_BIT_OFFSET % 8)
+#define QP_BITS (6)
+
+#define RDCOST_OTHER_BIT_OFFSET (130)
+#define RDCOST_OTHER_BYTE_OFFSET (RDCOST_OTHER_BIT_OFFSET / 8)
+#define RDCOST_OTHER_BIT_POSITION (RDCOST_OTHER_BIT_OFFSET % 8)
+#define RDCOST_OTHER_BITS (25)
+
+#define INTRACOST_BIT_OFFSET (155)
+#define INTRACOST_BYTE_OFFSET (INTRACOST_BIT_OFFSET / 8)
+#define INTRACOST_BIT_POSITION (INTRACOST_BIT_OFFSET % 8)
+#define INTRACOST_BITS (25)
+
+#define INTERCOST_BIT_OFFSET (180)
+#define INTERCOST_BYTE_OFFSET (INTERCOST_BIT_OFFSET / 8)
+#define INTERCOST_BIT_POSITION (INTERCOST_BIT_OFFSET % 8)
+#define INTERCOST_BITS (25)
+
+#define DUMMY_BIT_OFFSET (205)
+#define DUMMY_BYTE_OFFSET (DUMMY_BIT_OFFSET / 8)
+#define DUMMY_BIT_POSITION (DUMMY_BIT_OFFSET % 8)
+#define DUMMY_BITS (3)
+
+// AVC
+#define AVC_MB_MODE_BIT_OFFSET (0)
+#define AVC_MB_MODE_BYTE_OFFSET (AVC_MB_MODE_BIT_OFFSET / 8)
+#define AVC_MB_MODE_BIT_POSITION (AVC_MB_MODE_BIT_OFFSET % 8)
+#define AVC_MB_MODE_BITS (1)
+
+#define AVC_RDCOST_BIT_OFFSET (1)
+#define AVC_RDCOST_BYTE_OFFSET (AVC_RDCOST_BIT_OFFSET / 8)
+#define AVC_RDCOST_BIT_POSITION (AVC_RDCOST_BIT_OFFSET % 8)
+#define AVC_RDCOST_BITS (25)
+
+#define AVC_INTER_PRED_IDC_BIT_OFFSET (26)
+#define AVC_INTER_PRED_IDC_BYTE_OFFSET (AVC_INTER_PRED_IDC_BIT_OFFSET / 8)
+#define AVC_INTER_PRED_IDC_BIT_POSITION (AVC_INTER_PRED_IDC_BIT_OFFSET % 8)
+#define AVC_INTER_PRED_IDC_BITS (2)
+
+#define AVC_MV0_REFIDX_BIT_OFFSET (28)
+#define AVC_MV0_REFIDX_BYTE_OFFSET (AVC_MV0_REFIDX_BIT_OFFSET / 8)
+#define AVC_MV0_REFIDX_BIT_POSITION (AVC_MV0_REFIDX_BIT_OFFSET % 8)
+#define AVC_MV0_REFIDX_BITS (2)
+
+#define AVC_MV0_MVX_BIT_OFFSET (30)
+#define AVC_MV0_MVX_BYTE_OFFSET (AVC_MV0_MVX_BIT_OFFSET / 8)
+#define AVC_MV0_MVX_BIT_POSITION (AVC_MV0_MVX_BIT_OFFSET % 8)
+#define AVC_MV0_MVX_BITS (14)
+
+#define AVC_MV0_MVY_BIT_OFFSET (44)
+#define AVC_MV0_MVY_BYTE_OFFSET (AVC_MV0_MVY_BIT_OFFSET / 8)
+#define AVC_MV0_MVY_BIT_POSITION (AVC_MV0_MVY_BIT_OFFSET % 8)
+#define AVC_MV0_MVY_BITS (14)
+
+#define AVC_MV1_REFIDX_BIT_OFFSET (58)
+#define AVC_MV1_REFIDX_BYTE_OFFSET (AVC_MV1_REFIDX_BIT_OFFSET / 8)
+#define AVC_MV1_REFIDX_BIT_POSITION (AVC_MV1_REFIDX_BIT_OFFSET % 8)
+#define AVC_MV1_REFIDX_BITS (2)
+
+#define AVC_MV1_MVX_BIT_OFFSET (60)
+#define AVC_MV1_MVX_BYTE_OFFSET (AVC_MV1_MVX_BIT_OFFSET / 8)
+#define AVC_MV1_MVX_BIT_POSITION (AVC_MV1_MVX_BIT_OFFSET % 8)
+#define AVC_MV1_MVX_BITS (14)
+
+#define AVC_MV1_MVY_BIT_OFFSET (74)
+#define AVC_MV1_MVY_BYTE_OFFSET (AVC_MV1_MVY_BIT_OFFSET / 8)
+#define AVC_MV1_MVY_BIT_POSITION (AVC_MV1_MVY_BIT_OFFSET % 8)
+#define AVC_MV1_MVY_BITS (14)
+
+#define AVC_INTRA_PART_MODE_BIT_OFFSET (26)
+#define AVC_INTRA_PART_MODE_BYTE_OFFSET (AVC_INTRA_PART_MODE_BIT_OFFSET / 8)
+#define AVC_INTRA_PART_MODE_BIT_POSITION (AVC_INTRA_PART_MODE_BIT_OFFSET % 8)
+#define AVC_INTRA_PART_MODE_BITS (2)
+
+// AVC CU info matches HEVC CU info starting from MEAN_BIT_OFFSET
+
+typedef struct
+{
+    uint8_t   refIdx; /* reference idx in reference list */
+    int16_t  mvX; /* horiazontal motion in 1/4 pixel */
+    int16_t  mvY; /* vertical motion in 1/4 pixel */
+} ni_encoder_mv;
+
+typedef struct
+{
+    uint8_t  cuLocationX; /**< cu x coordinate relative to CTU */
+    uint8_t  cuLocationY; /**< cu y coordinate relative to CTU */
+    uint8_t  cuSize;       /**< cu size. 8/16/32/64 */
+    uint8_t  cuMode;       /**< cu mode. 0:INTER; 1:INTRA; 2:IPCM */
+    uint32_t cost;         /**< sse cost of cuMode*/
+    uint32_t costOfOtherMode;    /**< sse cost of the other cuMode */
+    uint32_t costIntraSatd;      /**< satd cost of intra mode */
+    uint32_t costInterSatd;      /**< satd cost of inter mode */
+    uint8_t  interPredIdc;       /**< only for INTER cu. prediction direction.
+                             * 0: by list0; 1: by list1; 2: bi-direction */
+    ni_encoder_mv mv[2];          /**< only for INTER cu. motion information.
+                             * mv[0] for list0 if it's valid; mv[1] for list1 if it's valid */
+    uint8_t  intraPartMode;      /**< only for INTRA cu. partition mode. 0:2Nx2N; 1: NxN */
+    uint8_t  intraPredMode[16]; /**< only for INTRA CU. prediction mode.
+                             * 0: planar; 1: DC; 2-34: Angular in HEVC spec.
+                             * intraPredMode[1~3] only valid for NxN Partition mode.
+                             * intra y_mode in AV1 spec. */
+    uint8_t  qp;
+    uint32_t mean;
+    uint32_t variance;
+} ni_encoder_cu_info;
+// ----- Quadra encoder CU info -----
 
 typedef struct _ni_uploader_config_t
 {
@@ -843,8 +1066,11 @@ typedef enum
 #define NI_FW_ENC_BITSTREAM_META_DATA_SIZE_UNDER_MAJOR_6_MINOR_o 48
 // size of meta data sent together with bitstream: from f/w encoder to app for FW/SW before rev 6rc
 #define NI_FW_ENC_BITSTREAM_META_DATA_SIZE_UNDER_MAJOR_6_MINOR_rc 88
+// size of meta data sent together with bitstream: from f/w encoder to app for FW/SW before rev 6sM
+#define NI_FW_ENC_BITSTREAM_META_DATA_SIZE_UNDER_MAJOR_6_MINOR_sM 112
 
-int ni_create_frame(ni_frame_t* p_frame, uint32_t read_length, uint64_t* frame_offset, bool is_hw_frame);
+int ni_create_frame(ni_frame_t* p_frame, uint32_t read_length,
+                    uint64_t* frame_offset, uint32_t* frame_dropped, bool is_hw_frame);
 
 void ni_set_custom_template(ni_session_context_t *p_ctx,
                             ni_encoder_config_t *p_cfg,

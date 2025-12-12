@@ -101,6 +101,27 @@ typedef enum
     OPT_3 = 3  // queries session statistics
 } check_err_rc_option_t;
 
+// Preset configuration lookup table
+typedef struct {
+    int rdoLevel;
+    int lookAheadDepth;
+    int gopPresetIndex;
+    int vbvBufferSize;
+    int enableCuLevelRateControl;
+    float tolCtbRcInter;
+    float tolCtbRcIntra;
+} PresetConfig;
+
+static const PresetConfig preset_configs[] = {
+    [NI_VQ_VERYFAST] = {1, 0, GOP_PRESET_IDX_SP, 1000, 1, 0.0f, -1.0f},
+    [NI_VQ_FASTER]   = {2, 0, GOP_PRESET_IDX_SP, 1000, 1, 0.0f, -1.0f},
+    [NI_VQ_FAST]     = {3, 0, GOP_PRESET_IDX_SP, 1000, 1, 0.0f, -1.0f},
+    [NI_VQ_MEDIUM]   = {1, 16, GOP_PRESET_IDX_DEFAULT, 3000, 0, 0.0f, 0.0f},
+    [NI_VQ_SLOW]     = {2, 16, GOP_PRESET_IDX_DEFAULT, 3000, 0, 0.0f, 0.0f},
+    [NI_VQ_SLOWER]   = {3, 16, GOP_PRESET_IDX_DEFAULT, 3000, 0, 0.0f, 0.0f},
+    [NI_VQ_VERYSLOW] = {3, 40, GOP_PRESET_IDX_DEFAULT, 3000, 0, 0.0f, 0.0f}
+};
+
 static uint8_t g_itu_t_t35_cc_sei_hdr_hevc[NI_CC_SEI_HDR_HEVC_LEN] = {
     0x00, 0x00, 0x00, 0x01,   // NAL start code 00 00 00 01
     0x4e,
@@ -673,6 +694,51 @@ void calculate_psnr(ni_session_context_t *p_ctx, ni_packet_t *p_packet)
 
     p_packet->data_len -= p_meta->reconLumaSize + p_meta->reconChromaSize;
 }
+
+#if 0 // CU info parsing (currently not used)
+static void parse_cu_info(ni_session_context_t *p_ctx, uint8_t *cuInfoBuf, ni_encoder_cu_info *pEncCuInfo)
+{
+    int data;
+
+    if (!p_ctx || !cuInfoBuf || !pEncCuInfo)
+    {
+      ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR %s(): passed parameters are null!, return\n",
+             __func__);
+      return;
+    }
+
+    // AVC
+    if (p_ctx->codec_format == NI_CODEC_FORMAT_H264)
+    {
+      pEncCuInfo->cuSize = 16;
+      pEncCuInfo->cuMode = (cuInfoBuf[AVC_MB_MODE_BYTE_OFFSET] >> AVC_MB_MODE_BIT_POSITION) & ((1 << AVC_MB_MODE_BITS) - 1);
+      if (pEncCuInfo->cuMode == 1) // intra
+      {
+        pEncCuInfo->intraPartMode = (cuInfoBuf[AVC_INTRA_PART_MODE_BYTE_OFFSET] >> AVC_INTRA_PART_MODE_BIT_POSITION) & ((1 << AVC_INTRA_PART_MODE_BITS) - 1);
+        pEncCuInfo->costIntraSatd = (cuInfoBuf[INTRACOST_BYTE_OFFSET] >> INTRACOST_BIT_POSITION) & ((1 << INTRACOST_BITS) - 1);
+        pEncCuInfo->costInterSatd = (cuInfoBuf[INTERCOST_BYTE_OFFSET] >> INTERCOST_BIT_POSITION) & ((1 << INTERCOST_BITS) - 1);
+        pEncCuInfo->cost = (cuInfoBuf[AVC_RDCOST_BYTE_OFFSET] >> AVC_RDCOST_BIT_POSITION) & ((1 << AVC_RDCOST_BITS) - 1);
+        pEncCuInfo->costOfOtherMode = (cuInfoBuf[RDCOST_OTHER_BYTE_OFFSET] >> RDCOST_OTHER_BIT_POSITION) & ((1 << RDCOST_OTHER_BITS) - 1);
+      }
+      else
+        pEncCuInfo->interPredIdc = (cuInfoBuf[AVC_INTER_PRED_IDC_BYTE_OFFSET] >> AVC_INTER_PRED_IDC_BIT_POSITION) & ((1 << AVC_INTER_PRED_IDC_BITS) - 1);
+    }
+    // HEVC & AV1
+    else
+    {
+      uint8_t cuSizeId = pEncCuInfo->cuSize = (1 << (((cuInfoBuf[CU_SIZE_BYTE_OFFSET] >> CU_SIZE_BIT_POSITION) & ((1 << CU_SIZE_BITS) - 1)) + 3));
+      pEncCuInfo->cuSize = 8 * (1 << cuSizeId);
+      pEncCuInfo->cuMode = (cuInfoBuf[CU_MODE_BYTE_OFFSET] >> CU_MODE_BIT_POSITION) & ((1 << CU_MODE_BITS) - 1);
+      if (pEncCuInfo->cuMode == 1) // intra
+        pEncCuInfo->intraPartMode = (cuInfoBuf[INTRA_PART_MODE_BYTE_OFFSET] >> INTRA_PART_MODE_BIT_POSITION) & ((1 << INTRA_PART_MODE_BITS) - 1);
+      else
+        pEncCuInfo->interPredIdc = (cuInfoBuf[INTER_PRED_IDC_BYTE_OFFSET] >> INTER_PRED_IDC_BIT_POSITION) & ((1 << INTER_PRED_IDC_BITS) - 1);
+    }
+
+    data = cuInfoBuf[QP_BYTE_OFFSET] | (cuInfoBuf[QP_BYTE_OFFSET+1] << 8);
+    pEncCuInfo->qp = (data >> QP_BIT_POSITION) & ((1 << QP_BITS) - 1);
+}
+#endif
 
 // Check for critical failures.
 // Invalid parameters or resource busy do not account for failures that cause error count to be incremented so they can be retried indefinitely
@@ -1248,6 +1314,7 @@ ni_retcode_t ni_decoder_session_open(ni_session_context_t* p_ctx)
     p_ctx->p_all_zero_buf = NULL;
     p_ctx->last_pkt_pos = 0;
     p_ctx->last_frame_offset = 0;
+    p_ctx->last_frame_dropped = 0;
     memset(p_ctx->pkt_custom_sei_set, 0, NI_FIFO_SZ * sizeof(ni_custom_sei_set_t *));
 
     //malloc zero data buffer
@@ -2319,6 +2386,7 @@ int ni_decoder_session_read(ni_session_context_t* p_ctx, ni_frame_t* p_frame)
   ni_instance_mgr_stream_info_t data = { 0 };
   int rx_size = 0;
   uint64_t frame_offset = 0;
+  uint32_t frame_dropped = 0;
   uint8_t *p_data_buffer = NULL;
   uint32_t i = 0;
   int is_planar;
@@ -2773,7 +2841,15 @@ start:
   // Note: session status is NOT reset but tracked between send
   // and recv to catch and recover from a loop condition
 
-  rx_size = ni_create_frame(p_frame, bytes_read_so_far, &frame_offset, false);
+  if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+                        "6sP") >= 0)
+  {
+      rx_size = ni_create_frame(p_frame, bytes_read_so_far, &frame_offset, &frame_dropped, false);
+  }
+  else
+  {
+      rx_size = ni_create_frame(p_frame, bytes_read_so_far, &frame_offset, 0, false);
+  }
   p_ctx->frame_pkt_offset = frame_offset;
   if (p_ctx->decoder_low_delay > 0 && buf_info.buf_avail_size == metadata_hdr_size &&
       p_ctx->enable_low_delay_check)
@@ -2801,6 +2877,23 @@ start:
 
       int64_t tmp_dts, prev_dts = INT64_MIN, ts_diff = 0;
       int nb_diff = 0;
+
+      if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+                            "6sP") >= 0)
+      {
+          if(p_ctx->last_frame_dropped + frame_dropped != p_ctx->session_statistic.ui32FramesDropped)
+          {
+              ni_log2(p_ctx, NI_LOG_DEBUG,
+                            "### %s(): Warning: ui32FramesDropped %u should be %u + %u\n",
+                            __func__, p_ctx->session_statistic.ui32FramesDropped,
+                            p_ctx->last_frame_dropped, frame_dropped);
+
+              p_ctx->session_statistic.ui32FramesDropped = p_ctx->last_frame_dropped + frame_dropped;
+          }
+
+          p_ctx->last_frame_dropped = p_ctx->session_statistic.ui32FramesDropped;
+      }
+
       // at stream start, if there are already frames dropped at decoding, drop
       // equal number of dts from dts queue to try to align with the first
       // returned frame, and calculate the average of dts difference to be used
@@ -2810,13 +2903,14 @@ start:
           ni_log2(p_ctx, NI_LOG_DEBUG,
                   "%s(): First frame : session_id 0x%x, pic_reorder_delay: %d "
                   "total frames input:%u buffered: %u completed: %u output: %u "
-                  "dropped: %u error: %u\n",
+                  "dropped: %u (%u %u) error: %u\n",
                   __func__, p_ctx->session_id, p_ctx->pic_reorder_delay,
                   p_ctx->session_statistic.ui32FramesInput,
                   p_ctx->session_statistic.ui32FramesBuffered,
                   p_ctx->session_statistic.ui32FramesCompleted,
                   p_ctx->session_statistic.ui32FramesOutput,
                   p_ctx->session_statistic.ui32FramesDropped,
+                  p_ctx->last_frame_dropped, frame_dropped,
                   p_ctx->session_statistic.ui32InstErrors);
 
           if (p_ctx->session_statistic.ui32FramesDropped > 0)
@@ -3478,10 +3572,15 @@ ni_retcode_t ni_encoder_session_open(ni_session_context_t* p_ctx)
             LRETURN;
         }
 
-        if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6rc") >= 0)
+        if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6sM") >= 0)
+        {
+          // For FW API ver 6sM or newer, initialize with the most current size
+          p_ctx->meta_size = sizeof(ni_metadata_enc_bstream_t);
+        }
+        else if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6rc") >= 0)
         {
           // For FW API ver 6rc or newer, initialize with the most current size
-          p_ctx->meta_size = sizeof(ni_metadata_enc_bstream_t);
+          p_ctx->meta_size = NI_FW_ENC_BITSTREAM_META_DATA_SIZE_UNDER_MAJOR_6_MINOR_sM;
         }
         else if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
                               "6p") >= 0)
@@ -4631,7 +4730,6 @@ END:
     return retval;
 }
 
-
 int ni_encoder_session_read(ni_session_context_t* p_ctx, ni_packet_t* p_packet)
 {
   ni_instance_mgr_stream_info_t data = { 0 };
@@ -4715,8 +4813,9 @@ int ni_encoder_session_read(ni_session_context_t* p_ctx, ni_packet_t* p_packet)
               {
                 p_ctx->current_frame_delay = (int)sessionStatistic.ui8AdditionalFramesDelay + p_ctx->initial_frame_delay; // extend frames delay by FW estimated additional number of frames
               }
-              ni_log2(p_ctx, NI_LOG_DEBUG,  "%s: initial_frame_delay %d max_frame_delay %d ui8AdditionalFramesDelay %u current_frame_delay %d\n",
-                             __FUNCTION__, p_ctx->initial_frame_delay, p_ctx->max_frame_delay, sessionStatistic.ui8AdditionalFramesDelay, p_ctx->current_frame_delay);
+              if(query_retry == 0)
+                  ni_log2(p_ctx, NI_LOG_DEBUG,  "%s: initial_frame_delay %d max_frame_delay %d ui8AdditionalFramesDelay %u current_frame_delay %d\n",
+                          __FUNCTION__, p_ctx->initial_frame_delay, p_ctx->max_frame_delay, sessionStatistic.ui8AdditionalFramesDelay, p_ctx->current_frame_delay);
             }
           }
       } else
@@ -4966,10 +5065,31 @@ int ni_encoder_session_read(ni_session_context_t* p_ctx, ni_packet_t* p_packet)
   {
     if (p_ctx->pkt_num >= 1 &&
         ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+                              "6sM") >= 0)
+    {
+      p_meta = (ni_metadata_enc_bstream_t *)p_packet->p_data;
+
+      // CU info parsing
+      // Add CU info parsing here
+
+      if (p_meta && p_meta->cuInfoSize != 0)
+      {
+        p_packet->data_len -= p_meta->cuInfoSize;
+      }
+    }
+
+    if (p_ctx->pkt_num >= 1 &&
+        ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
                           "6rc") >= 0)
     {
       calculate_psnr(p_ctx, p_packet);
     }
+
+    if (p_ctx->pkt_num < 1)
+    {
+      p_ctx->headers_length += (p_packet->data_len - p_ctx->meta_size);
+    }
+
 
     if (p_ctx->pkt_num >= 1)
     {
@@ -5474,8 +5594,39 @@ ni_retcode_t ni_config_instance_set_scaler_params(ni_session_context_t *p_ctx,
     p_cfg = (ni_scaler_config_t *)p_scaler_config;
     p_cfg->filterblit = p_params->filterblit;
     p_cfg->numInputs = p_params->nb_inputs;
-    p_cfg->scaler_param_b = (uint16_t)(0);
-    p_cfg->scaler_param_c = (uint16_t)(0.75 * 10000);
+    if (p_cfg->filterblit == 5)
+    {
+      // check fw revision
+      if (ni_cmp_fw_api_ver(
+              (char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+              "6sL") < 0)
+      {
+        ni_log2(p_ctx, NI_LOG_ERROR,  "%s: not supported config filterblit 5 "
+                      "on device with FW API version < 6rL\n", __func__);
+        // Close the session since we can't configure it as per fw
+        retval = ni_scaler_session_close(p_ctx, 0);
+        if (NI_RETCODE_SUCCESS != retval)
+        {
+          ni_log2(p_ctx, NI_LOG_ERROR,
+                  "ERROR: %s failed: blk_io_handle: %" PRIx64 ","
+                  "hw_id, %d, xcoder_inst_id: %d\n",
+                  __func__,
+                  (int64_t)p_ctx->blk_io_handle, p_ctx->hw_id,
+                  p_ctx->session_id);
+        }
+        retval = NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION;
+        LRETURN;
+      }
+
+      // set filterblit 5 default parameter
+      p_cfg->scaler_param_b = (uint16_t)(3.5 * 10000);
+      p_cfg->scaler_param_c = (uint16_t)(1.25 * 10000);
+    }
+    else
+    {
+      p_cfg->scaler_param_b = (uint16_t)(0);
+      p_cfg->scaler_param_c = (uint16_t)(0.75 * 10000);
+    }
 
     if (p_params->enable_scaler_params)
     {
@@ -5502,10 +5653,10 @@ ni_retcode_t ni_config_instance_set_scaler_params(ni_session_context_t *p_ctx,
         LRETURN;
       }
       if (p_params->scaler_param_b < 0 || p_params->scaler_param_c < 0 ||
-          p_params->scaler_param_b > 1 || p_params->scaler_param_c > 1)
+          p_params->scaler_param_b > 5 || p_params->scaler_param_c > 5)
       {
         ni_log2(p_ctx, NI_LOG_ERROR,  "%s: scaler_params_b and scaler_params_c must "
-                      "be in [0 , 1]. scaler_params_b is %lf, scaler_params_c is %lf\n",
+                      "be in [0 , 5]. scaler_params_b is %lf, scaler_params_c is %lf\n",
                       __func__, p_params->scaler_param_b, p_params->scaler_param_c);
         // Close the session since we can't configure it as per fw
         retval = ni_scaler_session_close(p_ctx, 0);
@@ -7518,7 +7669,8 @@ ni_retcode_t ni_config_instance_set_encoder_frame_params(ni_session_context_t* p
  *
  *  \return
  *******************************************************************************/
-int ni_create_frame(ni_frame_t* p_frame, uint32_t read_length, uint64_t* p_frame_offset, bool is_hw_frame)
+int ni_create_frame(ni_frame_t* p_frame, uint32_t read_length, uint64_t*
+                    p_frame_offset, uint32_t* p_frame_dropped, bool is_hw_frame)
 {
     uint32_t rx_size =
         read_length;   //get the length since its the only thing in DW10 now
@@ -7531,12 +7683,14 @@ int ni_create_frame(ni_frame_t* p_frame, uint32_t read_length, uint64_t* p_frame
     }
 
     *p_frame_offset = 0;
+    if (p_frame_dropped)
+        *p_frame_dropped = 0;
 
     unsigned int metadata_size = NI_FW_META_DATA_SZ -
         NI_MAX_NUM_OF_DECODER_OUTPUTS * sizeof(niFrameSurface1_t);
     unsigned int video_data_size = p_frame->data_len[0] + p_frame->data_len[1] +
         p_frame->data_len[2] + ((is_hw_frame) ? p_frame->data_len[3] : 0);
-    ni_log(NI_LOG_DEBUG, "rx_size = %d metadataSize = %d\n", rx_size,
+    ni_log(NI_LOG_DEBUG, "%s: rx_size = %d metadataSize = %d\n", __func__, rx_size,
            metadata_size);
 
     p_frame->p_custom_sei_set = NULL;
@@ -7567,7 +7721,7 @@ int ni_create_frame(ni_frame_t* p_frame, uint32_t read_length, uint64_t* p_frame
             NI_LOG_DEBUG,
             "%s: [metadata] cropRight=%u, cropLeft=%u, "
             "cropBottom=%u, cropTop=%u, frame_offset=%" PRIu64 ", pic=%ux%u, "
-            "pict_type=%d, crop=%ux%u, sei header: 0x%0x  number %u size %u\n",
+            "pict_type=%d, crop=%ux%u, sei header: 0x%0x  number %u size %u num_frame_dropped %u\n",
             __func__, p_frame->crop_right, p_frame->crop_left,
             p_frame->crop_bottom, p_frame->crop_top,
             p_meta->metadata_common.ui64_data.frame_offset,
@@ -7575,7 +7729,7 @@ int ni_create_frame(ni_frame_t* p_frame, uint32_t read_length, uint64_t* p_frame
             p_meta->metadata_common.frame_height, p_frame->ni_pict_type,
             p_frame->crop_right - p_frame->crop_left,
             p_frame->crop_bottom - p_frame->crop_top, p_meta->sei_header,
-            p_meta->sei_number, p_meta->sei_size);
+            p_meta->sei_number, p_meta->sei_size, p_meta->metadata_common.num_frame_dropped);
 
         p_frame->sei_total_len = 0;
         p_frame->sei_cc_offset = 0;
@@ -7588,6 +7742,11 @@ int ni_create_frame(ni_frame_t* p_frame, uint32_t read_length, uint64_t* p_frame
         p_frame->sei_hdr_plus_len = 0;
         p_frame->sei_user_data_unreg_offset = 0;
         p_frame->sei_user_data_unreg_len = 0;
+
+        if (p_frame_dropped)
+        {
+            *p_frame_dropped = p_meta->metadata_common.num_frame_dropped;
+        }
 
         if (p_meta->sei_number)
         {
@@ -7632,14 +7791,6 @@ int ni_create_frame(ni_frame_t* p_frame, uint32_t read_length, uint64_t* p_frame
 
         switch(pEntryHeader->type)
         {
-          case 1: //SEI_TYPE_PIC_TIMING
-            ni_log(NI_LOG_DEBUG,
-                 "%s: SEI message dropped (unsupported - check "
-                 "decoder SEI bitmap settings);"
-                 " type %u size %u status %u offset %u payload bytes %u\n",
-                 __func__, pEntryHeader->type, pEntryHeader->size,
-                 pEntryHeader->status, ui32Offset, ui32Size);
-            break;
           case 4: //HEVC_SEI_TYPE_USER_DATA_REGISTERED_ITU_T_T35
             if (ui32Size)
             {
@@ -8586,7 +8737,6 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
   p_cfg->i32picWidth = p_src->source_width;
   p_cfg->i32picHeight = p_src->source_height;
   p_t408->tier = p_enc->high_tier;
-  p_t408->gop_preset_index = p_enc->gop_preset_index;
   p_t408->use_recommend_enc_params = p_enc->use_recommend_enc_params;
   p_t408->cu_size_mode = p_enc->cu_size_mode;
   p_t408->max_num_merge = p_enc->max_num_merge;
@@ -8613,28 +8763,13 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
   }
   p_cfg->ui8enableSmoothCrf = p_enc->enable_smooth_crf;
   p_cfg->ui8enableCompensateQp = p_enc->enable_compensate_qp;
+  p_cfg->ui8adaptiveLamdaMode = p_enc->adaptiveLamdaMode;
+  p_cfg->ui8adaptiveCrfMode = p_enc->adaptiveCrfMode;
+  p_cfg->ui8intraCompensateMode = p_enc->intraCompensateMode;
 
   // enable_dynamic_8x8_merge, enable_dynamic_16x16_merge, enable_dynamic_32x32_merge,
   // trans_rate, enable_hvs_qp_scale:
   // are not present in Rev B p_config
-
-  p_cfg->ui8rcEnable = p_enc->rc.enable_rate_control;
-
-  if(p_ctx->last_bitrate != 0)
-  {
-      // Slow sequence change happened. Retain the last bitrate.
-      ni_log2(p_ctx, NI_LOG_DEBUG,  "### %s: Slow sequence happened retain last_bitrate %d. assigned bitrate %d\n",
-              __FUNCTION__, p_ctx->last_bitrate, p_src->bitrate);
-      p_src->bitrate = p_ctx->last_bitrate;
-  }
-
-  if (p_src->bitrate != 0)
-  {
-    p_cfg->i32bitRate = p_src->bitrate;
-  }
-
-  // Update the bitrate to be used after Slow sequence change
-  p_ctx->last_bitrate = p_cfg->i32bitRate;
 
 #if 0
   if ((p_enc->rc.enable_rate_control == 0) &&
@@ -8645,6 +8780,80 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
   }
 #endif
 
+    ni_log2(p_ctx, NI_LOG_TRACE,  "### %s: b preset_index %d bitrate %d rcEnable %d %d EnableRdoQuant %d lookAheadDepth %d gop_preset_index %d rdoLevel %d vbv_buffer_size %d crf %d %f\n", __func__,
+            p_enc->preset_index, p_src->bitrate, p_cfg->ui8rcEnable, p_enc->rc.enable_rate_control, p_enc->EnableRdoQuant, p_enc->lookAheadDepth, p_enc->gop_preset_index, p_enc->rdoLevel,
+            p_enc->rc.vbv_buffer_size, p_enc->crf, p_enc->crfFloat);
+
+    if (!p_enc->preset_enabled && p_enc->preset_index != NI_PRESETS_NONE) {
+        p_enc->preset_enabled = 1;
+        p_enc->reset_dts_offset = 1;
+        p_enc->rc.enable_rate_control = 1;
+        p_src->bitrate = (p_src->bitrate != AV_CODEC_DEFAULT_BITRATE) ? p_src->bitrate : PRESET_DEFAULT_BITRATE;
+        p_enc->EnableRdoQuant = (STD_AV1 == p_cfg->ui8bitstreamFormat) ? 0 : (p_enc->EnableRdoQuant != -1 ? p_enc->EnableRdoQuant : 1);
+
+        // Disable CRF if enabled
+        if (p_enc->crf != -1 || p_enc->crfFloat != -1.0f) {
+            p_enc->crf = -1;
+            p_enc->crfFloat = -1.0f;
+            ni_log2(p_ctx, NI_LOG_INFO, "Warning %s(): CRF disabled due to preset enabled\n", __func__);
+        }
+
+        // Ensure preset_index is valid to avoid out-of-bounds access
+        if (p_enc->preset_index >= 0 && p_enc->preset_index < sizeof(preset_configs) / sizeof(preset_configs[0])) {
+            const PresetConfig *cfg = &preset_configs[p_enc->preset_index];
+
+            p_enc->rdoLevel = cfg->rdoLevel;
+            p_enc->lookAheadDepth = cfg->lookAheadDepth;
+            p_enc->gop_preset_index = (p_enc->gop_preset_index != GOP_PRESET_IDX_NONE) ? p_enc->gop_preset_index : cfg->gopPresetIndex;
+            p_enc->rc.vbv_buffer_size = (p_enc->rc.vbv_buffer_size != -1) ? p_enc->rc.vbv_buffer_size : cfg->vbvBufferSize;
+            p_enc->rc.enable_cu_level_rate_control = cfg->enableCuLevelRateControl;
+
+            // Only set tolCtbRcInter/Intra for veryfast, faster, fast presets
+            if (p_enc->preset_index <= NI_VQ_FAST) {
+                p_enc->tolCtbRcInter = (p_enc->tolCtbRcInter != 0.1f) ? p_enc->tolCtbRcInter : cfg->tolCtbRcInter;
+                p_enc->tolCtbRcIntra = (p_enc->tolCtbRcIntra != 0.1f) ? p_enc->tolCtbRcIntra : cfg->tolCtbRcIntra;
+            }
+        }
+
+        // Adjust rdoLevel for AVC format
+        if (STD_AVC == p_cfg->ui8bitstreamFormat) {
+            p_enc->rdoLevel = 1;
+        }
+    }
+
+    if (p_enc->EnableRdoQuant == -1)
+    {
+        p_enc->EnableRdoQuant = 0;
+    }
+
+    if(p_enc->gop_preset_index == GOP_PRESET_IDX_NONE)
+    {
+        p_enc->gop_preset_index = GOP_PRESET_IDX_DEFAULT;
+    }
+
+    if(p_ctx->last_bitrate != 0)
+    {
+        // Slow sequence change happened. Retain the last bitrate.
+        ni_log2(p_ctx, NI_LOG_DEBUG,  "### %s: Slow sequence happened retain last_bitrate %d. assigned bitrate %d\n",
+                __FUNCTION__, p_ctx->last_bitrate, p_src->bitrate);
+        p_src->bitrate = p_ctx->last_bitrate;
+    }
+
+    if (p_src->bitrate != 0)
+    {
+      p_cfg->i32bitRate = p_src->bitrate;
+    }
+
+    p_cfg->ui8rcEnable = p_enc->rc.enable_rate_control;
+
+    ni_log2(p_ctx, NI_LOG_TRACE,  "### %s: a bitrate %d rcEnable %d %d EnableRdoQuant %d lookAheadDepth %d gop_preset_index %d rdoLevel %d vbv_buffer_size %d enable_cu_level_rate_control %d\n", __func__,
+            p_src->bitrate, p_enc->EnableRdoQuant, p_cfg->ui8rcEnable, p_enc->rc.enable_rate_control, p_enc->lookAheadDepth, p_enc->gop_preset_index, p_enc->rdoLevel, p_enc->rc.vbv_buffer_size,
+            p_enc->rc.enable_cu_level_rate_control);
+
+    // Update the bitrate to be used after Slow sequence change
+    p_ctx->last_bitrate = p_cfg->i32bitRate;
+
+    p_t408->gop_preset_index = p_enc->gop_preset_index;
     p_t408->enable_cu_level_rate_control = p_enc->rc.enable_cu_level_rate_control;
     p_t408->enable_hvs_qp = p_enc->rc.enable_hvs_qp;
     p_t408->hvs_qp_scale = p_enc->rc.hvs_qp_scale;
@@ -8704,15 +8913,19 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
 
     if (p_cfg->i32frameRateInfo != p_enc->frame_rate)
     {
-      p_cfg->i32frameRateInfo = p_enc->frame_rate;
-      p_cfg->i32frameRateDenominator = 1;
       if (p_src->fps_denominator != 0 &&
           (p_src->fps_number % p_src->fps_denominator) != 0)
       {
+          // Fractional FPS: use original fps_number/fps_denominator
           uint32_t numUnitsInTick = 1000;
           p_cfg->i32frameRateDenominator = numUnitsInTick + 1;
-          p_cfg->i32frameRateInfo += 1;
-          p_cfg->i32frameRateInfo *= numUnitsInTick;
+          p_cfg->i32frameRateInfo = (p_src->fps_number * numUnitsInTick) / p_src->fps_denominator;
+      }
+      else
+      {
+          // Integer FPS: use the frame_rate directly
+          p_cfg->i32frameRateInfo = p_enc->frame_rate;
+          p_cfg->i32frameRateDenominator = 1;
       }
     }
 
@@ -8849,6 +9062,7 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
 
   if (QUADRA)
   {
+    p_enc->profile = p_t408->profile; // record profile for Bitstream Features reporting
     if (0 == p_t408->entropy_coding_mode && 1 == p_enc->EnableRdoQuant)
     {
       ni_log2(p_ctx, NI_LOG_DEBUG,  "RDOQ does not support entropy_coding_mode 0 (CAVLC) "
@@ -9262,6 +9476,7 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
 
   // calculate number for frames delay for minFramesDelay
   int lookAheadEnable = !!p_cfg->ui8LookAheadDepth;
+
   int gopSize = g_map_preset_to_gopsize[lookAheadEnable][p_t408->gop_preset_index + 1];
   int mulitcoreDelay = p_cfg->ui8multicoreJointMode ? 3 : 0;
 
@@ -9491,7 +9706,6 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
   {
       p_cfg->ui8disableAv1TimingInfo = p_enc->disableAv1TimingInfo;
   }
-
 
   ni_log2(p_ctx, NI_LOG_DEBUG, "lowDelay=%d\n", p_src->low_delay_mode);
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui8bitstreamFormat=%d\n", p_cfg->ui8bitstreamFormat);
@@ -9813,6 +10027,9 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui8disableAv1TimingInfo=%u\n", p_cfg->ui8disableAv1TimingInfo);
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui8av1OpLevel=%u,%u,%u,%u\n", p_cfg->ui8av1OpLevel[0],
           p_cfg->ui8av1OpLevel[1], p_cfg->ui8av1OpLevel[2], p_cfg->ui8av1OpLevel[3]);
+  ni_log2(p_ctx, NI_LOG_DEBUG, "ui8adaptiveLamdaMode=%u\n",p_cfg->ui8adaptiveLamdaMode);
+  ni_log2(p_ctx, NI_LOG_DEBUG, "ui8getCuInfo=%u\n", p_cfg->ui8getCuInfo);
+  ni_log2(p_ctx, NI_LOG_DEBUG, "ui8adaptiveCrfMode=%u\n",p_cfg->ui8adaptiveCrfMode);
 }
 
 /*!******************************************************************************
@@ -10207,6 +10424,9 @@ void ni_set_default_template(ni_session_context_t* p_ctx, ni_encoder_config_t* p
     p_config->ui8av1OpLevel[i] = 0;
   }
   p_config->ui8disableAv1TimingInfo = 0;
+  p_config->ui8adaptiveLamdaMode = 0;
+  p_config->ui8getCuInfo = 0;
+  p_config->ui8adaptiveCrfMode = 0;
 }
 
 /*!******************************************************************************
@@ -14494,6 +14714,7 @@ ni_retcode_t ni_decoder_session_read_desc(ni_session_context_t* p_ctx, ni_frame_
     ni_instance_mgr_stream_info_t data = {0};
     int rx_size = 0;
     uint64_t frame_offset = 0;
+    uint32_t frame_dropped = 0;
     uint8_t *p_data_buffer = NULL;
     uint32_t i = 0;
     int retval = NI_RETCODE_SUCCESS;
@@ -15004,7 +15225,15 @@ start:
   //total_bytes_to_read = p_frame->data_len[0] + p_frame->data_len[1] + p_frame->data_len[2] + p_frame->data_len[3] + metadata_hdr_size + sei_size; //since only HW desc
   bytes_read_so_far = total_bytes_to_read;
   //bytes_read_so_far = p_frame->data_len[0] + p_frame->data_len[1] + p_frame->data_len[2] + p_frame->data_len[3] + metadata_hdr_size + sei_size; //since only HW desc
-  rx_size = ni_create_frame(p_frame, bytes_read_so_far, &frame_offset, true);
+  if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+                        "6sP") >= 0)
+  {
+      rx_size = ni_create_frame(p_frame, bytes_read_so_far, &frame_offset, &frame_dropped, true);
+  }
+  else
+  {
+      rx_size = ni_create_frame(p_frame, bytes_read_so_far, &frame_offset, 0, true);
+  }
   p_ctx->frame_pkt_offset = frame_offset;
   if (p_ctx->decoder_low_delay > 0 && buf_info.buf_avail_size == metadata_hdr_size &&
       p_ctx->enable_low_delay_check)
@@ -15032,18 +15261,36 @@ start:
 
       int64_t tmp_dts, prev_dts = INT64_MIN, ts_diff = 0;
       int nb_diff = 0;
+
+      if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+                            "6sP") >= 0)
+      {
+          if(p_ctx->last_frame_dropped + frame_dropped != p_ctx->session_statistic.ui32FramesDropped)
+          {
+              ni_log2(p_ctx, NI_LOG_DEBUG,
+                            "### %s(): Warning: ui32FramesDropped %u should be %u + %u\n",
+                            __func__, p_ctx->session_statistic.ui32FramesDropped,
+                            p_ctx->last_frame_dropped, frame_dropped);
+
+              p_ctx->session_statistic.ui32FramesDropped = p_ctx->last_frame_dropped + frame_dropped;
+          }
+
+          p_ctx->last_frame_dropped = p_ctx->session_statistic.ui32FramesDropped;
+      }
+
       if (p_ctx->is_first_frame)
       {
           ni_log2(p_ctx, NI_LOG_DEBUG,
                   "%s(): First frame : session_id 0x%x, pic_reorder_delay: %d "
                   "total frames input:%u buffered: %u completed: %u output: %u "
-                  "dropped: %u error: %u\n",
+                  "dropped: %u (%u %u) error: %u\n",
                   __func__, p_ctx->session_id, p_ctx->pic_reorder_delay,
                   p_ctx->session_statistic.ui32FramesInput,
                   p_ctx->session_statistic.ui32FramesBuffered,
                   p_ctx->session_statistic.ui32FramesCompleted,
                   p_ctx->session_statistic.ui32FramesOutput,
                   p_ctx->session_statistic.ui32FramesDropped,
+                  p_ctx->last_frame_dropped, frame_dropped,
                   p_ctx->session_statistic.ui32InstErrors);
 
           if (p_ctx->session_statistic.ui32FramesDropped > 0)
@@ -15516,7 +15763,7 @@ int ni_hwdownload_session_read(ni_session_context_t* p_ctx, ni_frame_t* p_frame,
   else
   {
       rx_size =
-          ni_create_frame(p_frame, bytes_read_so_far, &frame_offset, false);
+          ni_create_frame(p_frame, bytes_read_so_far, &frame_offset, 0, false);
       p_ctx->frame_pkt_offset = frame_offset;
   }
 
@@ -15653,7 +15900,7 @@ int ni_hwdownload_by_frame_idx(niFrameSurface1_t* hwdesc, ni_frame_t* p_frame, i
   else
   {
       rx_size =
-          ni_create_frame(p_frame, bytes_read_so_far, &frame_offset, false);
+          ni_create_frame(p_frame, bytes_read_so_far, &frame_offset, 0, false);
   }
 
   ni_log(NI_LOG_DEBUG,

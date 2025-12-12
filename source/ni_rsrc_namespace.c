@@ -72,7 +72,7 @@ static void usage(void)
 
 int send_config_ns_command(char* dev, int ns, int sr)
 {
-    ni_device_handle_t handle = ni_device_open(dev, NULL);
+    ni_device_handle_t handle = ni_device_open2(dev, NI_DEVICE_READ_WRITE);
     ni_retcode_t retval;
     char errmsg[NI_ERRNO_LEN] = {0};
     if (handle == NI_INVALID_DEVICE_HANDLE)
@@ -99,7 +99,7 @@ int send_config_ns_command(char* dev, int ns, int sr)
 
 int send_config_qos_mode(char *dev, int value)
 {
-    ni_device_handle_t handle = ni_device_open(dev, NULL);
+    ni_device_handle_t handle = ni_device_open2(dev, NI_DEVICE_READ_WRITE);
     ni_retcode_t retval;
     char errmsg[NI_ERRNO_LEN] = {0};
     if (handle == NI_INVALID_DEVICE_HANDLE)
@@ -127,7 +127,7 @@ int send_config_qos_mode(char *dev, int value)
 int send_config_qos_op(char *dev, char *devt, int op)
 {
     ni_retcode_t retval;
-    ni_device_handle_t handle = ni_device_open(dev, NULL);
+    ni_device_handle_t handle = ni_device_open2(dev, NI_DEVICE_READ_WRITE);
     char errmsg[NI_ERRNO_LEN] = {0};
     if (handle == NI_INVALID_DEVICE_HANDLE)
     {
@@ -139,7 +139,7 @@ int send_config_qos_op(char *dev, char *devt, int op)
     {
         printf("Succeed to open block namespace %s\n", dev);
     }
-    ni_device_handle_t handle_t = ni_device_open(devt, NULL);
+    ni_device_handle_t handle_t = ni_device_open2(devt, NI_DEVICE_READ_WRITE);
     if (handle_t == NI_INVALID_DEVICE_HANDLE)
     {
         ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);

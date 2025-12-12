@@ -67,7 +67,13 @@
 #endif
 
 const char *const g_xcoder_preset_names[NI_XCODER_PRESET_NAMES_ARRAY_LEN] = {
-    NI_XCODER_PRESET_NAME_DEFAULT, NI_XCODER_PRESET_NAME_CUSTOM, 0};
+    NI_XCODER_PRESET_NAME_VERYFAST,
+    NI_XCODER_PRESET_NAME_FASTER,
+    NI_XCODER_PRESET_NAME_FAST,
+    NI_XCODER_PRESET_NAME_MEDIUM,
+    NI_XCODER_PRESET_NAME_SLOW,
+    NI_XCODER_PRESET_NAME_SLOWER,
+    NI_XCODER_PRESET_NAME_VERYSLOW};
 const char *const g_xcoder_log_names[NI_XCODER_LOG_NAMES_ARRAY_LEN] = {
     NI_XCODER_LOG_NAME_NONE,
     NI_XCODER_LOG_NAME_ERROR,
@@ -229,6 +235,7 @@ ni_retcode_t ni_device_session_context_init(ni_session_context_t *p_ctx)
     p_ctx->pixel_format = NI_PIX_FMT_YUV420P;
     p_ctx->buffered_frame_index = 0;
     p_ctx->ppu_reconfig_pkt_pos = 0;
+    p_ctx->headers_length = 0;
     // by default, select the least model load card
     ni_strncpy(p_ctx->dev_xcoder_name, MAX_CHAR_IN_DEVICE_NAME, NI_BEST_MODEL_LOAD_STR,
             (MAX_CHAR_IN_DEVICE_NAME-1));
@@ -353,6 +360,7 @@ void ni_close_event(ni_event_handle_t event_handle)
   ni_log(NI_LOG_TRACE, "%s(): exit\n", __func__);
 }
 
+#ifndef DEPRECATION_AS_ERROR
 /*!*****************************************************************************
  *  \brief  Open device and return device device_handle if successful
  *
@@ -363,7 +371,7 @@ void ni_close_event(ni_event_handle_t event_handle)
  *  \return On success returns a device device_handle
  *          On failure returns NI_INVALID_DEVICE_HANDLE
  ******************************************************************************/
-ni_device_handle_t ni_device_open(const char * p_dev, uint32_t * p_max_io_size_out)
+NI_DEPRECATED ni_device_handle_t ni_device_open(const char * p_dev, uint32_t * p_max_io_size_out)
 {
 #ifdef _WIN32
     DWORD retval;
@@ -471,6 +479,152 @@ ni_device_handle_t ni_device_open(const char * p_dev, uint32_t * p_max_io_size_o
         LRETURN;
     }
     #endif
+
+    retval = fstat(fd, &g_nvme_stat);
+    if (retval < 0)
+    {
+        ni_log(NI_LOG_ERROR, "ERROR: fstat() failed on %s\n", p_dev);
+        ni_log(NI_LOG_ERROR, "ERROR: %s() failed!\n", __func__);
+        close(fd);
+        fd = NI_INVALID_DEVICE_HANDLE;
+        LRETURN;
+    }
+
+    if (!S_ISCHR(g_nvme_stat.st_mode) && !S_ISBLK(g_nvme_stat.st_mode))
+    {
+        ni_log(NI_LOG_ERROR, "ERROR: %s is not a block or character device\n",
+               p_dev);
+        ni_log(NI_LOG_ERROR, "ERROR: %s() failed!\n", __func__);
+        close(fd);
+        fd = NI_INVALID_DEVICE_HANDLE;
+        LRETURN;
+    }
+
+    ni_log(NI_LOG_DEBUG, "%s: success, fd=%d\n", __func__, fd);
+
+END:
+
+    return fd;
+#endif
+}
+#endif
+
+/*!*****************************************************************************
+ *  \brief  Open device and return device device_handle if successful
+ *
+ *  \param[in]  p_dev Device name represented as c string. ex: "/dev/nvme0"
+ *  \param[in]  p_config Device configuration parameters
+ *
+ *  \return On success returns a device device_handle
+ *          On failure returns NI_INVALID_DEVICE_HANDLE
+ ******************************************************************************/
+ni_device_handle_t ni_device_open2(const char * p_dev, ni_device_mode_t mode)
+{
+#ifdef _WIN32
+    DWORD retval;
+    HANDLE device_handle;
+    DWORD dwDesiredAccess = 0;
+
+    if (!p_dev)
+    {
+        ni_log(NI_LOG_ERROR, "ERROR: passed parameters are null!, return\n");
+        return NI_INVALID_DEVICE_HANDLE;
+    }
+
+    /* Convert access mode using bit operations */
+    switch(mode & NI_DEVICE_READ_WRITE)
+    {
+        case NI_DEVICE_READ_ONLY:
+            /* Read-only mode */
+            dwDesiredAccess = GENERIC_READ;
+            break;
+        case NI_DEVICE_WRITE_ONLY:
+            /* Write-only mode */
+            dwDesiredAccess = GENERIC_WRITE;
+            break;
+        case NI_DEVICE_READ_WRITE:
+        default:
+            /* Read-write mode takes precedence */
+            dwDesiredAccess = GENERIC_READ | GENERIC_WRITE;
+            break;
+    }
+
+    device_handle = CreateFile(p_dev, dwDesiredAccess,
+                               FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+                               OPEN_EXISTING, FILE_FLAG_NO_BUFFERING, NULL);
+
+    ni_log(NI_LOG_DEBUG, "%s() device_name: %s", __func__, p_dev);
+    if (INVALID_HANDLE_VALUE == device_handle)
+    {
+        retval = GetLastError();
+        ni_log(NI_LOG_ERROR, "Failed to open %s, retval %d \n", p_dev, retval);
+    } else
+    {
+        ni_log(NI_LOG_DEBUG, "Found NVME Controller at %s \n", p_dev);
+    }
+
+    return device_handle;
+#else
+    int retval = -1;
+    ni_device_handle_t fd = NI_INVALID_DEVICE_HANDLE;
+    int open_flags = 0;
+
+    if (!p_dev)
+    {
+        ni_log(NI_LOG_ERROR, "ERROR: passed parameters are null!, return\n");
+        return NI_RETCODE_INVALID_PARAM;
+    }
+
+    ni_log(NI_LOG_DEBUG, "%s: opening regular-io enabled %s\n", __func__,
+           p_dev);
+
+    /* Set access mode using bit operations */
+    switch(mode & NI_DEVICE_READ_WRITE)
+    {
+        case NI_DEVICE_READ_ONLY:
+            /* Read-only mode */
+            open_flags = O_RDONLY;
+            break;
+        case NI_DEVICE_WRITE_ONLY:
+            /* Write-only mode */
+            open_flags = O_WRONLY;
+            break;
+        case NI_DEVICE_READ_WRITE:
+        default:
+            /* Read-write mode takes precedence */
+            open_flags = O_RDWR;
+            break;
+    }
+
+    open_flags |= O_SYNC;
+#if __linux__
+    open_flags |= O_DIRECT;
+#elif __APPLE__
+    /* macOS doesn't support O_DIRECT, use F_NOCACHE instead */
+#endif
+
+    fd = open(p_dev, open_flags);
+    if (fd < 0)
+    {
+            ni_log(NI_LOG_ERROR, "ERROR: %d %s open() failed on %s\n", NI_ERRNO,
+                   strerror(NI_ERRNO), p_dev);
+            ni_log(NI_LOG_ERROR, "ERROR: %s() failed!\n", __func__);
+            fd = NI_INVALID_DEVICE_HANDLE;
+            LRETURN;
+    }
+
+#if __APPLE__
+    //F_NOCACHE is set to ensure that data can be sent directly to the card instead of to cache memory
+    retval = fcntl(fd, F_NOCACHE, 1);
+    if (retval < 0)
+    {
+        ni_log(NI_LOG_ERROR, "ERROR: fnctl() failed on %s\n", p_dev);
+        ni_log(NI_LOG_ERROR, "ERROR: ni_device_open2() failed!\n");
+        close(fd);
+        fd = NI_INVALID_DEVICE_HANDLE;
+        LRETURN;
+    }
+#endif
 
     retval = fstat(fd, &g_nvme_stat);
     if (retval < 0)
@@ -743,7 +897,6 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
   ni_device_handle_t handle = NI_INVALID_DEVICE_HANDLE;
   ni_device_handle_t handle1 = NI_INVALID_DEVICE_HANDLE;
   // For none nvme block device we just need to pass in dummy
-  uint32_t dummy_io_size = 0;
   ni_session_context_t p_session_context = {0};
   ni_device_type_t query_type = device_type;
 
@@ -830,15 +983,6 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
   handle = p_ctx->device_handle;
   handle1 = p_ctx->blk_io_handle;
 
-  p_device_pool = ni_rsrc_get_device_pool();
-
-  if (!p_device_pool)
-  {
-    ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR: Error calling ni_rsrc_get_device_pool()\n");
-    retval =  NI_RETCODE_ERROR_GET_DEVICE_POOL;
-    LRETURN;
-  }
-
   ni_log2(p_ctx, NI_LOG_DEBUG,
          "%s: device type %d hw_id %d blk_dev_name: %s dev_xcoder_name: %s.\n",
          __func__, device_type, p_ctx->hw_id, p_ctx->blk_dev_name,
@@ -891,8 +1035,8 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
       // Now the device name is in the rsrc_ctx, we open this device to get the file handles
 
 #ifdef _WIN32
-      if ((handle = ni_device_open(rsrc_ctx->p_device_info->blk_name,
-                                   &dummy_io_size)) == NI_INVALID_DEVICE_HANDLE)
+      if ((handle = ni_device_open2(rsrc_ctx->p_device_info->blk_name,
+                                   NI_DEVICE_READ_WRITE)) == NI_INVALID_DEVICE_HANDLE)
       {
           ni_rsrc_free_device_context(rsrc_ctx);
           retval = NI_RETCODE_ERROR_OPEN_DEVICE;
@@ -902,7 +1046,6 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
           user_handles = true;
           p_ctx->device_handle = handle;
           p_ctx->blk_io_handle = handle;
-          p_ctx->max_nvme_io_size = dummy_io_size;
           handle1 = handle;
           ni_strcpy(p_ctx->dev_xcoder_name, MAX_CHAR_IN_DEVICE_NAME, rsrc_ctx->p_device_info->dev_name);
           ni_strcpy(p_ctx->blk_xcoder_name, MAX_CHAR_IN_DEVICE_NAME, rsrc_ctx->p_device_info->blk_name);
@@ -911,8 +1054,8 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
 #else
       //The original design (code below) is to open char and block device file separately. And the ffmpeg will close the device twice.
       //However, in I/O version, char device can't be opened. For compatibility, and to avoid errors, open the block device twice.
-      if (((handle = ni_device_open(rsrc_ctx->p_device_info->dev_name, &dummy_io_size)) == NI_INVALID_DEVICE_HANDLE) ||
-          ((handle1 = ni_device_open(rsrc_ctx->p_device_info->dev_name, &p_ctx->max_nvme_io_size)) == NI_INVALID_DEVICE_HANDLE))
+      if (((handle = ni_device_open2(rsrc_ctx->p_device_info->dev_name, NI_DEVICE_READ_WRITE)) == NI_INVALID_DEVICE_HANDLE) ||
+          ((handle1 = ni_device_open2(rsrc_ctx->p_device_info->dev_name, NI_DEVICE_READ_WRITE)) == NI_INVALID_DEVICE_HANDLE))
       {
           ni_rsrc_free_device_context(rsrc_ctx);
           retval = NI_RETCODE_ERROR_OPEN_DEVICE;
@@ -955,6 +1098,14 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
 
         // We need to query through all the boards to confirm the least load.
 
+        p_device_pool = ni_rsrc_get_device_pool();
+
+        if (!p_device_pool)
+        {
+          ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR: Error calling ni_rsrc_get_device_pool()\n");
+          retval =  NI_RETCODE_ERROR_GET_DEVICE_POOL;
+          LRETURN;
+        }
         if (IS_XCODER_DEVICE_TYPE(query_type))
         {
             num_coders = p_device_pool->p_device_queue->xcoder_cnt[query_type];
@@ -984,8 +1135,8 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
 
             // Code is included in the for loop. In the loop, the device is
             // just opened once, and it will be closed once too.
-            p_session_context.blk_io_handle = ni_device_open(
-                p_device_context->p_device_info->dev_name, &dummy_io_size);
+            p_session_context.blk_io_handle = ni_device_open2(
+                p_device_context->p_device_info->dev_name, NI_DEVICE_READ_WRITE);
             p_session_context.device_handle = p_session_context.blk_io_handle;
 
             if (NI_INVALID_DEVICE_HANDLE == p_session_context.device_handle)
@@ -1051,7 +1202,7 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
 #ifdef _WIN32
         // Now we have the device info that has the least load of the FW
         // we open this device and assign the FD
-        if ((handle = ni_device_open(dev_info.blk_name, &dummy_io_size)) ==
+        if ((handle = ni_device_open2(dev_info.blk_name, NI_DEVICE_READ_WRITE)) ==
             NI_INVALID_DEVICE_HANDLE)
         {
             retval = NI_RETCODE_ERROR_OPEN_DEVICE;
@@ -1065,7 +1216,6 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
       {
         p_ctx->device_handle = handle;
         p_ctx->blk_io_handle = handle;
-        p_ctx->max_nvme_io_size = dummy_io_size;
         handle1 = handle;
         p_ctx->hw_id = guid;
         ni_strcpy(p_ctx->dev_xcoder_name, MAX_CHAR_IN_DEVICE_NAME, dev_info.dev_name);
@@ -1074,8 +1224,8 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
 #else
       //The original design (code below) is to open char and block device file separately. And the ffmpeg will close the device twice.
       //However, in I/O version, char device can't be opened. For compatibility, and to avoid errors, open the block device twice.
-      if (((handle = ni_device_open(dev_info.dev_name, &dummy_io_size)) == NI_INVALID_DEVICE_HANDLE) ||
-          ((handle1 = ni_device_open(dev_info.dev_name, &p_ctx->max_nvme_io_size)) == NI_INVALID_DEVICE_HANDLE))
+      if (((handle = ni_device_open2(dev_info.dev_name, NI_DEVICE_READ_WRITE)) == NI_INVALID_DEVICE_HANDLE) ||
+          ((handle1 = ni_device_open2(dev_info.dev_name, NI_DEVICE_READ_WRITE)) == NI_INVALID_DEVICE_HANDLE))
       {
         retval = NI_RETCODE_ERROR_OPEN_DEVICE;
         if (ni_rsrc_unlock(query_type, lock) != NI_RETCODE_SUCCESS)
@@ -1112,7 +1262,8 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
          "Finish open the session dev:%s guid:%d handle:%p handle1:%p\n",
          p_ctx->dev_xcoder_name, p_ctx->hw_id,
          p_ctx->device_handle, p_ctx->blk_io_handle);
-
+  if (p_ctx->max_nvme_io_size == NI_INVALID_IO_SIZE)
+      p_ctx->max_nvme_io_size = NI_MAX_PACKET_SZ;
   // get FW API version
   p_device_context = ni_rsrc_get_device_context(device_type, p_ctx->hw_id);
   if (p_device_context == NULL)
@@ -4189,7 +4340,7 @@ ni_retcode_t ni_encoder_init_default_params(ni_xcoder_params_t *p_param,
     p_enc->high_tier = 0;
 
     if (QUADRA)
-        p_enc->gop_preset_index = GOP_PRESET_IDX_DEFAULT;
+        p_enc->gop_preset_index = GOP_PRESET_IDX_NONE;
     else
         p_enc->gop_preset_index = GOP_PRESET_IDX_IBBBP;
 
@@ -4359,7 +4510,7 @@ ni_retcode_t ni_encoder_init_default_params(ni_xcoder_params_t *p_param,
   p_enc->HDR10MaxLight = 0;
   p_enc->HDR10AveLight = 0;
   p_enc->HDR10CLLEnable = 0;
-  p_enc->EnableRdoQuant = 0;
+  p_enc->EnableRdoQuant = -1;
   p_enc->ctbRcMode = 0;
   p_enc->gopSize = 0;
   p_enc->gopLowdelay = 0;
@@ -4437,6 +4588,8 @@ ni_retcode_t ni_encoder_init_default_params(ni_xcoder_params_t *p_param,
   p_enc->baseLayerOnly = 0;
   p_enc->pastFrameMaxIntraRatio = 20;
   p_enc->linkFrameMaxIntraRatio = 40;
+  p_enc->adaptiveLamdaMode = 0;
+  p_enc->adaptiveCrfMode = 0;
 #ifdef XCODER_311
   p_enc->disable_adaptive_buffers = 1;
 #else
@@ -4459,11 +4612,15 @@ ni_retcode_t ni_encoder_init_default_params(ni_xcoder_params_t *p_param,
   p_enc->spatial_layers_ref_base_layer = 0;
   p_enc->vbvBufferReencode = 0;
   p_enc->disableAv1TimingInfo = 0;
+  p_enc->preset_index = NI_PRESETS_NONE;
+  p_enc->preset_enabled = 0;
+  p_enc->reset_dts_offset = 1;
   for (i = 0; i < NI_MAX_SPATIAL_LAYERS; i++)
   {
     p_enc->spatialLayerBitrate[i] = 0;
     p_enc->av1OpLevel[i] = 0;
   }
+  p_enc->intraCompensateMode = 0;
 
   if (codec_format == NI_CODEC_FORMAT_AV1)
   {
@@ -7317,6 +7474,42 @@ ni_retcode_t ni_encoder_params_set_value(ni_xcoder_params_t *p_params,
       return NI_RETCODE_PARAM_ERROR_OOR;
     }
     p_params->enableCpuAffinity = atoi(value);
+  }
+  OPT(NI_ENC_PARAM_PRESET)
+  {
+      for (i = 0; i < NI_NUM_PRESETS_MAX; i++) {
+          if (0 == strcmp(value, g_xcoder_preset_names[i])) {
+              p_enc->preset_index = i;
+              break;
+          }
+          else if(i == NI_NUM_PRESETS_MAX - 1) {
+              return NI_RETCODE_PARAM_INVALID_VALUE;
+          }
+      }
+  }
+  OPT(NI_ENC_PARAM_ADAPTIVE_LAMDA_MODE)
+  {
+    if (atoi(value) < 0 || atoi(value) > 3)
+    {
+      return NI_RETCODE_PARAM_ERROR_OOR;
+    }
+    p_enc->adaptiveLamdaMode = atoi(value);
+  }
+  OPT(NI_ENC_PARAM_ADAPTIVE_CRF_MODE)
+  {
+    if (atoi(value) < 0 || atoi(value) > 1)
+    {
+      return NI_RETCODE_PARAM_ERROR_OOR;
+    }
+    p_enc->adaptiveCrfMode = atoi(value);
+  }
+  OPT(NI_ENC_PARAM_INTRA_COMPENSATE_MODE)
+  {
+    if (atoi(value) < 0 || atoi(value) > 3)
+    {
+      return NI_RETCODE_PARAM_ERROR_OOR;
+    }
+    p_enc->intraCompensateMode = atoi(value);
   }
   else { return NI_RETCODE_PARAM_INVALID_NAME; }
 
@@ -11852,6 +12045,14 @@ ni_retcode_t ni_query_extra_info(ni_device_handle_t device_handle,
   p_dev_extra_info->composite_temp = p_dev_extra_info_data->composite_temp;
   p_dev_extra_info->on_board_temp = p_dev_extra_info_data->on_board_temp;
   p_dev_extra_info->on_die_temp = p_dev_extra_info_data->on_die_temp;
+  if (ni_cmp_fw_api_ver((char*) &fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6sN") >= 0)
+  {
+    p_dev_extra_info->fw_flavour = p_dev_extra_info_data->fw_flavour;
+  }
+  else
+  {
+    p_dev_extra_info->fw_flavour = (uint8_t)'-';
+  }
   if (ni_cmp_fw_api_ver((char*) &fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6rC") >= 0 &&
       ni_cmp_fw_api_ver((char*) &fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6rR") < 0)
   {

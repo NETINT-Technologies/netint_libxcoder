@@ -412,7 +412,6 @@ bool add_to_shared_memory(const char device_name[NI_MAX_DEVICE_NAME_LEN],
 {
     int32_t guid;
     int i, j, fw_compat_cmp;
-    uint32_t max_io_size;
     char fw_api_ver_str[5];
 
     ni_device_capability_t device_capability = {0};
@@ -420,14 +419,17 @@ bool add_to_shared_memory(const char device_name[NI_MAX_DEVICE_NAME_LEN],
     ni_device_info_t device_info = {0};
     bool success = true;
 
-    max_io_size = NI_INVALID_IO_SIZE;
-    device_handle = ni_device_open(device_name, &max_io_size);
+#if __linux__
+    int ret_ts;
+#endif
+
+    device_handle = ni_device_open2(device_name, NI_DEVICE_READ_ONLY);
     if (device_handle == NI_INVALID_DEVICE_HANDLE)
     {
         if (device_open_should_succeed)
         {
             ni_log(NI_LOG_ERROR,
-                   "ERROR: %s(): Failed to add %s\n: Failed ni_device_open()\n",
+                   "ERROR: %s(): Failed to add %s\n: Failed ni_device_open2()\n",
                    __FUNCTION__,
                    device_name);
             return false;
@@ -507,6 +509,13 @@ bool add_to_shared_memory(const char device_name[NI_MAX_DEVICE_NAME_LEN],
     } else {
         ni_log(NI_LOG_INFO, "Initialized %s\n", device_name, fw_api_ver_str);
     }
+#if __linux__
+  ret_ts = system("host_ts.sh");
+  if (ret_ts != 0)
+  {
+    printf("Unable to send Host time\n");
+  }
+#endif
 
 END:
     ni_device_close(device_handle);
@@ -830,7 +839,6 @@ static bool check_correctness_count(const ni_device_queue_t *existing_device_que
                                     const int existing_number_of_devices,
                                     const char device_names[NI_MAX_DEVICE_CNT][NI_MAX_DEVICE_NAME_LEN])
 {
-    uint32_t max_io_size;
     int i, j, k;
 
     ni_device_capability_t device_capability;
@@ -839,10 +847,9 @@ static bool check_correctness_count(const ni_device_queue_t *existing_device_que
 
     memset(device_queue.xcoder_cnt, 0, sizeof(device_queue.xcoder_cnt));
 
-    max_io_size = NI_INVALID_IO_SIZE;
     for (i = 0; i < existing_number_of_devices; i++)
     {
-        device_handle = ni_device_open(device_names[i], &max_io_size);
+        device_handle = ni_device_open2(device_names[i], NI_DEVICE_READ_ONLY);
         if (device_handle == NI_INVALID_DEVICE_HANDLE)
         {
             continue;

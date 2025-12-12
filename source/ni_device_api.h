@@ -53,6 +53,7 @@ extern "C"
 
 // the following are the default values from FFmpeg
 #define AV_CODEC_DEFAULT_BITRATE 200 * 1000
+#define PRESET_DEFAULT_BITRATE 1000 * 1000
 
 #define NI_MAX_GOP_NUM 8
 
@@ -1757,6 +1758,9 @@ typedef struct _ni_session_context
     ni_iocb_t **iocbs;
     ni_io_event_t *io_event;
     uint64_t ppu_reconfig_pkt_pos;
+
+    uint32_t headers_length;
+    uint32_t last_frame_dropped;
 } ni_session_context_t;
 
 typedef struct _ni_split_context_t
@@ -1864,6 +1868,19 @@ typedef enum _ni_ddr_priority_mode_t
     NI_DDR_PRIORITY_AI,        // DDR prioritize AI
     NI_DDR_PRIORITY_MAX
 } ni_ddr_priority_mode_t;
+
+typedef enum _ni_vq_presets_e
+{
+    NI_PRESETS_NONE = -1,
+    NI_VQ_VERYFAST = 0,
+    NI_VQ_FASTER,
+    NI_VQ_FAST,
+    NI_VQ_MEDIUM,
+    NI_VQ_SLOW,
+    NI_VQ_SLOWER,
+    NI_VQ_VERYSLOW,
+    NI_NUM_PRESETS_MAX
+} ni_vq_presets_e;
 
 #ifdef QUADRA
 #define NI_ENC_GOP_PARAMS_G0_POC_OFFSET     "g0pocOffset"
@@ -2217,6 +2234,9 @@ NI_DEPRECATE_MACRO(NI_ENC_PARAM_MAX_FRAME_SIZE_LOW_DELAY)
 #define NI_ENC_PARAM_SCENE_CHANG_DETECT_LEVEL "sceneChangeDetectLevel"
 #define NI_ENC_PARAM_ENABLE_SMOOTH_CRF "enableSmoothCRF"
 #define NI_ENC_PARAM_ENABLE_COMPENSATE_QP "enableCompensateQp"
+#define NI_ENC_PARAM_ADAPTIVE_LAMDA_MODE "adaptiveLamdaMode"
+#define NI_ENC_PARAM_ADAPTIVE_CRF_MODE "adaptiveCrfMode"
+#define NI_ENC_PARAM_INTRA_COMPENSATE_MODE "intraCompensateMode"
 // stream color info
 #define NI_ENC_PARAM_COLOR_PRIMARY "colorPri"
 #define NI_ENC_PARAM_COLOR_TRANSFER_CHARACTERISTIC "colorTrc"
@@ -2288,6 +2308,7 @@ NI_DEPRECATE_MACRO(NI_ENC_PARAM_MAX_FRAME_SIZE_LOW_DELAY)
 #define NI_ENC_PARAM_DISABLE_AV1_TIMING_INFO "disableAv1TimingInfo"
 #define NI_ENC_PARAM_AV1_OP_LEVEL "av1OpLevel"
 #define NI_ENC_PARAM_ENABLE_CPU_AFFINITY "enableCpuAffinity"
+#define NI_ENC_PARAM_PRESET "preset"
 
     //----- Start supported by all codecs -----
     int frame_rate;
@@ -2504,6 +2525,12 @@ NI_DEPRECATE_MACRO(NI_ENC_PARAM_MAX_FRAME_SIZE_LOW_DELAY)
     int spatialLayerBitrate[NI_MAX_SPATIAL_LAYERS];
     int disableAv1TimingInfo;
     int av1OpLevel[NI_MAX_SPATIAL_LAYERS];
+    int preset_enabled;
+    int preset_index;
+    int reset_dts_offset;
+    int adaptiveLamdaMode;
+    int adaptiveCrfMode;
+    int intraCompensateMode;
 } ni_encoder_cfg_params_t;
 
 typedef struct _ni_decoder_input_params_t
@@ -2899,6 +2926,70 @@ typedef struct _ni_frame_config
     uint8_t orientation; // 0 <= n <= 3, (n * 90°) clockwise rotation
 } ni_frame_config_t;
 
+
+// bitstream features related definitions
+typedef enum
+{
+  NI_QUADRA_INTRA_FRAME = 0,
+  NI_QUADRA_PREDICTED_FRAME = 1,
+  NI_QUADRA_BIDIR_PREDICTED_FRAME = 2,
+  NI_QUADRA_NOTCODED_FRAME  /* Used just as a return value */
+} ni_quadra_frame_type;
+
+typedef enum
+{
+  ITU_FRAME_TYPE_NONE = 0,
+  ITU_FRAME_TYPE_I = 1,
+  ITU_FRAME_TYPE_P = 2,
+  ITU_FRAME_TYPE_B = 3,
+} itu_frame_type;
+
+typedef enum
+{
+  VODEO_CODEC_ID_H264 = 1,
+  VODEO_CODEC_ID_HEVC = 2,
+  VODEO_CODEC_ID_VP9 = 3,
+  VODEO_CODEC_ID_AV1 = 4,
+} video_codec_identifier;
+
+typedef enum
+{
+  NI_QUADRA_H264_PROFILE_BASELINE = 1,
+  NI_QUADRA_H264_PROFILE_MAIN = 2,
+  NI_QUADRA_H264_PROFILE_EXTENDED = 3,
+  NI_QUADRA_H264_PROFILE_HIGH = 4,
+} ni_quadra_h264_profile;
+
+typedef enum
+{
+  H264_CODEC_PROFILE_BASELINE = 66,
+  H264_CODEC_PROFILE_MAIN = 77,
+  H264_CODEC_PROFILE_EXTENDED = 88,
+  H264_CODEC_PROFILE_HIGH = 100,
+} h264_codec_profile;
+
+typedef enum
+{
+  NI_QUADRA_HEVC_PROFILE_MAIN = 1,
+  NI_QUADRA_HEVC_PROFILE_MAIN10 = 2,
+} ni_quadra_hevc_profile;
+
+typedef enum
+{
+  HEVC_CODEC_PROFILE_MAIN = 1,
+  HEVC_CODEC_PROFILE_MAIN10 = 2,
+} hevc_codec_profile;
+
+typedef enum
+{
+  NI_QUADRA_AV1_PROFILE_MAIN = 1,
+} ni_quadra_av1_profile;
+
+typedef enum
+{
+  AV1_CODEC_PROFILE_MAIN = 0,
+} av1_codec_profile;
+
 typedef struct _ni_packet
 {
   long long dts;
@@ -2950,11 +3041,29 @@ typedef struct _ni_session_data_io
 
 } ni_session_data_io_t;
 
-#define NI_XCODER_PRESET_NAMES_ARRAY_LEN  3
+/**
+ * @brief Device access mode enumeration
+ *
+ * Currently only read/write functionality is implemented.
+ * Other functionality will be extended in the future.
+ */
+typedef enum _ni_device_mode{
+    NI_DEVICE_READ_ONLY  = 0x0001,  /* Read-only access */
+    NI_DEVICE_WRITE_ONLY = 0x0002,  /* Write-only access */
+    NI_DEVICE_READ_WRITE = 0x0003   /* Read-write access */
+} ni_device_mode_t;
+
+#define NI_XCODER_PRESET_NAMES_ARRAY_LEN  7
 #define NI_XCODER_LOG_NAMES_ARRAY_LEN     7
 
-#define NI_XCODER_PRESET_NAME_DEFAULT     "default"
-#define NI_XCODER_PRESET_NAME_CUSTOM      "custom"
+#define NI_XCODER_PRESET_NAME_NONE        "none"
+#define NI_XCODER_PRESET_NAME_VERYFAST    "veryfast"
+#define NI_XCODER_PRESET_NAME_FASTER      "faster"
+#define NI_XCODER_PRESET_NAME_FAST        "fast"
+#define NI_XCODER_PRESET_NAME_MEDIUM      "medium"
+#define NI_XCODER_PRESET_NAME_SLOW        "slow"
+#define NI_XCODER_PRESET_NAME_SLOWER      "slower"
+#define NI_XCODER_PRESET_NAME_VERYSLOW    "veryslow"
 
 #define NI_XCODER_LOG_NAME_NONE           "none"
 #define NI_XCODER_LOG_NAME_ERROR          "error"
@@ -3024,6 +3133,7 @@ LIB_API ni_event_handle_t ni_create_event(void);
  ******************************************************************************/
 LIB_API void ni_close_event(ni_event_handle_t event_handle);
 
+#ifndef DEPRECATION_AS_ERROR
 /*!*****************************************************************************
  *  \brief  Open device and return device device_handle if successful
  *
@@ -3033,8 +3143,21 @@ LIB_API void ni_close_event(ni_event_handle_t event_handle);
  *  \return On success returns a device device_handle
  *          On failure returns NI_INVALID_DEVICE_HANDLE
  ******************************************************************************/
-LIB_API ni_device_handle_t ni_device_open(const char *dev,
+LIB_API NI_DEPRECATED ni_device_handle_t ni_device_open(const char *dev,
                                           uint32_t *p_max_io_size_out);
+#endif
+
+/*!*****************************************************************************
+ *  \brief  Open device and return device device_handle if successful
+ *
+ *  \param[in]  p_dev Device name represented as c string. ex: "/dev/nvme0"
+ *  \param[in]  mode Device configuration parameters
+ *
+ *  \return On success returns a device device_handle
+ *          On failure returns NI_INVALID_DEVICE_HANDLE
+ ******************************************************************************/
+LIB_API ni_device_handle_t ni_device_open2(const char *dev,
+                                           ni_device_mode_t mode);
 
 /*!*****************************************************************************
  *  \brief  Close device and release resources

@@ -49,11 +49,11 @@ extern "C"
 
 /* Value and formula retrieved from tps25946 EFUSE manual */
 #define TPS25946_GAIN_IMON     182.0f
-#define TPS25946_GAIN_IMON_T1M 105.5f
+#define TPS25974_GAIN_IMON     105.5f
 #define TPS25946_R_IMON_T2A    1000.0f
 #define TPS25946_R_IMON_T1U_UA 1130.0f
 #define TPS25946_R_IMON_T1S    562.0f
-#define TPS25946_R_IMON_T1M    750.0f
+#define TPS25974_R_IMON_T1M    750.0f
 
 /* Value and formula retrieved from MAX15162AAWE+T EFUSE manual */
 #define MAX15162AAWE_C_IRATIO   4000.0f
@@ -390,26 +390,29 @@ LIB_API int ni_posix_memalign(void **memptr, size_t alignment, size_t size);
 uint32_t ni_round_up(uint32_t number_to_round, uint32_t multiple);
 
 #ifdef _WIN32
-#define ni_aligned_free(p_memptr)                                              \
-{                                                                              \
-    _aligned_free(p_memptr);                                                   \
-    p_memptr = NULL;                                                           \
-}
+#define ni_aligned_free(p_memptr) do {                                         \
+    if ((p_memptr) != NULL) {                                                  \
+        _aligned_free(p_memptr);                                               \
+        p_memptr = NULL;                                                       \
+    }                                                                          \
+}while(0)
 #else
-#define ni_aligned_free(p_memptr)                                              \
-{                                                                              \
-    free(p_memptr);                                                            \
-    p_memptr = NULL;                                                           \
-}
+#define ni_aligned_free(p_memptr) do {                                         \
+    if ((p_memptr) != NULL) {                                                  \
+        free(p_memptr);                                                        \
+        p_memptr = NULL;                                                       \
+    }                                                                          \
+}while(0)
 #endif
 
 // This method is used in device session close function to unset all the
 // pointers in the session context.
-#define ni_memfree(p_memptr)                                                   \
-{                                                                              \
-    free(p_memptr);                                                            \
-    p_memptr = NULL;                                                           \
-}
+#define ni_memfree(p_memptr) do {                                              \
+    if ((p_memptr) != NULL) {                                                  \
+        free(p_memptr);                                                        \
+        p_memptr = NULL;                                                       \
+    }                                                                          \
+}while(0)
 
 #if __linux__ || __APPLE__
 uint32_t ni_get_kernel_max_io_size(const char * p_dev);

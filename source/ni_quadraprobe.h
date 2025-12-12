@@ -20,10 +20,36 @@
  ******************************************************************************/
 
 /*!*****************************************************************************
- *  \file   ni_release_info.h
+ *  \file   ni_quadraprobe.h
  *
- *  \brief  Release identification data generated at release time
+ *  \brief  Quadraprobe definitions
  ******************************************************************************/
 
-#define NI_SW_RELEASE_TIME "2025-12-08_11:27:20_-0800"
-#define NI_SW_RELEASE_ID "Netint_Quadra_release_v5.5.0_RC2"
+#pragma once
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+/*!*****************************************************************************
+ *  \brief  Dump raw firmware logs from all detected Quadra devices
+ *
+ *  This function enumerates all detected Quadra cards in the system,
+ *  mmaps each card's BAR4, and dumps per-core logs to files in the specified output directory.
+ *  It summarizes success and captures partial failures across multiple devices.
+ *
+ *  \param[in] outdir   Directory to write log file outputs (use "." for current directory)
+ *  \param[in] core_reset_log   whether to get core reset log
+ *
+ *  \return 0 if all device logs were dumped successfully,
+ *          1 if no Quadra devices were found,
+ *          2 if one or more logs failed to dump but some succeeded,
+ *         <0 for unexpected fatal/internal errors.
+ ******************************************************************************/
+#if defined(__linux__)
+LIB_API int ni_rsrc_log_dump(const char *outdir, bool core_reset_log);
+#endif
+
+#ifdef __cplusplus
+}
+#endif

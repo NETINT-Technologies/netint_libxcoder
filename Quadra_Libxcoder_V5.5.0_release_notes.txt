@@ -1,4 +1,42 @@
 ================================================================================
+Release version: 5.5.0_RC2
+Date: 2025-12-08            SW version: 5.5.0_RC2           FW version: 5.5.0_RC2
+Compat FW API ver: 6sQ      Libxcoder API ver: 2.82
+--------------------------------------------------------------------------------
+[LIBXCODER] Fix an issue with Fractional fps handling
+[LIBXCODER] Add param intraCompensateMode
+            Changing FW API version to 6sQ
+[LIBXCODER] Fixed the inconsistent AV1 IVF timestamp issue by sending the dropped frames STATS throguh metadata
+            Changing FW API version to 6sP
+[LIBXCODER] Add param adaptiveCrfMode
+            Changing FW API version to 6sN
+[LIBXCODER] Support to get core reset log by ni_rsrc_mon
+[LIBXCODER] Remove the shell command in ni_quadra_card_identify_precheck() use ioctl instead
+[LIBXCODER] Add flavour in ni_rsrc_mon
+            Changing FW API version to 6sN
+[LIBXCODER] Reduce the latency by open device readonly
+            - Add new function ni_device_open2 to replace ni_device_open
+            - Changing Libxcoder API version to 2.82
+            - Update NETINT_FFMPEG_CHANGE_LIST.txt
+[LIBXCODER] Support CU info read and parsing logic
+            1. Read CU info from device when getCuInfo option is set
+            2. Add CU info parsing logic
+            Changing FW API version to 6sM
+[LIBXCODER] Improve 2D downscaling quality
+            1. support lanczos with parameter filterblit 5;
+            2. change range of B,C parameters range from [0,1] to [0,5] for scaler and merge filters;
+            Changing FW API version to 6sL
+[LIBXCODER] Added quadraprobe to ni_rsrc_mon call
+            Changing Libxcoder API version to 2.81
+[LIBXCODER] Avoid unnecessary calls to ni_rsrc_get_device_pool in ni_device_session_open
+[LIBXCODER] Add param adaptiveLamdaMode
+[LIBXCODER] Add null pointer check in macro ni_aligned_free() and ni_memfree() for safety
+[LIBXCODER] Support T1M2 power measurement
+[LIBXCODER] Added the encoding parameter, preset.
+            It works both in the formats of "xcoder-params preset=xxxx" and "-preset xxxx"
+            Changing Libxcoder API version to 2.80
+[LIBXCODER] Fix an issue with ni_rsrc_mon -d with json1 and json2 will print invalid format
+================================================================================
 Release version: 5.4.0_RC2
 Date: 2025-09-15            SW version: 5.4.0_RC2           FW version: 5.4.0_RC1
 Compat FW API ver: 6sJ      Libxcoder API ver: 2.79
