@@ -2619,11 +2619,13 @@ void decoder_stat_report_and_close(ni_demo_context_t *p_ctx, ni_session_context_
 
     current_time = ni_gettime_ns();
 
-    ni_log(NI_LOG_ERROR, "Decoder Closing, Got:  Frames=%u  FPS=%.2f  Total bytes %llu\n",
+    if (p_ctx)
+    {
+        ni_log(NI_LOG_ERROR, "Decoder Closing, Got:  Frames=%u  FPS=%.2f  Total bytes %llu\n",
            p_ctx->num_frames_received,
            (float)p_ctx->num_frames_received / (float)(current_time - p_ctx->start_time) * (float)1000000000,
            p_ctx->dec_total_bytes_received);
-
+    }
     ni_device_session_close(p_dec_ctx, 1, NI_DEVICE_TYPE_DECODER);
 }
 

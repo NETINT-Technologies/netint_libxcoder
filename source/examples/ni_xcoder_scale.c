@@ -414,13 +414,29 @@ int main(int argc, char *argv[])
         }
     }
 
+end:
     ni_device_session_close(&upl_ctx, 1, NI_DEVICE_TYPE_UPLOAD);
     for (i = 0; i < output_total; i++)
     {
         ni_device_session_close(&sca_ctx[i], 1, NI_DEVICE_TYPE_SCALER);
     }
 
-end:
+#ifdef _WIN32
+    ni_device_close(upl_ctx.device_handle);
+    for (i = 0; i < output_total; i++)
+    {
+        ni_device_close(sca_ctx[i].device_handle);
+    }
+#elif __linux__
+    ni_device_close(upl_ctx.device_handle);
+    ni_device_close(upl_ctx.blk_io_handle);
+    for (i = 0; i < output_total; i++)
+    {
+        ni_device_close(sca_ctx[i].device_handle);
+        ni_device_close(sca_ctx[i].blk_io_handle);
+    }
+#endif
+
     ni_frame_buffer_free(&sw_in_frame.data.frame);
     ni_frame_buffer_free(&hw_in_frame.data.frame);
     for (i = 0; i < output_total; i++)

@@ -675,6 +675,8 @@ typedef struct _ni_encoder_config_t
   uint8_t ui8adaptiveCrfMode;
   uint8_t ui8intraCompensateMode;
   uint8_t ui8customMinCoeffDiv;
+  uint8_t ui8cutreeFlushIframe;
+  uint8_t    ui8qpScaleEnable;
 } ni_encoder_config_t;
 
 
@@ -1056,6 +1058,8 @@ typedef enum
 #define NI_P2P_RECV  0
 #define NI_P2P_SEND  1
 #define NI_MAX_P2P_SGL_ENTRIES 128
+/* Maximum bytes per (main) DMA descriptor entry 24 bits wide */
+#define NI_DMA_SGL_MAX_XFER_SIZE  0x00FFFFFFu
 
 #define NI_MAX_AI_NETWORK_BINARY_BUFFER_QUERY_RETRIES 300000
 #define NI_MAX_DEC_SESSION_READ_QUERY_EOS_RETRIES     15000
@@ -1583,7 +1587,7 @@ ni_retcode_t ni_device_config_ns_qos(ni_device_handle_t device_handle,
 
 ni_retcode_t ni_dump_log_single_core(ni_session_context_t *p_ctx, void* p_data, uint32_t core_id, bool gen_log_file);
 ni_retcode_t ni_dump_log_all_cores(ni_session_context_t *p_ctx, void* p_data, bool gen_log_file);
-ni_retcode_t ni_send_to_target(ni_session_context_t *p_ctx, niFrameSurface1_t *source, uint64_t ui64DestAddr, uint32_t ui32FrameSize);
+ni_retcode_t ni_send_to_target_v2(ni_session_context_t *pSession, ni_frame_t *pSrcFrame, const ni_p2p_sgl_t *dmaAddrs);
 ni_retcode_t ni_recv_from_target(ni_session_context_t *pSession, const ni_p2p_sgl_t *dmaAddrs, ni_frame_t *pDstFrame);
 int lower_pixel_rate(const ni_load_query_t *pQuery, uint32_t ui32CurrentLowest);
 ni_retcode_t ni_config_instance_set_decoder_ppu_params(ni_session_context_t* p_ctx,

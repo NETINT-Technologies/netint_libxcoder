@@ -410,9 +410,16 @@ int main(int argc, char *argv[])
         }
     }
 
+end:
     decoder_stat_report_and_close(&ctx, &dec_ctx);
 
-end:
+#ifdef _WIN32
+    ni_device_close(dec_ctx.device_handle);
+#elif __linux__
+    ni_device_close(dec_ctx.device_handle);
+    ni_device_close(dec_ctx.blk_io_handle);
+#endif
+
     ni_packet_buffer_free(&(in_pkt.data.packet));
     if (dec_ctx.hw_action == NI_CODEC_HW_ENABLE)
     {

@@ -816,10 +816,53 @@ encode_recv:
         }
     }
 
+end:
     decoder_stat_report_and_close(&ctx, &dec_ctx);
     encoder_stat_report_and_close(&ctx, enc_ctx, output_total);
 
-end:
+#ifdef _WIN32
+    ni_device_close(dec_ctx.device_handle);
+    for (i = 0; i < output_total; i++)
+    {
+        ni_device_close(enc_ctx[i].device_handle);
+        if (scale_params[i].enabled)
+        {
+            ni_device_close(sca_ctx[i].device_handle);
+        }
+    }
+    if (drawbox_params.enabled)
+    {
+        ni_device_close(crop_ctx.device_handle);
+        ni_device_close(pad_ctx.device_handle);
+        ni_device_close(ovly_ctx.device_handle);
+        ni_device_close(fmt_ctx.device_handle);
+    }
+#elif __linux__
+    ni_device_close(dec_ctx.device_handle);
+    ni_device_close(dec_ctx.blk_io_handle);
+    for (i = 0; i < output_total; i++)
+    {
+        ni_device_close(enc_ctx[i].device_handle);
+        ni_device_close(enc_ctx[i].blk_io_handle);
+        if (scale_params[i].enabled)
+        {
+            ni_device_close(sca_ctx[i].device_handle);
+            ni_device_close(sca_ctx[i].blk_io_handle);
+        }
+    }
+    if (drawbox_params.enabled)
+    {
+        ni_device_close(crop_ctx.device_handle);
+        ni_device_close(crop_ctx.blk_io_handle);
+        ni_device_close(pad_ctx.device_handle);
+        ni_device_close(pad_ctx.blk_io_handle);
+        ni_device_close(ovly_ctx.device_handle);
+        ni_device_close(ovly_ctx.blk_io_handle);
+        ni_device_close(fmt_ctx.device_handle);
+        ni_device_close(fmt_ctx.blk_io_handle);
+    }
+#endif
+
     ni_packet_buffer_free(&in_pkt.data.packet);
     if (dec_ctx.hw_action == NI_CODEC_HW_ENABLE)
     {

@@ -1,4 +1,41 @@
 ================================================================================
+Release version: 5.7.0_RC2
+Date: 2026-04-20            SW version: 5.7.0_RC2           FW version: 5.7.0_RC2
+Compat FW API ver: 6t1      Libxcoder API ver: 2.87
+--------------------------------------------------------------------------------
+[LIBXCODER] Added DDR-based firmware loader log support, including XCoder command and ni_rsrc_mon updates for firmware loader log capture
+			      Changing FW API version to 6t1
+[LIBXCODER] Added temperature monitoring to ni_rsrc_mon with syslog reporting support
+[LIBXCODER] Added a libav transcode example using PCIe P2P between the Quadra VPU and an NVIDIA GPU
+[LIBXCODER] Updated firmware API compatibility handling
+			      Changing FW API version to 6t0
+[LIBXCODER] Updated ni_encoder_session_read logging to print p_packet->frame_type instead of p_meta
+[LIBXCODER] Corrected level warning messages for AV1 spatial layer configurations
+[LIBXCODER] Fixed a host timestamp truncation issue
+[LIBXCODER] Added a QoS allowance feature, including namespace support, monitoring output, JSON reporting, and a new firmware query API
+			      Changing FW API version to 6ta
+[LIBXCODER] Moved high-memory-usage variable allocations from stack to heap to avoid stack overflow
+[LIBXCODER] Added H.264 bitstream feature extraction support, including encoder controls and logging in the ni_xcoder_encode example
+			      Change libxcoder API version to 2.87
+[LIBXCODER] Improved CRF lookahead encode quality with new QPS controls and optimal I-frame handling
+			      Changing FW API version to 6sZ
+[LIBXCODER] Added support for minFramesDelay = 6 to maintain constant FPS in low-delay mode
+[LIBXCODER] Fixed TP and PCIe extra information reporting issues
+[LIBXCODER] Added timestamp-setting support
+[LIBXCODER] Preserved the symbol table and limited stripping to OpenHarmony builds only
+[LIBXCODER] Added file descriptor leak handling to libxcoder examples
+[LIBXCODER] Updated the P010LE download stride handling
+[LIBXCODER] Added cutree flush signaling on I-frames using minFramesDelay >> 2
+			      Changing FW API version to 6sY
+[LIBXCODER] Added compliance enforcement for H.264, H.265, and AV1 level, tier, and profile settings
+[LIBXCODER] Added bidirectional PCIe P2P support between Quadra and NVIDIA GPUs for VPU/GPU frame transfers and deprecated ni_p2p_send
+[LIBXCODER] Added expression support for PPU scale parameters
+[LIBXCODER] Fixed corner case handling for fractional frame rates with a denominator of 1001
+[LIBXCODER] Updated encoder frame type handling so I=IDR and Not coded=3, and reverted the previous frame type change
+						Changing libxcoder API version to 2.86
+[LIBXCODER] Added PCIe host speed verification support
+[LIBXCODER] Updated ni_pict_type to report PIC_TYPE_IDR instead of PIC_TYPE_I
+================================================================================
 Release version: 5.6.0_RC3
 Date: 2026-02-12            SW version: 5.6.0_RC3           FW version: 5.6.0_RC3
 Compat FW API ver: 6sV      Libxcoder API ver: 2.85

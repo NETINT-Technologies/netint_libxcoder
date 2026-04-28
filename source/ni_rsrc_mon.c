@@ -51,6 +51,10 @@
 #define TP_LOAD (1)
 #define PCIE_LOAD (2)
 
+#define VIDEO_PROCESSING_SLICES 4
+#define THROTTLE_REF_WIN_US (1 << (10 + 7)) // 131072us or 0x20000 us, period between qos credit refresh
+#define VIDEO_SLICE_TIME        (THROTTLE_REF_WIN_US * VIDEO_PROCESSING_SLICES)
+
 uint32_t* g_temp_load = NULL; //TP load storage
 uint32_t* g_temp_pload = NULL; //Pcie load storage
 uint32_t* g_temp_pthroughput = NULL; //Pcie throughput storage
@@ -623,6 +627,7 @@ void print_full_text(ni_device_queue_t *p_device_queue,
   ni_device_type_t device_type;
   ni_load_query_t load_query;
   ni_retcode_t return_code;
+  char _ml[16];
 
   for (device_type = NI_DEVICE_TYPE_DECODER;
        device_type != NI_DEVICE_TYPE_XCODER_MAX;
@@ -683,11 +688,11 @@ UPLOADER:
       {
       case NI_DEVICE_TYPE_DECODER:
           strcat_dyn_buf(&output_buf,
-                         "%-5d      %-3u %-3u   %-3u  %-3u/%-3d     %-3u   %-3u      "
+                         "%-5d      %-3u %-3s   %-3u  %-3u/%-3d     %-3u   %-3u      "
                          "%-3u        %-11s %-8.8s %-8.8s %-8.8s %-8.8s\n",
                          p_device_context->p_device_info->module_id,
                          p_session_context->load_query.current_load,
-                         p_session_context->load_query.fw_model_load,
+                         (p_session_context->load_query.fw_model_load == 4294967295U) ? "N/A" : (snprintf(_ml, sizeof(_ml), "%u", p_session_context->load_query.fw_model_load), _ml),
                          p_session_context->load_query.fw_load,
                          p_session_context->load_query.total_contexts,
                          p_device_context->p_device_info->max_instance_cnt,
@@ -720,11 +725,11 @@ UPLOADER:
           break;
       case NI_DEVICE_TYPE_ENCODER:
           strcat_dyn_buf(&output_buf,
-                         "%-5d      %-3u %-3u   %-3u  %-3u/%-3d     %-3u   %-3u      "
+                         "%-5d      %-3u %-3s   %-3u  %-3u/%-3d     %-3u   %-3u      "
                          "%-3u   %-3u  %-11s %-8.8s %-8.8s %-8.8s %-8.8s\n",
                          p_device_context->p_device_info->module_id,
                          p_session_context->load_query.current_load,
-                         p_session_context->load_query.fw_model_load,
+                         (p_session_context->load_query.fw_model_load == 4294967295U) ? "N/A" : (snprintf(_ml, sizeof(_ml), "%u", p_session_context->load_query.fw_model_load), _ml),
                          p_session_context->load_query.fw_load,
                          p_session_context->load_query.total_contexts,
                          p_device_context->p_device_info->max_instance_cnt,
@@ -1750,10 +1755,16 @@ void print_json1(ni_device_queue_t *p_device_queue,
   ni_device_extra_info_t p_dev_extra_info = {0};
   char power_consumption[16];
 
+  uint16_t namespace_id = 0;
+  uint8_t qos_mode;
+
   ni_device_context_t *p_device_context;
   ni_device_type_t device_type;
   ni_load_query_t load_query;
   ni_retcode_t return_code;
+
+  int32_t *extra_temp_per_index = NULL;
+  uint32_t *extra_power_per_index = NULL;
 
   for (device_type = NI_DEVICE_TYPE_DECODER;
        device_type != NI_DEVICE_TYPE_XCODER_MAX;
@@ -1916,12 +1927,45 @@ UPLOADER:
       }
       if (format == 2)
       {
-          strcat_dyn_buf(&output_buf,
+        strcat_dyn_buf(&output_buf,
                          ",\n\t\t\"TEMP\": %d,\n"
-                         "\t\t\"POWER\": \"%s\"\n"
-                         "\t}",
+                         "\t\t\"POWER\": \"%s\"",
                          p_dev_extra_info.composite_temp + ABSOLUTE_TEMP_ZERO,
                          (p_dev_extra_info.power_consumption + 1) ? power_consumption : "N/A");
+        if ((device_type == NI_DEVICE_TYPE_ENCODER) || (device_type == NI_DEVICE_TYPE_DECODER))
+        {
+          ni_qos_header_info_log_page_t qos_header = {0};
+          ni_qos_namespace_info_log_page_t qos_ns_info = {0};
+          ni_device_vf_ns_id_t ns_vf_id = {0};
+
+          if (ni_query_vf_ns_id(p_session_context->device_handle, &ns_vf_id,
+                         p_device_context->p_device_info->fw_rev) == NI_RETCODE_SUCCESS)
+          {
+              namespace_id = ns_vf_id.ns_id;
+
+              if (ni_query_qos_info(p_session_context->device_handle, &qos_header,
+                         p_device_context->p_device_info->fw_rev) == NI_RETCODE_SUCCESS)
+              {
+                  ni_query_qos_namespace_info(p_session_context->device_handle, &qos_ns_info,
+                                   p_device_context->p_device_info->fw_rev);
+
+                  qos_mode = (uint8_t)(qos_header.ui16QosState & 0xFF);
+                  float _opmax = (float)(qos_ns_info.ui32OPmaxUs  * 100) / VIDEO_SLICE_TIME;
+
+                  strcat_dyn_buf(&output_buf,
+                     ",\n\t\t\"QOS MODE\": %u,\n"
+                     "\t\t\"QOS NS\": %u,\n"
+                     "\t\t\"QOS ALLOW\": %.1f,\n"
+                     "\t\t\"QOS OPMAX\": %.1f",
+                     (uint8_t)(qos_header.ui16QosState & 0xFF),
+                         namespace_id,
+                         (qos_mode == 0 ? 0 : qos_ns_info.fAllowance),
+                         (qos_mode == 0 ? 0 :_opmax)
+                      );
+                }
+            }
+        }
+        strcat_dyn_buf(&output_buf, "\n\t}");
       }
       else
       {
@@ -1975,6 +2019,14 @@ UPLOADER:
     }
     if (icore == NP_LOAD)
     {
+      extra_temp_per_index = (int32_t *)calloc(device_count, sizeof(int32_t));
+      extra_power_per_index = (uint32_t *)calloc(device_count, sizeof(uint32_t));
+      if (!extra_temp_per_index || !extra_power_per_index)
+      {
+        fprintf(stderr, "ERROR: calloc() failed for extra info arrays\n");
+        if (extra_temp_per_index) free(extra_temp_per_index);
+        if (extra_power_per_index) free(extra_power_per_index);
+      }
       strcat_dyn_buf(&output_buf, "  \"nvmes\": [\n");
       g_temp_load = (uint32_t*)calloc(device_count, sizeof(uint32_t));
       if (!g_temp_load)
@@ -2039,24 +2091,22 @@ UPLOADER:
         g_temp_pload[index] = load_query.pcie_load;
         g_temp_pthroughput[index] = load_query.pcie_throughput;
         g_temp_sharemem[index] = load_query.fw_share_mem_usage;
+        if (format == 2)
+        {
+          if (ni_query_extra_info(p_session_context->device_handle,
+                                &p_dev_extra_info,
+                                p_device_context->p_device_info->fw_rev))
+          {
+            p_dev_extra_info.composite_temp = 0;
+          }
+          extra_temp_per_index[index] = p_dev_extra_info.composite_temp;
+          extra_power_per_index[index] = p_dev_extra_info.power_consumption;
+        }
       }
 #ifdef __linux__
       get_pcie_addr(p_device_context->p_device_info->dev_name, pcie);
       numa_node = get_numa_node(p_device_context->p_device_info->dev_name);
 #endif
-      if (format == 2)
-      {
-        if (ni_query_extra_info(p_session_context->device_handle,
-                                &p_dev_extra_info,
-                                p_device_context->p_device_info->fw_rev))
-        {
-          p_dev_extra_info.composite_temp = 0;
-        }
-        if (p_dev_extra_info.power_consumption + 1)
-        {
-          ni_sprintf(power_consumption, 16, "%umW", p_dev_extra_info.power_consumption);
-        }
-      }
 
       if (icore==PCIE_LOAD)
       {
@@ -2136,12 +2186,16 @@ UPLOADER:
       }
       if (format == 2)
       {
+        if (p_dev_extra_info.power_consumption + 1)
+        {
+          ni_sprintf(power_consumption, 16, "%umW", extra_power_per_index[index]);
+        }
         strcat_dyn_buf(&output_buf,
                        ",\n\t\t\"TEMP\": %d,\n"
                        "\t\t\"POWER\": \"%s\"\n"
                        "\t}",
-                       p_dev_extra_info.composite_temp + ABSOLUTE_TEMP_ZERO,
-                       (p_dev_extra_info.power_consumption + 1) ? power_consumption : "N/A");
+                       extra_temp_per_index[index] + ABSOLUTE_TEMP_ZERO,
+                       (extra_power_per_index[index] + 1) ? power_consumption : "N/A");
       }
       else
       {
@@ -2190,6 +2244,7 @@ void print_text(ni_device_queue_t *coders,
   ni_device_context_t *p_device_context = NULL;
   ni_device_type_t module_type;
   int max_device_type = NI_DEVICE_TYPE_XCODER_MAX;
+  char _ml[16];
 
   if(detail)
     max_device_type = NI_DEVICE_TYPE_SCALER;
@@ -2361,21 +2416,40 @@ void print_text(ni_device_queue_t *coders,
         }
         else
         {
-          strcat_dyn_buf(&output_buf,
-                         "%-5d %-4u %-10u %-4u %-4u %-9u %-7u %-14s\n",
+          if((module_type == NI_DEVICE_TYPE_DECODER) || (module_type == NI_DEVICE_TYPE_ENCODER))
+          {
+            strcat_dyn_buf(&output_buf,
+                         "%-5d %-4u %-10s %-4u %-4u %-9u %-7u %-14s\n",
                          p_device_context->p_device_info->module_id,
 #ifdef XCODER_311
                          sessionCtxt->load_query.current_load,
 #else
                          (sessionCtxt->load_query.total_contexts == 0 || sessionCtxt->load_query.current_load > sessionCtxt->load_query.fw_load) ? sessionCtxt->load_query.current_load : sessionCtxt->load_query.fw_load,
 #endif
-                         sessionCtxt->load_query.fw_model_load,
+                         (sessionCtxt->load_query.fw_model_load == 4294967295U) ? "N/A" : (snprintf(_ml, sizeof(_ml), "%u", sessionCtxt->load_query.fw_model_load), _ml),
                          sessionCtxt->load_query.total_contexts,
                          sessionCtxt->load_query.fw_video_mem_usage,
                          sessionCtxt->load_query.fw_share_mem_usage,
                          sessionCtxt->load_query.fw_p2p_mem_usage,
                          p_device_context->p_device_info->dev_name);
-
+          }
+          else
+          {
+            strcat_dyn_buf(&output_buf,
+              "%-5d %-4u %-10u %-4u %-4u %-9u %-7u %-14s\n",
+              p_device_context->p_device_info->module_id,
+#ifdef XCODER_311
+              sessionCtxt->load_query.current_load,
+#else
+              (sessionCtxt->load_query.total_contexts == 0 || sessionCtxt->load_query.current_load > sessionCtxt->load_query.fw_load) ? sessionCtxt->load_query.current_load : sessionCtxt->load_query.fw_load,
+#endif
+              sessionCtxt->load_query.fw_model_load,
+              sessionCtxt->load_query.total_contexts,
+              sessionCtxt->load_query.fw_video_mem_usage,
+              sessionCtxt->load_query.fw_share_mem_usage,
+              sessionCtxt->load_query.fw_p2p_mem_usage,
+              p_device_context->p_device_info->dev_name);
+          }
         }
 
           ni_rsrc_free_device_context(p_device_context);
@@ -2389,7 +2463,7 @@ void print_text(ni_device_queue_t *coders,
   clear_dyn_str_buf(&output_buf);
 }
 
-void print_extra(ni_device_queue_t *p_device_queue, ni_session_context_t *p_session_context, int internal_call)
+void print_extra(ni_device_queue_t *p_device_queue, ni_session_context_t *p_session_context, int internal_call, int show_qos_info)
 {
   char device_name[MAX_DEVICE_NAME_SIZE];
   unsigned int index, device_count;
@@ -2400,6 +2474,17 @@ void print_extra(ni_device_queue_t *p_device_queue, ni_session_context_t *p_sess
   ni_device_extra_info_t p_dev_extra_info = {0};
   char power_consumption[16];
   int instance_count = 0;
+#ifdef __linux__
+  unsigned int gen3_mismatch_index[NI_MAX_DEVICE_CNT];
+  unsigned int num_gen3_mismatch = 0;
+#endif
+
+  ni_qos_header_info_log_page_t qos_header = {0};
+  ni_qos_namespace_info_log_page_t qos_ns_info = {0};
+  ni_device_vf_ns_id_t ns_vf_id = {0};
+  bool has_qos_data = false;
+  char qos_str[64] = {0};
+  uint16_t namespace_id = 0;
 
   // ASSUMPTION: Each Quadra has at least and only one encoder.
   device_type = NI_DEVICE_TYPE_ENCODER;
@@ -2465,35 +2550,97 @@ void print_extra(ni_device_queue_t *p_device_queue, ni_session_context_t *p_sess
     {
         ni_sprintf(power_consumption, 16, "%umW", p_dev_extra_info.power_consumption);
     }
+
+    if (show_qos_info)
+    {
+        if (ni_query_vf_ns_id(p_session_context->device_handle, &ns_vf_id,
+                             p_device_context->p_device_info->fw_rev) == NI_RETCODE_SUCCESS)
+        {
+            namespace_id = ns_vf_id.ns_id;
+        }
+
+        if (ni_query_qos_info(p_session_context->device_handle, &qos_header,
+                             p_device_context->p_device_info->fw_rev) == NI_RETCODE_SUCCESS)
+        {
+            has_qos_data = true;
+            ni_query_qos_namespace_info(p_session_context->device_handle, &qos_ns_info,
+                                       p_device_context->p_device_info->fw_rev);
+        }
+    }
+
+    if (show_qos_info && has_qos_data)
+    {
+        char _allowance[16];
+        uint8_t qos_mode = (uint8_t)(qos_header.ui16QosState & 0xFF);
+        float _opmax = (float) (qos_ns_info.ui32OPmaxUs  * 100) / VIDEO_SLICE_TIME;
+        snprintf(qos_str, sizeof(qos_str), " %-9u %-7u %-10s %-8.1f",
+                 (uint8_t)(qos_header.ui16QosState & 0xFF),
+                 namespace_id,
+                 (qos_mode == 0) ? "N/A" : (snprintf(_allowance, sizeof(_allowance), "%.1f", qos_ns_info.fAllowance), _allowance),
+                 (qos_mode == 0 ? 0 :_opmax));
+    }
+
     if (!internal_call)
     {
       strcat_dyn_buf(&output_buf,
-                "%-4s %-8s %-8s %-14s\n", "TEMP", "POWER", "FLAVOR", "DEVICE");
+                "%-4s %-8s %-8s %-14s %s\n", "TEMP", "POWER", "FLAVOR", "DEVICE",
+                show_qos_info ? " QOS_MODE  QOS_NS  QOS_ALLOW  QOS_OPMAX" : "");
       strcat_dyn_buf(&output_buf,
-                "%-4d %-8s %-8c %-14s\n",
+                "%-4d %-8s %-8c %-14s %s\n",
                 p_dev_extra_info.composite_temp + ABSOLUTE_TEMP_ZERO,
                 (p_dev_extra_info.power_consumption + 1) ? power_consumption : "N/A",
                 p_dev_extra_info.fw_flavour,
-                p_device_context->p_device_info->dev_name);
+                p_device_context->p_device_info->dev_name,
+                qos_str);
     }
     else
     {
       if (instance_count == 0)
       {
         strcat_dyn_buf(&output_buf,
-                       "%-8s %-8s %-8s %-8s %-8.8s %-8.8s \n", "INDEX", "TEMP", "POWER", "FLAVOR", "FR", "SN");
+                       "%-8s %-8s %-8s %-8s %-8.8s %-20.8s %s\n", "INDEX", "TEMP", "POWER", "FLAVOR", "FR", "SN",
+                       show_qos_info ? "QOS_MODE  QOS_NS  QOS_ALLOW  QOS_OPMAX" : "");
       }
         strcat_dyn_buf(&output_buf,
-                       "%-8d %-8d %-8s %-8c %-8.8s %-8.*s \n",
+                       "%-8d %-8d %-8s %-8c %-8.8s %-8.*s %s\n",
                        instance_count++ , p_dev_extra_info.composite_temp + ABSOLUTE_TEMP_ZERO,
                        (p_dev_extra_info.power_consumption + 1) ? power_consumption : "N/A",
                        p_dev_extra_info.fw_flavour,
                        p_device_context->p_device_info->fw_rev,
-                       (int)sizeof(p_device_context->p_device_info->serial_number), p_device_context->p_device_info->serial_number);
+                       (int)sizeof(p_device_context->p_device_info->serial_number), p_device_context->p_device_info->serial_number,
+                       qos_str);
 
     }
+
+#ifdef __linux__
+    if (p_device_context->p_device_info->pcie_gen3_on_gen4_host == 1)
+    {
+      gen3_mismatch_index[num_gen3_mismatch++] = index;
+    }
+#endif
+
     ni_rsrc_free_device_context(p_device_context);
   }
+
+#ifdef __linux__
+  if (num_gen3_mismatch > 0)
+  {
+    char index_list[128] = {0};
+    size_t len = 0;
+    for (unsigned int i = 0; i < num_gen3_mismatch && len < sizeof(index_list) - 4; i++)
+    {
+        len += snprintf(index_list + len, sizeof(index_list) - len,
+                        "%s%u", (i > 0) ? ", " : "", gen3_mismatch_index[i]);
+    }
+    strcat_dyn_buf(&output_buf,
+        "This system supports Gen4 PCIe speeds, but the following Quadra cards are "
+        "currently running firmware that only supports PCIe Gen3 (Index: %s). "
+        "All Quadra VPUs on this system can be firmware upgraded to support "
+        "PCIe Gen 4 speeds, please update the firmware on each Quadra card to "
+        "the default firmware flavor.\n",
+        index_list);
+  }
+#endif
 
   if (output_buf.str_buf)
     printf("%s", output_buf.str_buf);
@@ -2528,6 +2675,7 @@ int main(int argc, char *argv[])
   int refresh_device_pool = 1;
   bool is_first_query = true;
   int ret = 0;
+  int show_qos_info = 0;
 
 #ifdef _WIN32
   SetConsoleCtrlHandler(console_ctrl_handler, TRUE);
@@ -2536,7 +2684,7 @@ int main(int argc, char *argv[])
 #endif
 
   // arg handling
-  while ((opt = getopt(argc, argv, "n:o:D:C:k:R:rt:Sl:hvd")) != -1)
+  while ((opt = getopt(argc, argv, "n:o:D:C:k:R:rt:Sl:hvdq")) != -1)
   {
     switch (opt)
     {
@@ -2613,6 +2761,9 @@ int main(int argc, char *argv[])
             return 1;
         }
         break;
+    case 'q':
+        show_qos_info = 1;
+        break;
     case 'h':
       // help message (limit to 80 characters wide)
       printf("-------- ni_rsrc_mon v%s --------\n"
@@ -2644,6 +2795,7 @@ int main(int argc, char *argv[])
              "-l  Set loglevel of libxcoder API.\n"
              "    [none, fatal, error, info, debug, trace]\n"
              "    Default: info\n"
+             "-q  Show QoS information.\n"
              "-h  Open this help message.\n"
              "-v  Print version info.\n"
              "\n"
@@ -2865,10 +3017,12 @@ int main(int argc, char *argv[])
     switch (printFormat)
     {
       case FMT_TEXT:
-        print_extra(coders, p_xCtxt, 1);
+        print_extra(coders, p_xCtxt, 1, show_qos_info);
         print_text(coders, p_xCtxt, detail, &detail_data_v1, previous_detail_data, checkInterval);
         break;
       case FMT_FULL_TEXT:
+    show_qos_info=1;
+        print_extra(coders, p_xCtxt, 1, show_qos_info);
         print_full_text(coders, p_xCtxt, 0, &detail_data_v1);
         break;
       case FMT_SIMPLE_TEXT:
@@ -2898,7 +3052,7 @@ int main(int argc, char *argv[])
         }
         break;
       case FMT_EXTRA:
-        print_extra(coders, p_xCtxt, 0);
+        print_extra(coders, p_xCtxt, 0, show_qos_info);
         break;
     }
 

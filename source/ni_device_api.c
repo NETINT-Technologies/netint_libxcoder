@@ -30,6 +30,7 @@
 #define _GNU_SOURCE //O_DIRECT is Linux-specific.  One must define _GNU_SOURCE to obtain its definitions
 #if __linux__
 #include <linux/types.h>
+#include <syslog.h>
 #endif
 #include <unistd.h>
 #include <sys/ioctl.h>
@@ -897,7 +898,7 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
   ni_device_handle_t handle = NI_INVALID_DEVICE_HANDLE;
   ni_device_handle_t handle1 = NI_INVALID_DEVICE_HANDLE;
   // For none nvme block device we just need to pass in dummy
-  ni_session_context_t p_session_context = {0};
+  ni_session_context_t *p_session_context = NULL;
   ni_device_type_t query_type = device_type;
 
   if (!p_ctx)
@@ -918,7 +919,12 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
   ni_pthread_mutex_lock(&p_ctx->mutex);
   p_ctx->xcoder_state |= NI_XCODER_OPEN_STATE;
 
-  ni_device_session_context_init(&p_session_context);
+  p_session_context = ni_device_session_context_alloc_init();
+  if (!p_session_context)
+  {
+      retval = NI_RETCODE_ERROR_MEM_ALOC;
+      LRETURN;
+  }
 
   if (NI_INVALID_SESSION_ID != p_ctx->session_id)
   {
@@ -1135,22 +1141,22 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
 
             // Code is included in the for loop. In the loop, the device is
             // just opened once, and it will be closed once too.
-            p_session_context.blk_io_handle = ni_device_open2(
+            p_session_context->blk_io_handle = ni_device_open2(
                 p_device_context->p_device_info->dev_name, NI_DEVICE_READ_WRITE);
-            p_session_context.device_handle = p_session_context.blk_io_handle;
+            p_session_context->device_handle = p_session_context->blk_io_handle;
 
-            if (NI_INVALID_DEVICE_HANDLE == p_session_context.device_handle)
+            if (NI_INVALID_DEVICE_HANDLE == p_session_context->device_handle)
             {
                 ni_log2(p_ctx, NI_LOG_ERROR,  "Error open device");
                 ni_rsrc_free_device_context(p_device_context);
                 continue;
             }
 
-            p_session_context.hw_id = p_device_context->p_device_info->hw_id;
-            rc = ni_device_session_query(&p_session_context, query_type);
-            if (NI_INVALID_DEVICE_HANDLE != p_session_context.device_handle)
+            p_session_context->hw_id = p_device_context->p_device_info->hw_id;
+            rc = ni_device_session_query(p_session_context, query_type);
+            if (NI_INVALID_DEVICE_HANDLE != p_session_context->device_handle)
             {
-                ni_device_close(p_session_context.device_handle);
+                ni_device_close(p_session_context->device_handle);
             }
 
             if (NI_RETCODE_SUCCESS != rc)
@@ -1162,7 +1168,7 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
                 ni_rsrc_free_device_context(p_device_context);
                 continue;
             }
-            ni_rsrc_update_record(p_device_context, &p_session_context);
+            ni_rsrc_update_record(p_device_context, p_session_context);
             p_dev_info = p_device_context->p_device_info;
 
             // here we select the best load
@@ -1170,10 +1176,10 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
             // for hwuploader: check directly hwupload pixel load in query result
             if (NI_DEVICE_TYPE_UPLOAD == device_type)
             {
-                if (lower_pixel_rate(&p_session_context.load_query, pixel_load))
+                if (lower_pixel_rate(&p_session_context->load_query, pixel_load))
                 {
                     guid = tmp_id;
-                    pixel_load = p_session_context.load_query.total_pixel_load;
+                    pixel_load = p_session_context->load_query.total_pixel_load;
                     memcpy(&dev_info, p_dev_info, sizeof(ni_device_info_t));
                 }
             } else
@@ -1504,7 +1510,7 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
   }
 
 END:
-    ni_device_session_context_clear(&p_session_context);
+    ni_device_session_context_free(p_session_context);
 
     if (p_device_pool)
     {
@@ -2261,6 +2267,40 @@ ni_retcode_t ni_device_config_qos_op(ni_device_handle_t device_handle,
 }
 
 /*!*****************************************************************************
+ *  \brief  Set QoS allowance for a specific namespace
+ *
+ *  \param[in] device_handle  Device handle obtained by calling ni_device_open
+ *  \param[in] device_handle_t Target device handle of namespace required for allowance
+ *  \param[in] allowance      Allowance percentage (0.0-100.0)
+ *
+ *  \return On success
+ *                          NI_RETCODE_SUCCESS
+ *          On failure
+ *                          NI_RETCODE_ERROR_MEM_ALOC
+ *                          NI_RETCODE_ERROR_NVME_CMD_FAILED
+ ******************************************************************************/
+ni_retcode_t ni_device_config_qos_allowance(ni_device_handle_t device_handle,
+                                     ni_device_handle_t device_handle_t,
+                                     uint32_t allowance)
+{
+  ni_retcode_t retval;
+  float f_allowance = 0;
+  memcpy(&f_allowance, &allowance, sizeof(int32_t));
+  ni_log(NI_LOG_DEBUG, "%s device_handle %p target %p allowance %f\n",
+         __func__, device_handle, device_handle_t, f_allowance);
+  retval = ni_device_config_ns_qos(device_handle, QOS_ALLOW_CONFIG_REC_ALLOW_CODE,
+                                   allowance);
+  if (NI_RETCODE_SUCCESS != retval)
+  {
+      return retval;
+  }
+  retval = ni_device_config_ns_qos(device_handle_t, QOS_ALLOW_CONFIG_CODE,
+                                   0);
+  return retval;
+}
+
+
+/*!*****************************************************************************
  *  \brief  Allocate preliminary memory for the frame buffer based on provided
  *          parameters. Applicable to YUV420 Planar pixel (8 or 10 bit/pixel)
  *          format or 32-bit RGBA.
@@ -2608,7 +2648,7 @@ ni_retcode_t ni_frame_buffer_alloc_dl(ni_frame_t *p_frame, int video_width,
             height_aligned = NI_VPU_CEIL(video_height, 2);
 
             luma_size = width_aligned * height_aligned * 2;
-            chroma_b_size = NI_VPU_ALIGN128(video_width) * height_aligned;
+            chroma_b_size = width_aligned * height_aligned;
             chroma_r_size = 0;
             break;
         case NI_PIX_FMT_NV16:
@@ -4725,6 +4765,7 @@ ni_retcode_t ni_encoder_init_default_params(ni_xcoder_params_t *p_param,
   p_enc->linkFrameMaxIntraRatio = 40;
   p_enc->adaptiveLamdaMode = 0;
   p_enc->adaptiveCrfMode = 0;
+  p_enc->qpScaleEnable = 0;
 #ifdef XCODER_311
   p_enc->disable_adaptive_buffers = 1;
 #else
@@ -4750,6 +4791,7 @@ ni_retcode_t ni_encoder_init_default_params(ni_xcoder_params_t *p_param,
   p_enc->preset_index = NI_PRESETS_NONE;
   p_enc->preset_enabled = 0;
   p_enc->reset_dts_offset = 1;
+  p_enc->getBitstreamFeatures = 0;
   for (i = 0; i < NI_MAX_SPATIAL_LAYERS; i++)
   {
     p_enc->spatialLayerBitrate[i] = 0;
@@ -5209,7 +5251,7 @@ ni_retcode_t ni_decoder_params_set_value(ni_xcoder_params_t *p_params,
   const char delim[2] = ",";
   const char xdelim[2] = "x";
   char *chunk;//for parsing out multi param input
-  int i, j, k;
+  int i, j, k, ppu_index;
 
   ni_log(NI_LOG_TRACE, "%s(): enter\n", __func__);
 
@@ -5259,9 +5301,17 @@ ni_retcode_t ni_decoder_params_set_value(ni_xcoder_params_t *p_params,
 #define OPT(STR) else if (!_stricmp(name, STR))
 #define OPT2(STR1, STR2)                                                       \
     else if (!_stricmp(name, STR1) || !_stricmp(name, STR2))
+#define OPT6(STR1, STR2, STR3, STR4, STR5, STR6)                               \
+    else if (!_stricmp(name, STR1) || !_stricmp(name, STR2) ||                 \
+             !_stricmp(name, STR3) || !_stricmp(name, STR4) ||                 \
+             !_stricmp(name, STR5) || !_stricmp(name, STR6))
 #else
 #define OPT(STR) else if (!strcasecmp(name, STR))
 #define OPT2(STR1, STR2) else if (!strcasecmp(name, STR1) || !strcasecmp(name, STR2))
+#define OPT6(STR1, STR2, STR3, STR4, STR5, STR6)                               \
+    else if (!strcasecmp(name, STR1) || !strcasecmp(name, STR2) ||             \
+             !strcasecmp(name, STR3) || !strcasecmp(name, STR4) ||             \
+             !strcasecmp(name, STR5) || !strcasecmp(name, STR6))
 #endif
   if (0); // suppress cppcheck
   OPT(NI_DEC_PARAM_OUT)
@@ -5593,6 +5643,30 @@ ni_retcode_t ni_decoder_params_set_value(ni_xcoder_params_t *p_params,
       else
       {
         return NI_RETCODE_PARAM_INVALID_VALUE;
+      }
+    }
+  }
+  OPT6(NI_DEC_PARAM_SCALE_0_W, NI_DEC_PARAM_SCALE_0_H,
+       NI_DEC_PARAM_SCALE_1_W, NI_DEC_PARAM_SCALE_1_H,
+       NI_DEC_PARAM_SCALE_2_W, NI_DEC_PARAM_SCALE_2_H)
+  {
+    chunk = value;
+    if (chunk != NULL)
+    {
+      ppu_index = name[5] - '0';
+      i = name[6] == 'w' ? 0 : 1;
+      j = k = 0;
+      while (chunk[j])
+      {
+        if (chunk[j] != '\"' && chunk[j] != '\'')
+        {
+          p_dec->sc_expr[ppu_index][i][k] = chunk[j];
+          k++;
+        }
+        if (++j > NI_MAX_PPU_PARAM_EXPR_CHAR)
+        {
+          return NI_RETCODE_PARAM_ERROR_TOO_BIG;
+        }
       }
     }
   }
@@ -6079,7 +6153,7 @@ ni_retcode_t ni_encoder_params_set_value(ni_xcoder_params_t *p_params,
   }
   OPT (NI_ENC_PARAM_MIN_FRAMES_DELAY)
   {
-       if (atoi(value) < 0 || atoi(value) > 2)
+       if (atoi(value) < 0 || atoi(value) > 7)
        {
           return NI_RETCODE_PARAM_ERROR_OOR;
        }
@@ -7384,7 +7458,7 @@ ni_retcode_t ni_encoder_params_set_value(ni_xcoder_params_t *p_params,
   OPT(NI_ENC_PARAM_CRF_MAX_IFRAME_ENABLE)
   {
     if ((atoi(value) < 0 || atoi(value) > 2) &&
-        atoi(value) != 5 && atoi(value) != 6)
+        atoi(value) != 5 && atoi(value) != 6 && atoi(value) != 7) // 1 & 5=MEDIUM, 2 & 6=HIGH, 7=OPTIMAL
     {
       return NI_RETCODE_PARAM_ERROR_OOR;
     }
@@ -7640,6 +7714,14 @@ ni_retcode_t ni_encoder_params_set_value(ni_xcoder_params_t *p_params,
     }
     p_enc->adaptiveLamdaMode = atoi(value);
   }
+  OPT(NI_ENC_PARAM_QP_SCALE_ENABLE)
+  {
+    if (atoi(value) < 0 || atoi(value) > 1)
+    {
+      return NI_RETCODE_PARAM_ERROR_OOR;
+    }
+    p_enc->qpScaleEnable = atoi(value);
+  }
   OPT(NI_ENC_PARAM_ADAPTIVE_CRF_MODE)
   {
     if (atoi(value) < 0 || atoi(value) > 2)
@@ -7663,6 +7745,14 @@ ni_retcode_t ni_encoder_params_set_value(ni_xcoder_params_t *p_params,
       return NI_RETCODE_PARAM_ERROR_OOR;
     }
     p_enc->customMinCoeffDiv = atoi(value);
+  }
+  OPT(NI_ENC_PARAM_GET_BITSTREAM_FEATURES)
+  {
+    if ((atoi(value) != 0) && (atoi(value) != 1))
+    {
+        return NI_RETCODE_PARAM_ERROR_OOR;
+    }
+    p_enc->getBitstreamFeatures = atoi(value);
   }
   else { return NI_RETCODE_PARAM_INVALID_NAME; }
 
@@ -12228,12 +12318,176 @@ ni_retcode_t ni_query_extra_info(ni_device_handle_t device_handle,
     }
     p_dev_extra_info->power_consumption = ni_decode_power_measurement(p_dev_extra_info->current_consumption, device_capability.serial_number);
   }
+
+  //Temperature overshoot detection
+  {
+    ni_device_capability_t device_capability_t = {0};
+    int32_t temp_deg = p_dev_extra_info->composite_temp - 273;
+    if (ni_device_capability_query2(device_handle, &device_capability_t, false) != NI_RETCODE_SUCCESS)
+    {
+      ni_log(NI_LOG_ERROR, "ERROR: unable to query capability\n");
+      return NI_RETCODE_ERROR_NVME_CMD_FAILED;
+    }
+    if (p_dev_extra_info->composite_temp >= device_capability_t.critical_temp)
+    {
+      ni_log(NI_LOG_ERROR, "ERROR: CRITICAL TEMP HIT %ddegC on SN %s\n",temp_deg, device_capability_t.serial_number);
+#if __linux__
+      syslog(LOG_WARNING, "ERROR: CRITICAL TEMP %ddegC HIT on SN %s!!!\n",temp_deg,device_capability_t.serial_number);
+#endif
+    }
+    else if (p_dev_extra_info->composite_temp >= device_capability_t.warning_temp)
+    {
+      ni_log(NI_LOG_ERROR, "ERROR: WARNING TEMP HIT %ddegC on SN %s\n",temp_deg, device_capability_t.serial_number);
+#if __linux__
+      syslog(LOG_WARNING, "ERROR: WARNING TEMP %ddegC HIT on SN %s!!!\n",temp_deg, device_capability_t.serial_number);
+#endif
+    }
+  }
+
   ni_log(NI_LOG_DEBUG, "%s(): current composite temperature %d on board temperature %d "
          "on die temperature %d power consumption %d current consumption %d\n",
          __func__, p_dev_extra_info->composite_temp, p_dev_extra_info->on_board_temp,
          p_dev_extra_info->on_die_temp, p_dev_extra_info->power_consumption, p_dev_extra_info->current_consumption);
   ni_aligned_free(p_buffer);
   return NI_RETCODE_SUCCESS;
+}
+
+ni_retcode_t ni_query_qos_info(ni_device_handle_t device_handle,
+                                ni_qos_header_info_log_page_t *p_dev_qos_header,
+                                uint8_t fw_rev[])
+{
+    void *buffer;
+    uint32_t size;
+    ni_event_handle_t event_handle = NI_INVALID_EVENT_HANDLE;
+
+    if ((NI_INVALID_DEVICE_HANDLE == device_handle) || (!p_dev_qos_header) || (!fw_rev))
+    {
+        ni_log(NI_LOG_ERROR, "ERROR: %s(): passed parameters are null, return\n",
+               __func__);
+        return NI_RETCODE_INVALID_PARAM;
+    }
+
+    if (ni_cmp_fw_api_ver((char*) &fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+                          "6t0") < 0)
+    {
+        ni_log(NI_LOG_ERROR,
+               "ERROR: %s function not supported on device with FW API version < 6t0\n",
+               __func__);
+        return NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION;
+    }
+
+    buffer = NULL;
+    size = ((sizeof(ni_qos_header_info_log_page_t) + (NI_MEM_PAGE_ALIGNMENT - 1)) /
+            NI_MEM_PAGE_ALIGNMENT) * NI_MEM_PAGE_ALIGNMENT;
+
+    if (ni_posix_memalign((void **)&buffer, sysconf(_SC_PAGESIZE), size))
+    {
+        ni_log(NI_LOG_ERROR, "ERROR %d: %s() Cannot allocate buffer\n", NI_ERRNO, __func__);
+        return NI_RETCODE_ERROR_MEM_ALOC;
+    }
+
+    memset(buffer, 0, size);
+
+    if (ni_nvme_send_read_cmd(device_handle,
+                              event_handle,
+                              buffer,
+                              size,
+                              QUERY_GET_QOS_INFO_R) < 0)
+    {
+        ni_log(NI_LOG_ERROR, "%s(): NVME command Failed\n", __func__);
+        ni_aligned_free(buffer);
+        return NI_RETCODE_ERROR_NVME_CMD_FAILED;
+    }
+
+    ni_qos_header_info_log_page_t *qos_header_info = (ni_qos_header_info_log_page_t *)buffer;
+    p_dev_qos_header->ui16QosState = (uint8_t)(qos_header_info->ui16QosState & 0xFF);
+    p_dev_qos_header->ui16ActiveNamespaces = qos_header_info->ui16ActiveNamespaces;
+    p_dev_qos_header->fTotalAllowance = qos_header_info->fTotalAllowance;
+
+    ni_aligned_free(buffer);
+    return NI_RETCODE_SUCCESS;
+}
+
+/*!*****************************************************************************
+ *  \brief  Query QoS information for a specific namespace
+ *
+ *  \param[in] device_handle       Device handle for the target namespace
+ *  \param[out] p_qos_ns_info      Pointer to namespace QoS info structure
+ *  \param[in] fw_rev[]            Firmware version array
+ *
+ *  \return On success
+ *                          NI_RETCODE_SUCCESS
+ *          On failure
+ *                          NI_RETCODE_INVALID_PARAM
+ *                          NI_RETCODE_ERROR_NVME_CMD_FAILED
+ *                          NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION
+ *                          NI_RETCODE_ERROR_MEM_ALOC
+ ******************************************************************************/
+ni_retcode_t ni_query_qos_namespace_info(ni_device_handle_t device_handle,
+                                         ni_qos_namespace_info_log_page_t *p_dev_qos_ns,
+                                         uint8_t fw_rev[])
+{
+    void *buffer;
+    uint32_t size;
+    ni_event_handle_t event_handle = NI_INVALID_EVENT_HANDLE;
+
+    if ((NI_INVALID_DEVICE_HANDLE == device_handle) || (!p_dev_qos_ns) || (!fw_rev))
+    {
+        ni_log(NI_LOG_ERROR, "ERROR: %s(): passed parameters are null, return\n",
+               __func__);
+        return NI_RETCODE_INVALID_PARAM;
+    }
+
+    if (ni_cmp_fw_api_ver((char*) &fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+                          "6t0") < 0)
+    {
+        ni_log(NI_LOG_ERROR,
+               "ERROR: %s function not supported on device with FW API version < 6t0\n",
+               __func__);
+        return NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION;
+    }
+
+    buffer = NULL;
+    size = ((sizeof(ni_qos_namespace_info_log_page_t) + (NI_MEM_PAGE_ALIGNMENT - 1)) /
+            NI_MEM_PAGE_ALIGNMENT) * NI_MEM_PAGE_ALIGNMENT;
+
+    if (ni_posix_memalign((void **)&buffer, sysconf(_SC_PAGESIZE), size))
+    {
+        ni_log(NI_LOG_ERROR, "ERROR %d: %s() Cannot allocate buffer\n", NI_ERRNO, __func__);
+        return NI_RETCODE_ERROR_MEM_ALOC;
+    }
+
+    memset(buffer, 0, size);
+
+    if (ni_nvme_send_read_cmd(device_handle,
+                              event_handle,
+                              buffer,
+                              size,
+                              QUERY_GET_QOS_NS_INFO_R) < 0)  // NSID comes from device handle
+    {
+        ni_log(NI_LOG_ERROR, "%s(): NVME command Failed\n", __func__);
+        ni_aligned_free(buffer);
+        return NI_RETCODE_ERROR_NVME_CMD_FAILED;
+    }
+
+    ni_qos_namespace_info_log_page_t *qos_ns_info = (ni_qos_namespace_info_log_page_t *)buffer;
+
+    p_dev_qos_ns->ui8VirtualFunction = qos_ns_info->ui8VirtualFunction;
+    p_dev_qos_ns->ui8NamespaceId = qos_ns_info->ui8NamespaceId;
+    p_dev_qos_ns->fAllowance = qos_ns_info->fAllowance;
+    p_dev_qos_ns->ui32BaseSliceTimeUs = qos_ns_info->ui32BaseSliceTimeUs;
+    p_dev_qos_ns->ui32OPmaxUs = qos_ns_info->ui32OPmaxUs;
+
+    ni_log(NI_LOG_DEBUG, "%s(): NS %u VF %u Allowance %.2f%% SliceTime %u OPmax %u\n",
+           __func__,
+           p_dev_qos_ns->ui8NamespaceId,
+           p_dev_qos_ns->ui8VirtualFunction,
+           p_dev_qos_ns->fAllowance,
+           p_dev_qos_ns->ui32BaseSliceTimeUs,
+           p_dev_qos_ns->ui32OPmaxUs);
+
+    ni_aligned_free(buffer);
+    return NI_RETCODE_SUCCESS;
 }
 
 /*!*****************************************************************************
@@ -13343,13 +13597,38 @@ NI_DEPRECATED ni_retcode_t ni_p2p_xfer(ni_session_context_t *pSession,
 }
 #endif
 
+#ifndef DEPRECATION_AS_ERROR
 /*!*****************************************************************************
- *  \brief   Initiate P2P transfer (P2P write)
+ *  \brief   Initiate P2P transfer (P2P write) (deprecated)
  *
  *  \param[in] pSession      Pointer to source card destination
  *  \param[in] source        Pointer to source frame to transmit
  *  \param[in] ui64DestAddr  Destination address on target device
  *  \param[in] ui32FrameSize Size of frame to transfer
+ *
+ *  \return always returns
+ *              NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION
+*******************************************************************************/
+NI_DEPRECATED ni_retcode_t ni_p2p_send(ni_session_context_t *pSession,
+                         niFrameSurface1_t *source,
+                         uint64_t ui64DestAddr, uint32_t ui32FrameSize)
+{
+    // avoid compiler warnings
+    (void) pSession;
+    (void) source;
+    (void) ui64DestAddr;
+    (void) ui32FrameSize;
+
+    return NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION;
+}
+#endif
+
+/*!*****************************************************************************
+ *  \brief   Initiate P2P transfer with sgl list (P2P write)
+ *
+ *  \param[in] pSession      Pointer to source card session
+ *  \param[in] source        Pointer to source P2P frame
+ *  \param[in] dmaAddrs      Destination DMA address on target device
  *
  *  \return on success
  *              NI_RETCODE_SUCCESS
@@ -13360,26 +13639,26 @@ NI_DEPRECATED ni_retcode_t ni_p2p_xfer(ni_session_context_t *pSession,
  *              NI_RETCODE_ERROR_MEM_ALOC
  *              NI_RETCODE_ERROR_NVME_CMD_FAILED
 *******************************************************************************/
-ni_retcode_t ni_p2p_send(ni_session_context_t *pSession,
-                         niFrameSurface1_t *source,
-                         uint64_t ui64DestAddr, uint32_t ui32FrameSize)
+ni_retcode_t ni_p2p_send_v2(ni_session_context_t *pSession,
+                            ni_frame_t *pSrcFrame,
+                            const ni_p2p_sgl_t *dmaAddrs)
 {
     ni_retcode_t retval = NI_RETCODE_SUCCESS;
 
-    if ((pSession == NULL) || (source == NULL))
+    if ((pSession == NULL) || (dmaAddrs == NULL) || (pSrcFrame == NULL))
     {
         return NI_RETCODE_INVALID_PARAM;
     }
 
     /* Firmware compatibility check */
-    if (ni_cmp_fw_api_ver((char *) &pSession->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6re") < 0)
+    if (ni_cmp_fw_api_ver((char *) &pSession->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6sX") < 0)
     {
-        ni_log2(pSession, NI_LOG_ERROR, "%s: FW doesn't support this operation\n", __func__);
+        ni_log2(pSession, NI_LOG_ERROR,
+                "%s: FW doesn't support this operation\n", __func__);
         return NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION;
     }
 
-    retval = ni_send_to_target(pSession, source, ui64DestAddr, ui32FrameSize);
-
+    retval =  ni_send_to_target_v2(pSession, pSrcFrame, dmaAddrs);
     if (retval < 0)
     {
         ni_log2(pSession, NI_LOG_ERROR, "%s(): Can't DMA to destination (%d)\n", __func__, retval);

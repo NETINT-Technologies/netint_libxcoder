@@ -59,7 +59,11 @@ fi
 for NVME_NODE in "${XCOD_DATA[@]}"; do
     CONTROLLER_NODE=$(echo "$NVME_NODE" | sed 's/n[0-9]\+$//')
     echo "Setting timestamp on $CONTROLLER_NODE"
-    echo -n -e ${escaped_string} | ${SUDO} nvme set-feature "$CONTROLLER_NODE" --feature-id=0x0e --data-len=8 > /dev/null
+    if [[ $(printf "%s\n%s" "$NVME_VERSION" "2.6" | sort -V | head -n 1) == "2.6" ]]; then
+        ${SUDO} nvme set-feature "$CONTROLLER_NODE" --feature-id=0x0e --value="$epoch" > /dev/null
+    else
+        echo -n -e ${escaped_string} | ${SUDO} nvme set-feature "$CONTROLLER_NODE" --feature-id=0x0e --data-len=8 > /dev/null
+    fi
 done
 
 touch "$TS_LOCK_FILE"

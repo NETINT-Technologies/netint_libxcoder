@@ -664,10 +664,53 @@ int main(int argc, char *argv[])
     ni_pthread_join(dec_send_tid, NULL);
     ni_pthread_join(dec_recv_tid, NULL);
 
+end:
     decoder_stat_report_and_close(&ctx, &dec_ctx);
     encoder_stat_report_and_close(&ctx, enc_ctx, output_total);
 
-end:
+#ifdef _WIN32
+    ni_device_close(dec_ctx.device_handle);
+    for (i = 0; i < output_total; i++)
+    {
+        ni_device_close(enc_ctx[i].device_handle);
+    }
+    if (scale_params.enabled)
+    {
+        ni_device_close(sca_ctx.device_handle);
+    }
+    if (drawbox_params.enabled)
+    {
+        ni_device_close(crop_ctx.device_handle);
+        ni_device_close(pad_ctx.device_handle);
+        ni_device_close(ovly_ctx.device_handle);
+        ni_device_close(fmt_ctx.device_handle);
+    }
+#elif __linux__
+    ni_device_close(dec_ctx.device_handle);
+    ni_device_close(dec_ctx.blk_io_handle);
+    for (i = 0; i < output_total; i++)
+    {
+        ni_device_close(enc_ctx[i].device_handle);
+        ni_device_close(enc_ctx[i].blk_io_handle);
+    }
+    if (scale_params.enabled)
+    {
+        ni_device_close(sca_ctx.device_handle);
+        ni_device_close(sca_ctx.blk_io_handle);
+    }
+    if (drawbox_params.enabled)
+    {
+        ni_device_close(crop_ctx.device_handle);
+        ni_device_close(crop_ctx.blk_io_handle);
+        ni_device_close(pad_ctx.device_handle);
+        ni_device_close(pad_ctx.blk_io_handle);
+        ni_device_close(ovly_ctx.device_handle);
+        ni_device_close(ovly_ctx.blk_io_handle);
+        ni_device_close(fmt_ctx.device_handle);
+        ni_device_close(fmt_ctx.blk_io_handle);
+    }
+#endif
+
     hwframe_list_release(&frame_list);
 
     ni_device_session_context_clear(&dec_ctx);

@@ -297,9 +297,11 @@ ni_retcode_t ni_rsrc_refresh(int should_match_rev)
 
 #ifdef _ANDROID
 
+#include <utils/Mutex.h>
 #include "ni_rsrc_api_android.h"
 
 android::sp<INidec> service = NULL;
+static android::Mutex gLock;
 
 /*!*****************************************************************************
  *  \brief   Init android net.int.SharedBuffer service for binder using.
@@ -311,6 +313,7 @@ android::sp<INidec> service = NULL;
  ******************************************************************************/
 int ni_rsrc_android_init()
 {
+    android::Mutex::Autolock _l(gLock);
     if (service == NULL)
     {
         service = INidec::tryGetService();
@@ -2050,8 +2053,8 @@ int ni_rsrc_check_hw_available(int guid, ni_device_type_t device_type)
 {
     ni_device_pool_t *p_device_pool = NULL;
     ni_device_context_t *p_device_ctx = NULL;
-    ni_session_context_t session_ctx = {0};
-    ni_xcoder_params_t api_param = {0};
+    ni_session_context_t *p_session_ctx = NULL;
+    ni_xcoder_params_t *p_api_param = NULL;
     bool b_release_pool_mtx = false;
     ni_retcode_t retval = NI_RETCODE_SUCCESS;
     int retry_cnt = 0;
@@ -2068,38 +2071,46 @@ int ni_rsrc_check_hw_available(int guid, ni_device_type_t device_type)
         return NI_RETCODE_INVALID_PARAM;
     }
 
-    ni_device_session_context_init(&session_ctx);
-    session_ctx.keep_alive_timeout = NI_DEFAULT_KEEP_ALIVE_TIMEOUT;
-    session_ctx.src_bit_depth = 8;
-    session_ctx.hw_id = guid;
+    p_session_ctx = ni_device_session_context_alloc_init();
+    p_api_param = (ni_xcoder_params_t *)calloc(1, sizeof(ni_xcoder_params_t));
+    if (!p_session_ctx || !p_api_param)
+    {
+        retval = NI_RETCODE_ERROR_MEM_ALOC;
+        LRETURN;
+    }
+    p_session_ctx->keep_alive_timeout = NI_DEFAULT_KEEP_ALIVE_TIMEOUT;
+    p_session_ctx->src_bit_depth = 8;
+    p_session_ctx->hw_id = guid;
 
     if (NI_DEVICE_TYPE_DECODER == device_type)
     {
-        if (ni_decoder_init_default_params(&api_param, 30, 1, NI_MIN_BITRATE,
+        if (ni_decoder_init_default_params(p_api_param, 30, 1, NI_MIN_BITRATE,
                                            XCODER_MIN_ENC_PIC_WIDTH,
                                            XCODER_MIN_ENC_PIC_HEIGHT) < 0)
         {
             ni_log(NI_LOG_ERROR, "ERROR: set decoder default params error\n");
-            return NI_RETCODE_INVALID_PARAM;
+            retval = NI_RETCODE_INVALID_PARAM;
+            LRETURN;
         }
     } else if (NI_DEVICE_TYPE_ENCODER == device_type)
     {
         if (ni_encoder_init_default_params(
-                &api_param, 30, 1, NI_MIN_BITRATE, XCODER_MIN_ENC_PIC_WIDTH,
+                p_api_param, 30, 1, NI_MIN_BITRATE, XCODER_MIN_ENC_PIC_WIDTH,
                 XCODER_MIN_ENC_PIC_HEIGHT, NI_CODEC_FORMAT_H264) < 0)
         {
             ni_log(NI_LOG_ERROR, "ERROR: set encoder default params error\n");
-            return NI_RETCODE_INVALID_PARAM;
+            retval = NI_RETCODE_INVALID_PARAM;
+            LRETURN;
         }
     } else if (NI_DEVICE_TYPE_SCALER == device_type)
     {
-        session_ctx.device_type       = NI_DEVICE_TYPE_SCALER;
-        session_ctx.scaler_operation  = NI_SCALER_OPCODE_SCALE;
+        p_session_ctx->device_type = NI_DEVICE_TYPE_SCALER;
+        p_session_ctx->scaler_operation = NI_SCALER_OPCODE_SCALE;
     } else
     {
-        session_ctx.device_type       = NI_DEVICE_TYPE_AI;
+        p_session_ctx->device_type = NI_DEVICE_TYPE_AI;
     }
-    session_ctx.p_session_config = &api_param;
+    p_session_ctx->p_session_config = p_api_param;
 
     p_device_pool = ni_rsrc_get_device_pool();
     if (!p_device_pool)
@@ -2129,25 +2140,25 @@ int ni_rsrc_check_hw_available(int guid, ni_device_type_t device_type)
     p_device_ctx = ni_rsrc_get_device_context(device_type, guid);
     if (p_device_ctx)
     {
-        session_ctx.device_handle = ni_device_open2(
+        p_session_ctx->device_handle = ni_device_open2(
             p_device_ctx->p_device_info->dev_name, NI_DEVICE_READ_WRITE);
-        session_ctx.blk_io_handle = session_ctx.device_handle;
-        if (NI_INVALID_DEVICE_HANDLE == session_ctx.device_handle)
+        p_session_ctx->blk_io_handle = p_session_ctx->device_handle;
+        if (NI_INVALID_DEVICE_HANDLE == p_session_ctx->device_handle)
         {
             ni_log(NI_LOG_ERROR, "open device failed: %d\n", errno);
             retval = NI_RETCODE_ERROR_INVALID_HANDLE;
         } else
         {
 #ifdef _WIN32
-            session_ctx.event_handle = ni_create_event();
-            if (NI_INVALID_EVENT_HANDLE == session_ctx.event_handle)
+            p_session_ctx->event_handle = ni_create_event();
+            if (NI_INVALID_EVENT_HANDLE == p_session_ctx->event_handle)
             {
                 ni_log(NI_LOG_INFO, "Error create envent:%d\n", GetLastError());
                 retval = NI_RETCODE_FAILURE;
                 LRETURN;
             }
 #endif
-            retval = ni_device_session_query(&session_ctx, device_type);
+            retval = ni_device_session_query(p_session_ctx, device_type);
             if (NI_RETCODE_SUCCESS != retval)
             {
                 ni_log(NI_LOG_ERROR,
@@ -2160,8 +2171,8 @@ int ni_rsrc_check_hw_available(int guid, ni_device_type_t device_type)
                 while (1)
                 {
                     retry_cnt++;
-                    retval = ni_device_session_open(&session_ctx, device_type);
-                    ni_device_session_close(&session_ctx, 0, device_type);
+                    retval = ni_device_session_open(p_session_ctx, device_type);
+                    ni_device_session_close(p_session_ctx, 0, device_type);
                     if (retval == NI_RETCODE_SUCCESS)
                     {
                         ni_log(NI_LOG_INFO, "guid %d. %s is avaiable\n",
@@ -2213,11 +2224,15 @@ END:
 #endif
     }
 
-    ni_close_event(session_ctx.event_handle);
-    ni_device_close(session_ctx.device_handle);
+    if (p_session_ctx)
+    {
+        ni_close_event(p_session_ctx->event_handle);
+        ni_device_close(p_session_ctx->device_handle);
+    }
 
     ni_rsrc_free_device_context(p_device_ctx);
-    ni_device_session_context_clear(&session_ctx);
+    ni_device_session_context_free(p_session_ctx);
+    free(p_api_param);
     ni_rsrc_free_device_pool(p_device_pool);
 
     return retval;
@@ -3510,7 +3525,7 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
     ni_device_pool_t *p_device_pool = NULL;
     ni_device_queue_t *coders = NULL;
     ni_device_context_t *p_device_context = NULL;
-    ni_session_context_t xCtxt = { 0 };
+    ni_session_context_t *p_xCtxt = NULL;
     int *card_remove = NULL;//cards which are not satisfied threshold
     // uint64_t reserved_memory = 0;
     // int needed_memory = 0;
@@ -3534,6 +3549,7 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
     // int *mem_usage = NULL;
 
     ni_hw_device_info_quadra_t *p_hw_device_info = NULL;
+    bool pool_locked = false;
 
     //check hw_info_param
     if(!pointer_to_p_hw_device_info)
@@ -3643,6 +3659,16 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
             coder_param->encoder_param->fps = 5;
         }
     }
+
+    p_xCtxt = (ni_session_context_t *)calloc(1, sizeof(ni_session_context_t));
+    if (!p_xCtxt)
+    {
+        if (b_valid)
+        {
+            p_hw_device_info->err_code = NI_RETCODE_ERROR_MEM_ALOC;
+        }
+        LRETURN;
+    }
     if(coder_param->decoder_param)
     {
         if(coder_param->decoder_param->fps > 120)
@@ -3664,7 +3690,7 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
       {
         p_hw_device_info->err_code = ret;
       }
-      return retval;
+      LRETURN;
     }
 
     p_device_pool = ni_rsrc_get_device_pool();
@@ -3675,7 +3701,7 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
         {
             p_hw_device_info->err_code = NI_RETCODE_ERROR_GET_DEVICE_POOL;
         }
-        return retval;
+        LRETURN;
     }
 
 #ifdef _WIN32
@@ -3684,6 +3710,7 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
       ni_log(NI_LOG_ERROR, "ERROR: Failed to obtain mutex: %p\n", p_device_pool->lock);
       LRETURN;
     }
+    pool_locked = true;
 #elif defined(__linux__)
     if (lockf(p_device_pool->lock, F_LOCK, 0))
     {
@@ -3694,6 +3721,7 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
         }
         LRETURN;
     }
+    pool_locked = true;
 #endif
 
     coders = p_device_pool->p_device_queue;
@@ -3866,15 +3894,15 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
 
     for(i = 0; i < p_hw_device_info->available_card_num; ++i)
     {
-        memset(&xCtxt, 0, sizeof(xCtxt));
+        memset(p_xCtxt, 0, sizeof(*p_xCtxt));
         p_device_context = ni_rsrc_get_device_context(all_need_device_type[0], module_id_arr[i]);
         if (p_device_context)
         {
-            xCtxt.blk_io_handle = ni_device_open2(p_device_context->p_device_info->blk_name,
+            p_xCtxt->blk_io_handle = ni_device_open2(p_device_context->p_device_info->blk_name,
                                                   NI_DEVICE_READ_ONLY);
-            xCtxt.device_handle = xCtxt.blk_io_handle;
+            p_xCtxt->device_handle = p_xCtxt->blk_io_handle;
             //Check device can be opend
-            if (NI_INVALID_DEVICE_HANDLE == xCtxt.device_handle)
+            if (NI_INVALID_DEVICE_HANDLE == p_xCtxt->device_handle)
             {
                 ni_log(NI_LOG_ERROR, "Error open device %s, blk device %s\n",
                         p_device_context->p_device_info->dev_name,
@@ -3884,11 +3912,11 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
                 continue;
             }
 #ifdef _WIN32
-            xCtxt.event_handle = ni_create_event();
-            if (NI_INVALID_EVENT_HANDLE == xCtxt.event_handle)
+            p_xCtxt->event_handle = ni_create_event();
+            if (NI_INVALID_EVENT_HANDLE == p_xCtxt->event_handle)
             {
                 ni_rsrc_free_device_context(p_device_context);
-                ni_device_close(xCtxt.device_handle);
+                ni_device_close(p_xCtxt->device_handle);
                 ni_log(NI_LOG_ERROR, "ERROR %d: print_perf() create event\n", NI_ERRNO);
                 card_remove[i] = 1;
                 continue;
@@ -3909,8 +3937,8 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
             if(p_device_context)
             {
                 //Check decode/encode can be queired
-                xCtxt.hw_id = p_device_context->p_device_info->hw_id;
-                if (NI_RETCODE_SUCCESS != ni_device_session_query(&xCtxt, all_need_device_type[j]))
+                p_xCtxt->hw_id = p_device_context->p_device_info->hw_id;
+                if (NI_RETCODE_SUCCESS != ni_device_session_query(p_xCtxt, all_need_device_type[j]))
                 {
                     ni_log(NI_LOG_ERROR, "Error query %s %s %s.%d\n",
                                           (all_need_device_type[j] == NI_DEVICE_TYPE_DECODER) ? "decoder" :
@@ -3924,32 +3952,32 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
                     continue;
                 }
 
-                if (0 == xCtxt.load_query.total_contexts)
+                if (0 == p_xCtxt->load_query.total_contexts)
                 {
-                    xCtxt.load_query.current_load = 0;
+                    p_xCtxt->load_query.current_load = 0;
                 }
 
                 p_hw_device_info->card_info[j][i].card_idx      = p_device_context->p_device_info->module_id;
 
                 //use model_load in card remove for encoder just like before
 #ifdef XCODER_311
-                p_hw_device_info->card_info[j][i].load          = xCtxt.load_query.current_load; //monitor changes this
+                p_hw_device_info->card_info[j][i].load          = p_xCtxt->load_query.current_load; //monitor changes this
 
 #else
                 p_hw_device_info->card_info[j][i].load          =
-                                (xCtxt.load_query.total_contexts == 0 || xCtxt.load_query.current_load > xCtxt.load_query.fw_load) ? xCtxt.load_query.current_load : xCtxt.load_query.fw_load;
+                                (p_xCtxt->load_query.total_contexts == 0 || p_xCtxt->load_query.current_load > p_xCtxt->load_query.fw_load) ? p_xCtxt->load_query.current_load : p_xCtxt->load_query.fw_load;
 #endif
-                // module_load_user_can_not_see[j][i] = xCtxt.load_query.fw_model_load;
-                p_hw_device_info->card_info[j][i].model_load = xCtxt.load_query.fw_model_load;
+                // module_load_user_can_not_see[j][i] = p_xCtxt->load_query.fw_model_load;
+                p_hw_device_info->card_info[j][i].model_load = p_xCtxt->load_query.fw_model_load;
 
-                p_hw_device_info->card_info[j][i].task_num      = xCtxt.load_query.total_contexts;
+                p_hw_device_info->card_info[j][i].task_num      = p_xCtxt->load_query.total_contexts;
                 p_hw_device_info->card_info[j][i].max_task_num  = NI_MAX_CONTEXTS_PER_HW_INSTANCE;
 
-                p_hw_device_info->card_info[j][i].firmware_load = xCtxt.load_query.fw_load;
+                p_hw_device_info->card_info[j][i].firmware_load = p_xCtxt->load_query.fw_load;
                 if(consider_mem)
                 {
-                    // mem_usage[i] = xCtxt.load_query.fw_share_mem_usage;
-                    p_hw_device_info->card_info[j][i].shared_mem_usage = xCtxt.load_query.fw_share_mem_usage;
+                    // mem_usage[i] = p_xCtxt->load_query.fw_share_mem_usage;
+                    p_hw_device_info->card_info[j][i].shared_mem_usage = p_xCtxt->load_query.fw_share_mem_usage;
                 }
                 ni_rsrc_free_device_context(p_device_context);
                 p_device_context = NULL;
@@ -3958,16 +3986,16 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
             {
                 ni_log(NI_LOG_ERROR, "ERROR %d: Failed to get device context\n", NI_ERRNO);
                 p_hw_device_info->err_code = NI_RETCODE_ERROR_MEM_ALOC;
-                ni_device_close(xCtxt.device_handle);
+                ni_device_close(p_xCtxt->device_handle);
 #ifdef _WIN32
-                ni_close_event(xCtxt.event_handle);
+                ni_close_event(p_xCtxt->event_handle);
 #endif
                 LRETURN;
             }
         }
-        ni_device_close(xCtxt.device_handle);
+        ni_device_close(p_xCtxt->device_handle);
 #ifdef _WIN32
-        ni_close_event(xCtxt.event_handle);
+        ni_close_event(p_xCtxt->event_handle);
 #endif
     }
 
@@ -4125,22 +4153,28 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
     }
 
 END:
+  if (p_device_pool && pool_locked)
+  {
 #ifdef _WIN32
-  ReleaseMutex((HANDLE)p_device_pool->lock);
+    ReleaseMutex((HANDLE)p_device_pool->lock);
 
 #elif defined(__linux__)
-  if (lockf(p_device_pool->lock, F_ULOCK,0))
-  {
-    ni_log(NI_LOG_ERROR, "Error lockf() failed\n");
-    if(p_hw_device_info)
+    if (lockf(p_device_pool->lock, F_ULOCK,0))
     {
-      p_hw_device_info->err_code = NI_RETCODE_ERROR_UNLOCK_DEVICE;
+      ni_log(NI_LOG_ERROR, "Error lockf() failed\n");
+      if(p_hw_device_info)
+      {
+        p_hw_device_info->err_code = NI_RETCODE_ERROR_UNLOCK_DEVICE;
+      }
+      retval = 0;
     }
-    retval = 0;
-  }
-  ni_rsrc_free_device_pool(p_device_pool);
-  p_device_context = NULL;
 #endif
+  }
+  if (p_device_pool)
+  {
+    ni_rsrc_free_device_pool(p_device_pool);
+    p_device_context = NULL;
+  }
   fflush(stderr);
   if (module_id_arr)
   {
@@ -4156,6 +4190,11 @@ END:
   {
     free(card_remove);
     card_remove = NULL;
+  }
+  if (p_xCtxt)
+  {
+    free(p_xCtxt);
+    p_xCtxt = NULL;
   }
   if(b_valid)
   {
@@ -4214,7 +4253,7 @@ ni_device_context_t *ni_rsrc_allocate_auto(
     ni_device_pool_t *p_device_pool = NULL;
     ni_device_info_t *p_device_info = NULL;
     ni_device_context_t *p_device_context = NULL;
-    ni_session_context_t p_session_context = {0};
+    ni_session_context_t *p_session_context = NULL;
     int *coders = NULL;
     int i = 0, count = 0, rc = NI_RETCODE_FAILURE;
     int guid = -1;
@@ -4239,7 +4278,12 @@ ni_device_context_t *ni_rsrc_allocate_auto(
         return NULL;
     }
 
-    ni_device_session_context_init(&p_session_context);
+    p_session_context = ni_device_session_context_alloc_init();
+    if (!p_session_context)
+    {
+        ni_rsrc_free_device_pool(p_device_pool);
+        return NULL;
+    }
 #ifdef _WIN32
     if (WAIT_ABANDONED == WaitForSingleObject(p_device_pool->lock, INFINITE)) // no time-out interval) //we got the mutex
     {
@@ -4265,10 +4309,10 @@ ni_device_context_t *ni_rsrc_allocate_auto(
 
         // p_first retrieve status from f/w and update storage
 
-        p_session_context.blk_io_handle = ni_device_open2(p_device_context->p_device_info->dev_name, NI_DEVICE_READ_ONLY);
-        p_session_context.device_handle = p_session_context.blk_io_handle;
+        p_session_context->blk_io_handle = ni_device_open2(p_device_context->p_device_info->dev_name, NI_DEVICE_READ_ONLY);
+        p_session_context->device_handle = p_session_context->blk_io_handle;
 
-        if (NI_INVALID_DEVICE_HANDLE == p_session_context.device_handle)
+        if (NI_INVALID_DEVICE_HANDLE == p_session_context->device_handle)
         {
             char errmsg[NI_ERRNO_LEN] = {0};
             ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
@@ -4279,10 +4323,10 @@ ni_device_context_t *ni_rsrc_allocate_auto(
             continue;
         }
 
-        p_session_context.hw_id = p_device_context->p_device_info->hw_id;
-        rc = ni_device_session_query(&p_session_context, device_type);
+        p_session_context->hw_id = p_device_context->p_device_info->hw_id;
+        rc = ni_device_session_query(p_session_context, device_type);
 
-        ni_device_close(p_session_context.device_handle);
+        ni_device_close(p_session_context->device_handle);
 
         if (NI_RETCODE_SUCCESS != rc)
         {
@@ -4303,7 +4347,7 @@ ni_device_context_t *ni_rsrc_allocate_auto(
 #elif __linux__ || __APPLE__
         lockf(p_device_context->lock, F_LOCK, 0);
 #endif
-        ni_rsrc_update_record(p_device_context, &p_session_context);
+        ni_rsrc_update_record(p_device_context, p_session_context);
 
         p_device_info = p_device_context->p_device_info;
         if (i == 0)
@@ -4385,7 +4429,7 @@ END:
 #elif __linux__ || __APPLE__
     lockf(p_device_pool->lock, F_ULOCK, 0);
 #endif
-    ni_device_session_context_clear(&p_session_context);
+    ni_device_session_context_free(p_session_context);
     ni_rsrc_free_device_pool(p_device_pool);
 
     if (p_load)
