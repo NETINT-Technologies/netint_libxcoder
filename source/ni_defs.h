@@ -91,7 +91,7 @@ extern "C"
 // NI_XCODER_REVISION[6:7] = optional
 // You must change the name in the comment of REVISION line to your name when
 // you change the version number. If a merge conflict arises on a REVISION line,
-#define NI_XCODER_REVISION "5706t1r2"
+#define NI_XCODER_REVISION "56B6sWr1"
 #define NI_XCODER_REVISION_API_MAJOR_VER_IDX 3
 #define NI_XCODER_REVISION_API_MINOR_VER_IDX 4
 
@@ -104,7 +104,7 @@ extern "C"
 #define MACRO_TO_STR(s) #s
 #define MACROS_TO_VER_STR(a, b) MACRO_TO_STR(a.b)
 #define LIBXCODER_API_VERSION_MAJOR 2
-#define LIBXCODER_API_VERSION_MINOR 87
+#define LIBXCODER_API_VERSION_MINOR 86
 #define LIBXCODER_API_VERSION MACROS_TO_VER_STR(LIBXCODER_API_VERSION_MAJOR, \
                                                 LIBXCODER_API_VERSION_MINOR)
 
@@ -249,7 +249,7 @@ typedef unsigned ni_io_event_t;
 
 // The macro definition in ni_quadra_filter_api.h need to be synchronized with libxcoder
 // If you change this,you should also change NI_QUADRA_MAX_PPU_PARAM_EXPR_CHAR in ni_quadra_filter_api.h
-#define NI_MAX_PPU_PARAM_EXPR_CHAR 200
+#define NI_MAX_PPU_PARAM_EXPR_CHAR 20
 
 #define NI_MAX_TX_SZ 0xA00000
 
@@ -364,12 +364,10 @@ static inline int is_supported_xcoder(int x)
 
 // CPU Log definitions
 #define CPU_LOG_BUFFER_SIZE                     (1 * 1024 * 1024)
-#define CPU_FL_LOG_BUFFER_SIZE (256)
-#define CPU_FL_LOG_BUFFER_LEN (128)
-#define TOTAL_CPU_LOG_BUFFER_SIZE   ((CPU_LOG_BUFFER_SIZE * 5) + (CPU_FL_LOG_BUFFER_SIZE * CPU_FL_LOG_BUFFER_LEN))   // g_np/tp/fp/ep/dp/fl_cpu_log_buffer
+#define TOTAL_CPU_LOG_BUFFER_SIZE                                              \
+    (CPU_LOG_BUFFER_SIZE * 5)   // g_np/tp/fp/ep/dp_cpu_log_buffer
 #define CPU_LOG_CYCLES_PER_CHECK    (10000)
 #define PRINT_FW_LOG_SIZE           (64 * 1024)
-#define FL_SIGNATURE  (0x464C324C)
 
 typedef enum
 {
@@ -379,8 +377,7 @@ typedef enum
     DP_CORE = 0x03,
     TP_CORE = 0x04,
     FP_CORE = 0x05,
-    FL_CORE = 0x06,
-    NUM_OF_CORES = 0x07,
+    NUM_OF_CORES = 0x06,
 } ni_core_type_t;
 
 typedef struct _ni_session_statistic_t

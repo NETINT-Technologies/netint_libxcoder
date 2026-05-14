@@ -72,165 +72,6 @@ jmp_buf env;
 
 uint32_t g_xcoder_stop_process = 0;
 
-
-#define PCI_BDF_STR_LEN       12
-#define PCIE_ADDRS_MAX        16
-#define PCIE_GEN4_LINK_SPEED  16
-
-#if __linux__
-static int read_file_content(const char *path, char *buf, size_t bufsz)
-{
-    FILE *fp = fopen(path, "r");
-    int n = (bufsz > (size_t)INT_MAX) ? INT_MAX : (int)bufsz;
-    if (!fp)
-        return -1;
-    if (!fgets(buf, n, fp))
-    {
-        fclose(fp);
-        return -1;
-    }
-    fclose(fp);
-    char *nl = strchr(buf, '\n');
-    if (nl)
-        *nl = '\0';
-    return 0;
-}
-
-static int find_root_port_from_device(const char *device_bdf, char *root_port_bdf)
-{
-    char block_path[PATH_MAX];
-    char abs_path[PATH_MAX];
-    char *ptr, *saveptr = NULL;
-    char *pcie_addrs[PCIE_ADDRS_MAX] = {0};
-    int addr_count;
-    DIR *dir;
-    struct dirent *entry;
-
-    if (!device_bdf || !root_port_bdf)
-        return -1;
-
-    dir = opendir("/sys/block");
-    if (!dir)
-        return -1;
-
-    while ((entry = readdir(dir)))
-    {
-        addr_count = 0;
-        if (strncmp(entry->d_name, "nvme", 4) != 0)
-            continue;
-
-        snprintf(block_path, sizeof(block_path), "/sys/block/%s", entry->d_name);
-
-        if (realpath(block_path, abs_path) == NULL)
-            continue;
-
-        if (strstr(abs_path, device_bdf) == NULL)
-            continue;
-
-        ptr = strtok_r(abs_path, "/", &saveptr);
-        while (ptr != NULL)
-        {
-            if (strlen(ptr) == PCI_BDF_STR_LEN)
-            {
-                unsigned int d, b, dev, f;
-                if (sscanf(ptr, "%x:%x:%x.%x", &d, &b, &dev, &f) == 4)
-                {
-                    if (addr_count < PCIE_ADDRS_MAX)
-                    {
-                        pcie_addrs[addr_count] = (char *)malloc(PCI_BDF_STR_LEN + 1);
-                        if (pcie_addrs[addr_count]) {
-                            strncpy(pcie_addrs[addr_count], ptr, PCI_BDF_STR_LEN);
-                            pcie_addrs[addr_count][PCI_BDF_STR_LEN] = '\0';
-                            addr_count++;
-                        }
-                    }
-                }
-            }
-            ptr = strtok_r(NULL, "/", &saveptr);
-        }
-
-        for (int i = addr_count - 2; i >= 0; i--)
-        {
-            char class_path[PATH_MAX];
-            char class_buf[32];
-            unsigned long class_val;
-
-            if (!pcie_addrs[i])
-                continue;
-
-            snprintf(class_path, sizeof(class_path), "/sys/bus/pci/devices/%s/class", pcie_addrs[i]);
-            if (read_file_content(class_path, class_buf, sizeof(class_buf)) != 0)
-                continue;
-
-            class_val = strtoul(class_buf, NULL, 0);
-            if ((class_val & 0xffff00) != 0x060400)
-                continue;
-
-            strncpy(root_port_bdf, pcie_addrs[i], PCI_BDF_STR_LEN);
-            root_port_bdf[PCI_BDF_STR_LEN] = '\0';
-            for (int j = 0; j < addr_count; j++)
-            {
-                if (pcie_addrs[j])
-                    free(pcie_addrs[j]);
-            }
-            closedir(dir);
-            return 0;
-        }
-
-        for (int j = 0; j < addr_count; j++)
-        {
-            if (pcie_addrs[j])
-                free(pcie_addrs[j]);
-        }
-    }
-
-    closedir(dir);
-    return -1;
-}
-
-static int read_pcie_capability_sysfs(const char *bdf)
-{
-    char path[PATH_MAX];
-    char raw_buf[64] = {0};
-
-    if (!bdf)
-        return -1;
-
-    snprintf(path, sizeof(path), "/sys/bus/pci/devices/%s/max_link_speed", bdf);
-    if (read_file_content(path, raw_buf, sizeof(raw_buf)) != 0)
-        return -1;
-
-    if (raw_buf[0] == '\0')
-        return -1;
-
-    unsigned int speed_num = 0;
-    if (sscanf(raw_buf, "%u", &speed_num) != 1)
-        return -1;
-    return (int)speed_num;
-}
-
-static int get_pcie_gen3_on_gen4_status(const char *device_name, uint8_t fw_flavour)
-{
-    char pcie[64] = {0};
-    char host_port[64] = {0};
-    int device_speed_num = -1;
-    int host_speed_num = -1;
-
-    get_dev_pcie_addr(const_cast<char*>(device_name), pcie, NULL, NULL, NULL, NULL);
-    if (pcie[0] == '\0')
-        return -1;
-
-    device_speed_num = read_pcie_capability_sysfs(pcie);
-    if (find_root_port_from_device(pcie, host_port) == 0)
-        host_speed_num = read_pcie_capability_sysfs(host_port);
-
-    if (device_speed_num >= 0 && host_speed_num >= 0 &&
-        fw_flavour == 'C' && host_speed_num == PCIE_GEN4_LINK_SPEED)
-        return 1;
-    return 0;
-}
-#endif
-
 /*!******************************************************************************
  *  \brief
  *
@@ -447,7 +288,6 @@ static void fill_device_info(ni_device_info_t *device_info,
                              const ni_device_type_t device_type)
 {
     ni_hw_capability_t *hw_capability;
-    int gen3_on_gen4 = -1;
 
     hw_capability = &device_capability->xcoder_devices[device_type];
 
@@ -492,17 +332,6 @@ static void fill_device_info(ni_device_info_t *device_info,
                              (ni_codec_t)hw_capability->codec_format,
                              device_type,
                              hw_capability);
-#if __linux__
-    {
-        ni_device_extra_info_t extra_info = {0};
-        if (ni_query_extra_info(device_handle, &extra_info, device_capability->fw_rev) == NI_RETCODE_SUCCESS)
-            gen3_on_gen4 = get_pcie_gen3_on_gen4_status(device_name, extra_info.fw_flavour);
-        if (gen3_on_gen4 < 0)
-            gen3_on_gen4 = 0;
-    }
-#endif
-    device_info->pcie_gen3_on_gen4_host = gen3_on_gen4;
-
 }
 
 static void fill_shared_memory(ni_device_queue_t *device_queue,
@@ -633,7 +462,6 @@ bool add_to_shared_memory(const char device_name[NI_MAX_DEVICE_NAME_LEN],
     }
     fw_compat_cmp = ni_cmp_fw_api_ver((char*) &device_capability.fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
                                       (char*) &NI_XCODER_REVISION[NI_XCODER_REVISION_API_MAJOR_VER_IDX]);
-
 
     for (i = NI_DEVICE_TYPE_DECODER; i < NI_DEVICE_TYPE_XCODER_MAX; i++)
     {
@@ -1522,35 +1350,42 @@ void get_dev_pcie_addr(char *device_name,
 #else
   int i=0;
   char *ptr = NULL;
+  // path to nvme drive
   char path[PATH_MAX];
   int ret;
 
-  if (!device_name || !strstr(device_name, "/dev/nvme") || !pcie)
+  if(!device_name || !strstr(device_name, "/dev/nvme") || !pcie)
   {
     return ;
   }
 
+  // we need to skip '/dev/' in the device name
   char *start = device_name + 5;
 
+  // construct the path to /sys/block
   snprintf(path, sizeof(path), "/sys/block/%s", start);
   ni_log2(NULL, NI_LOG_DEBUG,"path:%s\n", path);
 
+  // read the target of the symbolic link
   char target[PATH_MAX];
+  //e.g.: ../devices/pci0000:00/0000:00:03.1/0000:09:00.0/nvme/nvme0/nvme0n1
   ssize_t len = readlink(path, target, sizeof(target) - 1);
   if (len == -1) {
       perror("readlink");
       return;
   }
-  target[len] = '\0';
+  target[len] = '\0';  // set the null-terminating character
   ni_log2(NULL, NI_LOG_DEBUG,"target:%s\n", target);
 
+  // and find domain and slot from it
   char *saveptr = NULL;
   ptr = ni_strtok(target, "/", &saveptr);
   pcie[4] = pcie[7] = ':';
   pcie[10] = '.';
+  //last pcie info is for the device
   while(ptr != NULL) {
       ni_log2(NULL, NI_LOG_DEBUG, "===%d ptr:%s\n", ++i, ptr);
-      if (strlen(ptr) == PCI_BDF_STR_LEN)
+      if (strlen(ptr) == 12)//e.g.: 0000:09:00.0
       {
           ret = sscanf(ptr, "%4c:%2c:%2c.%1c", pcie, pcie+5,pcie+8,pcie+11);
           if (ret != 4)
@@ -1563,7 +1398,7 @@ void get_dev_pcie_addr(char *device_name,
       ni_log2(NULL, NI_LOG_DEBUG, "=====\n");
       ptr = ni_strtok(NULL, "/", &saveptr);
   }
-  pcie[PCI_BDF_STR_LEN] = '\0';
+  pcie[12] = '\0';
   ni_log2(NULL, NI_LOG_DEBUG, "PCIE:%s\n", pcie);
   if (!domain || !slot || !dev || !func)
   {

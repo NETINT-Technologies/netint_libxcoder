@@ -240,8 +240,6 @@ typedef enum ni_qos_codes
     QOS_NAMESPACE_CODE = NI_NAMESPACE_MAX_NUM + 1,
     QOS_OP_CONFIG_REC_OP_CODE,
     QOS_OP_CONFIG_CODE,
-    QOS_ALLOW_CONFIG_REC_ALLOW_CODE,
-    QOS_ALLOW_CONFIG_CODE,
 } ni_qos_codes_t;
 
 // XCODER STATE
@@ -1184,8 +1182,6 @@ typedef struct _ni_device_capability
   uint8_t fw_commit_hash[41];
   uint8_t fw_build_time[26];
   uint8_t fw_build_id[256];
-  int32_t warning_temp;
-  int32_t critical_temp;
 } ni_device_capability_t;
 
 /*!*
@@ -1749,7 +1745,6 @@ typedef struct _ni_session_context
     double average_psnr;
     ///encoder:calculate PSNR end
     int hvsplus_level;
-    int hvsplus_type;
 
     int16_t buffered_frame_index;
 
@@ -2317,8 +2312,6 @@ NI_DEPRECATE_MACRO(NI_ENC_PARAM_MAX_FRAME_SIZE_LOW_DELAY)
 #define NI_ENC_PARAM_AV1_OP_LEVEL "av1OpLevel"
 #define NI_ENC_PARAM_ENABLE_CPU_AFFINITY "enableCpuAffinity"
 #define NI_ENC_PARAM_PRESET "preset"
-#define NI_ENC_PARAM_QP_SCALE_ENABLE "qpScaleEnable"
-#define NI_ENC_PARAM_GET_BITSTREAM_FEATURES "getBitstreamFeatures"
 
     //----- Start supported by all codecs -----
     int frame_rate;
@@ -2542,8 +2535,6 @@ NI_DEPRECATE_MACRO(NI_ENC_PARAM_MAX_FRAME_SIZE_LOW_DELAY)
     int adaptiveCrfMode;
     int intraCompensateMode;
     int customMinCoeffDiv;
-    int qpScaleEnable;
-    int getBitstreamFeatures;
 } ni_encoder_cfg_params_t;
 
 typedef struct _ni_decoder_input_params_t
@@ -2566,12 +2557,6 @@ typedef struct _ni_decoder_input_params_t
 #define NI_DEC_PARAM_SCALE_0                      "scale0"
 #define NI_DEC_PARAM_SCALE_1                      "scale1"
 #define NI_DEC_PARAM_SCALE_2                      "scale2"
-#define NI_DEC_PARAM_SCALE_0_W                    "scale0w"
-#define NI_DEC_PARAM_SCALE_0_H                    "scale0h"
-#define NI_DEC_PARAM_SCALE_1_W                    "scale1w"
-#define NI_DEC_PARAM_SCALE_1_H                    "scale1h"
-#define NI_DEC_PARAM_SCALE_2_W                    "scale2w"
-#define NI_DEC_PARAM_SCALE_2_H                    "scale2h"
 #define NI_DEC_PARAM_SCALE_0_LONG_SHORT_ADAPT     "scale0LongShortAdapt"
 #define NI_DEC_PARAM_SCALE_1_LONG_SHORT_ADAPT     "scale1LongShortAdapt"
 #define NI_DEC_PARAM_SCALE_2_LONG_SHORT_ADAPT     "scale2LongShortAdapt"
@@ -2607,6 +2592,7 @@ typedef struct _ni_decoder_input_params_t
 #define NI_DEC_PARAM_REDUCE_DPB_DELAY "reduceDpbDelay"
 #define NI_DEC_PARAM_SKIP_EXTRA_HEADERS "skipExtraHeaders"
 #define NI_DEC_PARAM_ENABLE_CPU_AFFINITY "enableCpuAffinity"
+#define NI_DEC_PARAM_EXTEND_POOL_SIZE "extendPoolSize"
 
     int hwframes;
     int enable_out1;
@@ -2652,6 +2638,7 @@ typedef struct _ni_decoder_input_params_t
     int reduce_dpb_delay;
     int skip_extra_headers;
     int decoder_disable_reorder;
+    int extend_pool_size;
 } ni_decoder_input_params_t;
 
 typedef struct _ni_scaler_input_params_t
@@ -2674,6 +2661,9 @@ typedef struct _ni_scaler_input_params_t
 
     uint32_t rgba_color;
     ni_scaler_opcode_t op;
+
+    int in_extra_flags;
+    int out_extra_flags;
 } ni_scaler_input_params_t;
 
 typedef struct _ni_scaler_params_t
@@ -2957,8 +2947,7 @@ typedef enum
   NI_QUADRA_INTRA_FRAME = 0,
   NI_QUADRA_PREDICTED_FRAME = 1,
   NI_QUADRA_BIDIR_PREDICTED_FRAME = 2,
-  NI_QUADRA_PIC_TYPE_IDR = 3,
-  //NI_QUADRA_NOTCODED_FRAME = 3,  /* Used just as a return value */
+  NI_QUADRA_NOTCODED_FRAME  /* Used just as a return value */
 } ni_quadra_frame_type;
 
 typedef enum
@@ -3015,22 +3004,6 @@ typedef enum
   AV1_CODEC_PROFILE_MAIN = 0,
 } av1_codec_profile;
 
-typedef struct _ni_bitsream_features
-{
-    float average_qp;
-    int initial_qp;
-    int max_qp;
-    float avg_forward_pred_block_qp;
-    float avg_intra_plane_qp;
-    float avg_intra_block_qp;
-    int analyzed_mbs; // intra 16x16, intra 8x8, intra 4x4 and inter blocks
-    int num_intra_block_blocks; // intra 4x4 and 8x8 blocks (counted in 4x4)
-    int num_intra_plane_blocks; // intra 16x16 blocks (counted in 4x4)
-    int num_skip_blocks; // skip blocks (counted in 4x4)
-    int num_forward_pred_blocks; // forward prediction blocks (counted in 4x4)
-} ni_bitstream_features_t;
-
-
 typedef struct _ni_packet
 {
   long long dts;
@@ -3070,7 +3043,6 @@ typedef struct _ni_packet
   double ssim_v;
   uint8_t still_image_detected;
   uint8_t scene_change_detected;
-  ni_bitstream_features_t bitstream_features;
 } ni_packet_t;
 
 typedef struct _ni_session_data_io
@@ -3528,23 +3500,6 @@ LIB_API ni_retcode_t ni_device_config_qos(ni_device_handle_t device_handle,
 LIB_API ni_retcode_t ni_device_config_qos_op(ni_device_handle_t device_handle,
                                              ni_device_handle_t device_handle_t,
                                              uint32_t over_provision);
-/*!*****************************************************************************
- *  \brief  Set QoS allowance for a specific namespace
- *
- *  \param[in] device_handle   Device handle obtained by calling ni_device_open
- *  \param[in] device_handle_t Target device handle of namespace required
- *  \param[in] allowance       Allowance percentage (0.0-100.0)
- *
- *  \return On success
- *                          NI_RETCODE_SUCCESS
- *          On failure
- *                          NI_RETCODE_ERROR_MEM_ALOC
- *                          NI_RETCODE_ERROR_NVME_CMD_FAILED
- ******************************************************************************/
-LIB_API ni_retcode_t ni_device_config_qos_allowance(ni_device_handle_t device_handle,
-        ni_device_handle_t device_handle_t,
-        uint32_t allowance);
-
 
 /*!*****************************************************************************
  *  \brief  Allocate preliminary memory for the frame buffer based on provided
@@ -4916,44 +4871,6 @@ LIB_API ni_retcode_t ni_query_extra_info(ni_device_handle_t device_handle,
                                          uint8_t fw_rev[]);
 
 /*!*****************************************************************************
- *  \brief  Query QoS information for the device
- *
- *  \param[in] device_handle       Device handle for the target namespace
- *  \param[out] p_qos_ns_info      Pointer to namespace QoS header info structure
- *  \param[in] fw_rev[]            Firmware version array
- *
- *  \return On success
- *                          NI_RETCODE_SUCCESS
- *          On failure
- *                          NI_RETCODE_INVALID_PARAM
- *                          NI_RETCODE_ERROR_NVME_CMD_FAILED
- *                          NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION
- *                          NI_RETCODE_ERROR_MEM_ALOC
-*******************************************************************************/
-LIB_API ni_retcode_t ni_query_qos_info(ni_device_handle_t device_handle,
-  ni_qos_header_info_log_page_t *p_dev_qos_header,
-  uint8_t fw_rev[]);
-
-/*!*****************************************************************************
- *  \brief  Query QoS information for a specific namespace
- *
- *  \param[in] device_handle       Device handle for the target namespace
- *  \param[out] p_qos_ns_info      Pointer to namespace QoS namespace info structure
- *  \param[in] fw_rev[]            Firmware version array
- *
- *  \return On success
- *                          NI_RETCODE_SUCCESS
- *          On failure
- *                          NI_RETCODE_INVALID_PARAM
- *                          NI_RETCODE_ERROR_NVME_CMD_FAILED
- *                          NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION
- *                          NI_RETCODE_ERROR_MEM_ALOC
-*******************************************************************************/
-LIB_API ni_retcode_t ni_query_qos_namespace_info(ni_device_handle_t device_handle,
-                                                  ni_qos_namespace_info_log_page_t *p_dev_qos_ns,
-                                                  uint8_t fw_rev[]);
-
-/*!*****************************************************************************
  *  \brief  Check if incoming frame is encoder zero copy compatible or not
  *
  *  \param[in] p_enc_ctx    pointer to encoder context
@@ -5145,7 +5062,6 @@ LIB_API NI_DEPRECATED ni_retcode_t ni_p2p_xfer(ni_session_context_t *pSession,
                                  uint32_t ui32FrameSize);
 #endif
 
-#ifndef DEPRECATION_AS_ERROR
 /*!*****************************************************************************
  *  \brief   Initiate P2P transfer to another device (P2P write)
  *
@@ -5163,31 +5079,10 @@ LIB_API NI_DEPRECATED ni_retcode_t ni_p2p_xfer(ni_session_context_t *pSession,
  *              NI_RETCODE_ERROR_MEM_ALOC
  *              NI_RETCODE_ERROR_NVME_CMD_FAILED
 *******************************************************************************/
-LIB_API NI_DEPRECATED ni_retcode_t ni_p2p_send(ni_session_context_t *pSession,
+LIB_API ni_retcode_t ni_p2p_send(ni_session_context_t *pSession,
                                  niFrameSurface1_t *source,
                                  uint64_t ui64DestAddr,
                                  uint32_t ui32FrameSize);
-#endif
-
-/*!*****************************************************************************
- *  \brief   Initiate P2P transfer to another device (P2P write) with sgl list
- *
- *  \param[in] pSession      Pointer to source card upload session
- *  \param[in] pSrcFrame     Pointer to source P2P frame
- *  \param[in] dmaAddrs      Pointer to destination DMA addresses - sgl_list
- *
- *  \return on success
- *              NI_RETCODE_SUCCESS
- *              on failure
- *              NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION
- *              NI_RETCODE_INVALID_PARAM
- *              NI_RETCODE_ERROR_INVALID_SESSION
- *              NI_RETCODE_ERROR_MEM_ALOC
- *              NI_RETCODE_ERROR_NVME_CMD_FAILED
-*******************************************************************************/
-LIB_API ni_retcode_t ni_p2p_send_v2(ni_session_context_t *pSession,
-                                    ni_frame_t *pSrcFrame,
-                                    const ni_p2p_sgl_t *dmaAddrs);
 
 /*!*****************************************************************************
  *  \brief   Calculate the total size of a frame based on the upload

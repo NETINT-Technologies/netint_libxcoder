@@ -133,7 +133,6 @@ typedef struct _ni_device_info
 
   ni_sw_instance_info_t sw_instance[NI_MAX_CONTEXTS_PER_HW_INSTANCE];
   ni_lock_handle_t lock;
-  int pcie_gen3_on_gen4_host;  /* 1=Gen3 FW on Gen4 host, 0=no, -1=unknown */
 } ni_device_info_t;
 
 // This structure is very big (2.6MB). Recommend storing in heap
@@ -257,25 +256,6 @@ typedef enum
     EN_ALLOC_LEAST_LOAD,
     EN_ALLOC_LEAST_INSTANCE
 } ni_alloc_rule_t;
-
-typedef struct _ni_qos_header_info_log_page
-{
-    uint16_t ui16QosState;
-    uint16_t ui16ActiveNamespaces;
-    float fTotalAllowance;
-    uint32_t ui32Reserved[1];
-} ni_qos_header_info_log_page_t;
-
-typedef struct _ni_qos_namespace_info_log_page
-{
-    uint8_t  ui8VirtualFunction;
-    uint8_t  ui8NamespaceId;
-    uint8_t  ui8Reserved[2];
-    float    fAllowance;
-    uint32_t ui32BaseSliceTimeUs;
-    uint32_t ui32OPmaxUs;
-    uint32_t ui32Reserved2[2];
-} ni_qos_namespace_info_log_page_t;
 
 /*!******************************************************************************
  *  \brief   Initialize and create all resources required to work with NETINT NVMe

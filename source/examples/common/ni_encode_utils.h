@@ -138,8 +138,6 @@ int ni_pts_enqueue(ni_pts_queue *q, int64_t value);
 int ni_pts_dequeue(ni_pts_queue *q, int64_t *value);
 void ni_prepare_pts_queue(ni_pts_queue *q, ni_xcoder_params_t *enc_param, int pts_start);
 
-void ni_write_bitstream_features(ni_session_context_t *p_enc_ctx, ni_packet_t *p_out_pkt, FILE *p_file);
-
 #ifdef __cplusplus
 }
 #endif

@@ -85,86 +85,8 @@
 //for the not support gopPresetIdx value, such as gopPresetIdx == 2, set g_map_preset_to_gopsize to -1
 static const int g_map_preset_to_gopsize[2][18] = {{8, 0,  1, -1,  1, 2, 4, -1,  4, 8, 1,  4, -1, -1, -1, -1, 16},
                                             {8, 0, -1, -1, -1, 2, 4, -1, -1, 8, 1, -1, -1, -1, -1, -1, -1}};
-#define MIN(x,y) (((x)>(y))?(y):(x))
-#define MAX(x,y) (((x)<(y))?(y):(x))
-#define HEVC_LEVEL_NUM       13
-#define H264_LEVEL_NUM       20
-#define AV1_LEVEL_NUM        14
-#define HIGH_TIER            1
-static const uint64_t max_sample_rate_second_h265[ HEVC_LEVEL_NUM ] =
-{
-  552960, 3686400, 7372800, 16588800, 33177600, 66846720, 133693440, 267386880,
-  534773760, 1069547520, 1069547520, 2139095040, 4278190080
-};
-static const uint64_t max_sample_rate_second_h264[ H264_LEVEL_NUM ] =
-{
-  1485*256, 1485*256, 3000*256, 6000*256, 11880*256, 11880*256, 19800*256, 20250*256,
-  40500*256, 108000*256, 216000*256, 245760*256, 245760*256,
-  522240*256, 589824*256, 983040*256, 2073600*256,
-  4177920*256, 8355840*256, 16711680ULL*256
-};
-static const uint64_t max_sample_rate_second_av1[ AV1_LEVEL_NUM ] =
-{
-  5529600, 10454400, /*0, 0,*/ 24969600, 39938400, 77856768, 155713536,
-  273715200, 547430400, 1094860800, 1176502272, 1176502272, 2189721600, 4379443200, 4706009088
-};
-
-static const uint32_t max_pic_size_h265[ HEVC_LEVEL_NUM ] =
-{
-  36864, 122880, 245760, 552960, 983040, 2228224, 2228224, 8912896,
-  8912896, 8912896, 35651584, 35651584, 35651584
-};
-static const uint32_t max_pic_size_h264[ H264_LEVEL_NUM ] =
-{
-  99*256, 99*256, 396*256, 396*256, 396*256, 396*256, 792*256, 1620*256,
-  1620*256, 3600*256, 5120*256, 8192*256, 8192*256,
-  8704*256, 22080*256, 36864*256, 36864*256,
-  139264*256, 139264*256, 139264*256
-};
-static const uint32_t max_pic_size_av1[ AV1_LEVEL_NUM ] =
-{
-  147456, 278784, 665856, 1065024, 2359296, 2359296,
-  8912896, 8912896, 8912896, 8912896, 35651584, 35651584, 35651584, 35651584
-};
-
-static const uint32_t max_cpb_second_h265[ HEVC_LEVEL_NUM ] =
-{
-  350000, 1500000, 3000000, 6000000, 10000000, 12000000, 20000000,
-  25000000, 40000000, 60000000, 60000000, 120000000, 240000000
-};
-static const uint32_t max_cpb_hightier_second_h265[ HEVC_LEVEL_NUM ] =
-{
-  350000, 1500000, 3000000, 6000000, 10000000, 30000000, 50000000,
-  100000000, 160000000, 240000000, 240000000, 480000000, 800000000
-};
-static const uint32_t max_cpb_second_h264[ H264_LEVEL_NUM ] =
-{
-  175000, 350000, 500000, 1000000, 2000000, 2000000, 4000000, 4000000,
-  10000000, 14000000, 20000000, 25000000, 62500000,
-  62500000, 135000000, 240000000, 240000000,
-  240000000, 480000000, 800000000
-};
-static const uint32_t max_cpb_second_av1[ AV1_LEVEL_NUM ] =
-{
-  1500000, 3000000, 6000000, 10000000, 12000000, 20000000,
-  30000000, 40000000, 60000000, 60000000, 60000000, 100000000, 160000000, 160000000
-};
-static const uint32_t max_cpb_hightier_second_av1[ AV1_LEVEL_NUM ] =
-{
-  0, 0, 0, 0, 30000000, 50000000,
-  100000000, 160000000, 240000000, 240000000, 240000000, 480000000, 800000000, 800000000
-};
-static const uint32_t max_bitrate_h264[ H264_LEVEL_NUM ] =
-{
-  64000, 128000, 192000, 384000, 768000, 2000000, 4000000, 4000000,
-  10000000, 14000000, 20000000, 20000000, 50000000,
-  50000000, 135000000, 240000000, 240000000,
-  240000000, 480000000, 800000000
-};
-
 #define MAGIC_P2P_VALUE "p2p"
 #define AI_MODEL_TYPE_HVSPLUS_FILTER 3
-#define AI_MODEL_TYPE_USM_FILTER 4
 
 typedef enum _ni_t35_sei_mesg_type
 {
@@ -777,21 +699,10 @@ void calculate_psnr(ni_session_context_t *p_ctx, ni_packet_t *p_packet)
     p_packet->data_len -= p_meta->reconLumaSize + p_meta->reconChromaSize;
 }
 
-/* Macro to read 2 consecutive bytes from buffer starting at byte_offset and combine them into a uint32_t (little-endian) */
-#define READ_U32_FROM_BUF_2BYTES(buf, byte_offset) \
-    ((uint32_t)(buf)[(byte_offset)] | \
-     ((uint32_t)(buf)[(byte_offset)+1] << 8))
-
-/* Macro to read 4 consecutive bytes from buffer starting at byte_offset and combine them into a uint32_t (little-endian) */
-#define READ_U32_FROM_BUF(buf, byte_offset) \
-    ((uint32_t)(buf)[(byte_offset)] | \
-     ((uint32_t)(buf)[(byte_offset)+1] << 8) | \
-     ((uint32_t)(buf)[(byte_offset)+2] << 16) | \
-     ((uint32_t)(buf)[(byte_offset)+3] << 24))
-
+#if 0 // CU info parsing (currently not used)
 static void parse_cu_info(ni_session_context_t *p_ctx, uint8_t *cuInfoBuf, ni_encoder_cu_info *pEncCuInfo)
 {
-    uint32_t data;
+    int data;
 
     if (!p_ctx || !cuInfoBuf || !pEncCuInfo)
     {
@@ -805,198 +716,33 @@ static void parse_cu_info(ni_session_context_t *p_ctx, uint8_t *cuInfoBuf, ni_en
     {
       pEncCuInfo->cuSize = 16;
       pEncCuInfo->cuMode = (cuInfoBuf[AVC_MB_MODE_BYTE_OFFSET] >> AVC_MB_MODE_BIT_POSITION) & ((1 << AVC_MB_MODE_BITS) - 1);
-      data = READ_U32_FROM_BUF(cuInfoBuf, AVC_RDCOST_BYTE_OFFSET);
-      pEncCuInfo->cost = (data >> AVC_RDCOST_BIT_POSITION) & ((1 << AVC_RDCOST_BITS) - 1);
       if (pEncCuInfo->cuMode == 1) // intra
+      {
         pEncCuInfo->intraPartMode = (cuInfoBuf[AVC_INTRA_PART_MODE_BYTE_OFFSET] >> AVC_INTRA_PART_MODE_BIT_POSITION) & ((1 << AVC_INTRA_PART_MODE_BITS) - 1);
+        pEncCuInfo->costIntraSatd = (cuInfoBuf[INTRACOST_BYTE_OFFSET] >> INTRACOST_BIT_POSITION) & ((1 << INTRACOST_BITS) - 1);
+        pEncCuInfo->costInterSatd = (cuInfoBuf[INTERCOST_BYTE_OFFSET] >> INTERCOST_BIT_POSITION) & ((1 << INTERCOST_BITS) - 1);
+        pEncCuInfo->cost = (cuInfoBuf[AVC_RDCOST_BYTE_OFFSET] >> AVC_RDCOST_BIT_POSITION) & ((1 << AVC_RDCOST_BITS) - 1);
+        pEncCuInfo->costOfOtherMode = (cuInfoBuf[RDCOST_OTHER_BYTE_OFFSET] >> RDCOST_OTHER_BIT_POSITION) & ((1 << RDCOST_OTHER_BITS) - 1);
+      }
       else
         pEncCuInfo->interPredIdc = (cuInfoBuf[AVC_INTER_PRED_IDC_BYTE_OFFSET] >> AVC_INTER_PRED_IDC_BIT_POSITION) & ((1 << AVC_INTER_PRED_IDC_BITS) - 1);
     }
     // HEVC & AV1
     else
     {
-      uint8_t cuSizeId = ((cuInfoBuf[CU_SIZE_BYTE_OFFSET] >> CU_SIZE_BIT_POSITION) & ((1 << CU_SIZE_BITS) - 1));
-      pEncCuInfo->cuSize = 8 * (1 << (cuSizeId + 3));
+      uint8_t cuSizeId = pEncCuInfo->cuSize = (1 << (((cuInfoBuf[CU_SIZE_BYTE_OFFSET] >> CU_SIZE_BIT_POSITION) & ((1 << CU_SIZE_BITS) - 1)) + 3));
+      pEncCuInfo->cuSize = 8 * (1 << cuSizeId);
       pEncCuInfo->cuMode = (cuInfoBuf[CU_MODE_BYTE_OFFSET] >> CU_MODE_BIT_POSITION) & ((1 << CU_MODE_BITS) - 1);
-      data = READ_U32_FROM_BUF(cuInfoBuf, RDCOST_BYTE_OFFSET);
-      pEncCuInfo->cost = (data >> RDCOST_BIT_POSITION) & ((1 << RDCOST_BITS) - 1);
       if (pEncCuInfo->cuMode == 1) // intra
         pEncCuInfo->intraPartMode = (cuInfoBuf[INTRA_PART_MODE_BYTE_OFFSET] >> INTRA_PART_MODE_BIT_POSITION) & ((1 << INTRA_PART_MODE_BITS) - 1);
       else
         pEncCuInfo->interPredIdc = (cuInfoBuf[INTER_PRED_IDC_BYTE_OFFSET] >> INTER_PRED_IDC_BIT_POSITION) & ((1 << INTER_PRED_IDC_BITS) - 1);
     }
 
-    // COMMON
-    data = READ_U32_FROM_BUF(cuInfoBuf, RDCOST_OTHER_BYTE_OFFSET);
-    pEncCuInfo->costOfOtherMode = (data >> RDCOST_OTHER_BIT_POSITION) & ((1 << RDCOST_OTHER_BITS) - 1);
-    data = READ_U32_FROM_BUF(cuInfoBuf, INTRACOST_BYTE_OFFSET);
-    pEncCuInfo->costIntraSatd = (data >> INTRACOST_BIT_POSITION) & ((1 << INTRACOST_BITS) - 1);
-    data = READ_U32_FROM_BUF(cuInfoBuf, INTERCOST_BYTE_OFFSET);
-    pEncCuInfo->costInterSatd = (data >> INTERCOST_BIT_POSITION) & ((1 << INTERCOST_BITS) - 1);
-    data = READ_U32_FROM_BUF_2BYTES(cuInfoBuf, QP_BYTE_OFFSET);
+    data = cuInfoBuf[QP_BYTE_OFFSET] | (cuInfoBuf[QP_BYTE_OFFSET+1] << 8);
     pEncCuInfo->qp = (data >> QP_BIT_POSITION) & ((1 << QP_BITS) - 1);
 }
-
-
-static void get_bitstream_features_from_cu_info(ni_session_context_t *p_ctx, ni_packet_t *p_packet)
-{
-    if (!p_ctx || !p_packet)
-    {
-      ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR %s(): passed parameters are null!, return\n",
-             __func__);
-      return;
-    }
-
-    ni_metadata_enc_bstream_t *p_meta = (ni_metadata_enc_bstream_t *)p_packet->p_data;
-    if (p_meta->cuInfoSize != 0)
-    {
-      // bitstream features related parameters
-      uint8_t max_qp = 0;
-      int total_cu_count = 0;
-      int analyzed_mbs = 0; // intra 16x16, intra 8x8, intra 4x4 and inter blocks
-      int num_intra_block_blocks = 0; // intra 4x4 and 8x8 blocks (counted in 4x4)
-      int num_intra_plane_blocks = 0; // intra 16x16 blocks (counted in 4x4)
-      uint64_t qp_sum = 0;
-      uint64_t inter_pred_L0_qp_sum = 0;
-      uint64_t intra_plane_qp_sum = 0;
-      uint64_t intra_block_qp_sum = 0;
-      int inter_pred_L0_count = 0;
-      //int inter_pred_L1_count = 0;
-      //int inter_pred_BI_count = 0;
-      ni_bitstream_features_t *bitstream_features = &p_packet->bitstream_features;
-
-      // CU info related parameters
-      ni_encoder_cu_info cuInfo = {0};
-      uint8_t *ctuOffset = (uint8_t *)p_packet->p_data + p_packet->data_len - p_meta->cuInfoSize;
-      uint8_t *cuData = ctuOffset + p_meta->cuInfoTableSize + p_meta->aqInfoSize;
-      uint32_t *ctuTable = (uint32_t *)ctuOffset;
-      uint8_t *cuInfoBuf;
-      int width  = p_ctx->actual_video_width;
-      int height = p_ctx->active_video_height;
-      int ctu_per_row;
-      int ctu_per_column;
-      int iCtuX, iCtuY, nCu, iCu;
-      int iCtu = 0;
-
-      // AVC
-      if (p_ctx->codec_format == NI_CODEC_FORMAT_H264)
-      {
-        ctu_per_row = (width + 16 - 1) / 16;
-        ctu_per_column = (height + 16 - 1) / 16;
-      }
-      // HEVC & AV1
-      else
-      {
-        ctu_per_row = (width + 64 - 1) / 64;
-        ctu_per_column = (height + 64 - 1) / 64;
-      }
-
-      // check encoding pass CU info
-      for (iCtuY = 0; iCtuY < ctu_per_column; iCtuY++)
-      {
-        for (iCtuX = 0; iCtuX < ctu_per_row; iCtuX++)
-        {
-          // get number of CUs in CTU
-          if (p_ctx->codec_format == NI_CODEC_FORMAT_H264)
-          {
-            nCu = 1;
-            // set CU info buffer pointer to this MB
-            cuInfoBuf = cuData + iCtu * CU_INFO_OUTPUT_SIZE_V1;
-          }
-          else
-          {
-            nCu = ctuTable[iCtu];
-            if (iCtu)
-              nCu -= ctuTable[iCtu - 1];
-            // set CU info buffer pointer to this CTU
-            cuInfoBuf = cuData + (iCtu ? ctuTable[iCtu - 1] : 0) * CU_INFO_OUTPUT_SIZE_V1;
-          }
-
-          // check each inter CU's MV
-          for (iCu = 0; iCu < nCu; iCu++)
-          {
-            parse_cu_info(p_ctx, cuInfoBuf, &cuInfo);
-
-            total_cu_count++;
-            qp_sum += cuInfo.qp;
-            max_qp = cuInfo.qp > max_qp ? cuInfo.qp : max_qp;
-            //ni_log2(p_ctx, NI_LOG_TRACE, "mb %d (%d, %d) mb_qp %u\n", iCtuY * ctu_per_row + iCtuX, iCtuX, iCtuY, cuInfo.qp);
-
-            if (cuInfo.cuMode == 1) // intra
-            {
-              if (cuInfo.intraPartMode == 0) // Intra_2Nx2N (or 16x16 for AVC)
-              {
-                analyzed_mbs++;
-                num_intra_plane_blocks += (cuInfo.cuSize / 4) * (cuInfo.cuSize / 4);
-                intra_plane_qp_sum += 16ULL * cuInfo.qp;
-              }
-              else // Intra_NxN (or 8x8, 4x4 for AVC)
-              {
-                analyzed_mbs += 16;
-                num_intra_block_blocks += (cuInfo.cuSize / 4) * (cuInfo.cuSize / 4);
-                intra_block_qp_sum += 16ULL * cuInfo.qp;
-              }
-              //ni_log2(p_ctx, NI_LOG_TRACE, "pkt_num %d cu %d cost %d costOfOtherMode %d costIntraSatd %d costInterSatd %d intraPartMode %d analyzed_mbs %d\n",
-              //        p_ctx->pkt_num, total_cu_count, cuInfo.cost, cuInfo.costOfOtherMode, cuInfo.costIntraSatd, cuInfo.costInterSatd, cuInfo.intraPartMode, analyzed_mbs);
-            }
-            else // inter
-            {
-              analyzed_mbs++;
-              if (cuInfo.interPredIdc == 0) // Inter_L0
-              {
-                inter_pred_L0_count += 16;
-                inter_pred_L0_qp_sum += 16ULL * cuInfo.qp;
-              }
-              else if (cuInfo.interPredIdc == 1) // Inter_L1
-              {
-                // backward prediction blocks not stored in bitstream_features
-                //inter_pred_L1_count += 16;
-              }
-              else // Inter_BI
-              {
-                // bi-prediction blocks not stored in bitstream_features
-                //inter_pred_BI_count += 16;
-                if (p_ctx->p_session_config)
-                {
-                  ni_xcoder_params_t *api_param = (ni_xcoder_params_t *)p_ctx->p_session_config;
-                  int32_t gop_preset_index = api_param->cfg_enc_params.gop_preset_index;
-                  // for low delay gop patterns, bi-prediction blocks are also forward prediction blocks
-                  if (gop_preset_index == 3 || gop_preset_index == 7)
-                  {
-                    inter_pred_L0_count += 16;
-                    inter_pred_L0_qp_sum += 16ULL * cuInfo.qp;
-                  }
-                }
-                else
-                {
-                  ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR %s(): p_session_config is null!\n",
-                         __func__);
-                }
-              }
-            }
-
-            cuInfoBuf+=CU_INFO_OUTPUT_SIZE_V1;
-          }
-          // move forward CU info offset
-          iCtu++;
-        }
-      }
-
-      bitstream_features->average_qp = (float)qp_sum / total_cu_count;
-      bitstream_features->initial_qp = p_meta->ppsInitQp;
-      bitstream_features->max_qp = max_qp;
-      bitstream_features->avg_forward_pred_block_qp = inter_pred_L0_count > 0 ? (float)inter_pred_L0_qp_sum / inter_pred_L0_count : max_qp;
-      bitstream_features->analyzed_mbs = analyzed_mbs;
-      bitstream_features->avg_intra_block_qp = num_intra_block_blocks > 0 ? (float)intra_block_qp_sum / num_intra_block_blocks : max_qp;
-      bitstream_features->avg_intra_plane_qp = num_intra_plane_blocks > 0 ? (float)intra_plane_qp_sum / num_intra_plane_blocks : max_qp;
-      bitstream_features->num_intra_block_blocks = num_intra_block_blocks;
-      bitstream_features->num_intra_plane_blocks = num_intra_plane_blocks;
-      bitstream_features->num_skip_blocks = p_meta->skipCu8Num * 4;
-      bitstream_features->num_forward_pred_blocks = inter_pred_L0_count - bitstream_features->num_skip_blocks;
-      //ni_log2(p_ctx, NI_LOG_TRACE, "total_qp %llu mb_cnt %d av_qp %.2f\n",
-      //        qp_sum, total_cu_count, p_packet->average_qp);
-    }
-}
+#endif
 
 // Check for critical failures.
 // Invalid parameters or resource busy do not account for failures that cause error count to be incremented so they can be retried indefinitely
@@ -5007,72 +4753,6 @@ END:
     return retval;
 }
 
-// DEBUG
-#if 0
-// write bitstream features to log file
-static void ni_write_bitstream_features_internal(ni_session_context_t *p_enc_ctx, ni_packet_t *p_out_pkt)
-{
-  int itu_frame_type = ITU_FRAME_TYPE_NONE;
-  int video_codec_id = VODEO_CODEC_ID_H264;
-  int profile = H264_CODEC_PROFILE_MAIN;
-
-  if (!p_enc_ctx || !p_out_pkt || !p_enc_ctx->p_session_config ||
-      !(((ni_xcoder_params_t *)(p_enc_ctx->p_session_config))->cfg_enc_params.getBitstreamFeatures))
-  {
-    return;
-  }
-
-  itu_frame_type = (p_out_pkt->frame_type == NI_QUADRA_INTRA_FRAME) ? ITU_FRAME_TYPE_I :
-                                  (p_out_pkt->frame_type == NI_QUADRA_PREDICTED_FRAME) ? ITU_FRAME_TYPE_P :
-                                   (p_out_pkt->frame_type == NI_QUADRA_BIDIR_PREDICTED_FRAME) ? ITU_FRAME_TYPE_B : ITU_FRAME_TYPE_NONE;
-
-  video_codec_id = (p_enc_ctx->codec_format == NI_CODEC_FORMAT_H264) ? VODEO_CODEC_ID_H264 :
-                                  (p_enc_ctx->codec_format == NI_CODEC_FORMAT_H265) ? VODEO_CODEC_ID_HEVC :
-                                   (p_enc_ctx->codec_format == NI_CODEC_FORMAT_AV1) ? VODEO_CODEC_ID_AV1 : 0;
-
-  profile = ((ni_xcoder_params_t *)(p_enc_ctx->p_session_config))->cfg_enc_params.profile;
-
-  switch (video_codec_id)
-  {
-    case VODEO_CODEC_ID_H264:
-      profile = (profile == NI_QUADRA_H264_PROFILE_BASELINE) ? H264_CODEC_PROFILE_BASELINE :
-                    (profile == NI_QUADRA_H264_PROFILE_MAIN) ? H264_CODEC_PROFILE_MAIN :
-                     (profile == NI_QUADRA_H264_PROFILE_EXTENDED) ? H264_CODEC_PROFILE_EXTENDED :
-                      (profile == NI_QUADRA_H264_PROFILE_HIGH) ? H264_CODEC_PROFILE_HIGH : 0;
-      break;
-    case VODEO_CODEC_ID_HEVC:
-      profile = (profile == NI_QUADRA_HEVC_PROFILE_MAIN) ? HEVC_CODEC_PROFILE_MAIN :
-                    (profile == NI_QUADRA_HEVC_PROFILE_MAIN10) ? HEVC_CODEC_PROFILE_MAIN10 : 0;
-      break;
-    case VODEO_CODEC_ID_AV1:
-      profile = (profile == NI_QUADRA_AV1_PROFILE_MAIN) ? AV1_CODEC_PROFILE_MAIN : 0;
-      break;
-    default:
-      profile = 0;
-      break;
-  }
-
-
-  int frame_size = (p_enc_ctx->pkt_num == 1) ? p_enc_ctx->headers_length + p_out_pkt->data_len - p_enc_ctx->meta_size : p_out_pkt->data_len - p_enc_ctx->meta_size;
-  int quality_pixel_count = p_enc_ctx->actual_video_width * p_enc_ctx->active_video_height;
-  ni_bitstream_features_t *bitstream_features = &p_out_pkt->bitstream_features;
-
-  ni_log2(p_enc_ctx, NI_LOG_ERROR,  "%s: pkt #%" PRId64 "  Bitstream Features - "
-      "Av_QP: f=%.6f FrameSize: i32=%d InitialQP: i32=%d max_QP: i32=%d MbQPs_1_: f=%.6f "
-      "FrameType: i32=%d Sec_Codec: i32=%d Seq_Profile: i32=%d "
-      "MbQPs_5_: f=%.6f MbQPs_6_: f=%.6f AnalyzedMBs: i32=%d "
-      "MbTypes_5_: i32=%d MbTypes_6_: i32=%d MbTypes_0_: i32=%d MbTypes_1_: i32=%d "
-      "quality_pixel_count: i32=%d\n",
-      __func__, p_enc_ctx->pkt_num,
-      bitstream_features->average_qp, frame_size,
-      bitstream_features->initial_qp, bitstream_features->max_qp, bitstream_features->avg_forward_pred_block_qp,
-      itu_frame_type, video_codec_id, profile,
-      bitstream_features->avg_intra_block_qp, bitstream_features->avg_intra_plane_qp, bitstream_features->analyzed_mbs,
-      bitstream_features->num_intra_block_blocks, bitstream_features->num_intra_plane_blocks, bitstream_features->num_skip_blocks, bitstream_features->num_forward_pred_blocks,
-      quality_pixel_count);
-}
-#endif
-
 int ni_encoder_session_read(ni_session_context_t* p_ctx, ni_packet_t* p_packet)
 {
   ni_instance_mgr_stream_info_t data = { 0 };
@@ -5245,7 +4925,7 @@ int ni_encoder_session_read(ni_session_context_t* p_ctx, ni_packet_t* p_packet)
       LRETURN;
     } else
     {
-        if (((ni_xcoder_params_t *)p_ctx->p_session_config)->minFramesDelay & 0x2)
+        if (((ni_xcoder_params_t *)p_ctx->p_session_config)->minFramesDelay == 2)
         {
           if (p_ctx->pkt_num) // do not read until header is received
           {
@@ -5330,7 +5010,7 @@ int ni_encoder_session_read(ni_session_context_t* p_ctx, ni_packet_t* p_packet)
       p_packet->av1_show_frame = p_meta->av1_show_frame;
       ni_log2(p_ctx, NI_LOG_DEBUG,  "%s RECYCLE INDEX = %u!!!\n", __FUNCTION__, p_meta->recycle_index);
       ni_log2(p_ctx, NI_LOG_DEBUG,  "%s MetaDataSize %d FrameType %d AvgFrameQp %d ssim %d %d %d\n",
-        __FUNCTION__, p_meta->metadata_size, p_packet->frame_type, p_meta->avg_frame_qp, p_meta->ssimY, p_meta->ssimU, p_meta->ssimV);
+        __FUNCTION__, p_meta->metadata_size, p_meta->frame_type, p_meta->avg_frame_qp, p_meta->ssimY, p_meta->ssimU, p_meta->ssimV);
 
       if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
                             "6r2") >= 0)
@@ -5433,19 +5113,11 @@ int ni_encoder_session_read(ni_session_context_t* p_ctx, ni_packet_t* p_packet)
       p_meta = (ni_metadata_enc_bstream_t *)p_packet->p_data;
 
       // CU info parsing
-      if (((ni_xcoder_params_t *)(p_ctx->p_session_config))->cfg_enc_params.getBitstreamFeatures)
-      {
-        memset(&p_packet->bitstream_features, 0, sizeof(p_packet->bitstream_features));
-        get_bitstream_features_from_cu_info(p_ctx, p_packet);
-      }
+      // Add CU info parsing here
 
       if (p_meta && p_meta->cuInfoSize != 0)
       {
         p_packet->data_len -= p_meta->cuInfoSize;
-        // DEBUG
-  #if 0
-        ni_write_bitstream_features_internal(p_ctx, p_packet);
-  #endif
       }
     }
 
@@ -8575,10 +8247,6 @@ void ni_populate_device_capability_struct(ni_device_capability_t* p_cap, void* p
 
   memset(p_cap->fw_rev, 0, sizeof(p_cap->fw_rev));
   memcpy(p_cap->fw_rev, p_id_data->ai8Fr, sizeof(p_cap->fw_rev));
-
-  p_cap->warning_temp = p_id_data->ui16Wctemp;
-  p_cap->critical_temp = p_id_data->ui16Cctemp;
-
   ni_log(NI_LOG_DEBUG, "F/W rev: %.*s\n", (int)sizeof(p_cap->fw_rev),
                  p_cap->fw_rev);
 
@@ -9006,6 +8674,13 @@ void ni_set_custom_dec_template(ni_session_context_t *p_ctx,
   {
     ni_log2(p_ctx, NI_LOG_INFO, "Warning %s(): maxExtraHwFrameCnt is not support for FW < 6rB\n", __func__);
   }
+
+  p_cfg->ui8ExtendPoolSize = p_dec->extend_pool_size;
+  if (p_cfg->ui8ExtendPoolSize != 0 &&
+      ni_cmp_fw_api_ver((char *)&p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6sW") < 0)
+  {
+    ni_log2(p_ctx, NI_LOG_INFO, "Warning %s(): extendPoolSize is not support for FW < 6sW\n", __func__);
+  }
   p_cfg->ui8EcPolicy = p_dec->ec_policy;
   p_cfg->ui8EnableAdvancedEc = p_dec->enable_advanced_ec;
   p_cfg->ui32ErrRatioThreshold = p_dec->error_ratio_threshold;
@@ -9090,7 +8765,7 @@ void ni_set_custom_dec_template(ni_session_context_t *p_ctx,
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui8DisableAdaptiveBuffers = %u\n", p_cfg->ui8DisableAdaptiveBuffers);
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui32ErrRatioThreshold = %u\n", p_cfg->ui32ErrRatioThreshold);
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui8ReduceDpbDelay = %u\n", p_cfg->ui8ReduceDpbDelay);
-
+  ni_log2(p_ctx, NI_LOG_DEBUG, "ui8ExtendPoolSize = %u\n", p_cfg->ui8ExtendPoolSize);
 }
 
 
@@ -9153,7 +8828,6 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
   p_cfg->ui8adaptiveCrfMode = p_enc->adaptiveCrfMode;
   p_cfg->ui8intraCompensateMode = p_enc->intraCompensateMode;
   p_cfg->ui8customMinCoeffDiv = p_enc->customMinCoeffDiv;
-  p_cfg->ui8cutreeFlushIframe = (p_src->minFramesDelay >> 2);
 
   // enable_dynamic_8x8_merge, enable_dynamic_16x16_merge, enable_dynamic_32x32_merge,
   // trans_rate, enable_hvs_qp_scale:
@@ -10110,16 +9784,6 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
       p_cfg->ui8disableAv1TimingInfo = p_enc->disableAv1TimingInfo;
   }
 
-  if (p_enc->qpScaleEnable != 0)
-  {
-      p_cfg->ui8qpScaleEnable = p_enc->qpScaleEnable;
-  }
-
-  if (p_enc->getBitstreamFeatures != 0)
-  {
-      p_cfg->ui8getCuInfo = 1;
-  }
-
   ni_log2(p_ctx, NI_LOG_DEBUG, "lowDelay=%d\n", p_src->low_delay_mode);
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui8bitstreamFormat=%d\n", p_cfg->ui8bitstreamFormat);
   ni_log2(p_ctx, NI_LOG_DEBUG, "i32picWidth=%d\n", p_cfg->i32picWidth);
@@ -10443,8 +10107,6 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui8adaptiveLamdaMode=%u\n",p_cfg->ui8adaptiveLamdaMode);
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui8getCuInfo=%u\n", p_cfg->ui8getCuInfo);
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui8adaptiveCrfMode=%u\n",p_cfg->ui8adaptiveCrfMode);
-  ni_log2(p_ctx, NI_LOG_DEBUG, "ui8cutreeFlushIframe=%u\n",p_cfg->ui8cutreeFlushIframe);
-  ni_log2(p_ctx, NI_LOG_DEBUG, "ui8qpScaleEnable=%u\n", p_cfg->ui8qpScaleEnable);
 }
 
 /*!******************************************************************************
@@ -10842,8 +10504,6 @@ void ni_set_default_template(ni_session_context_t* p_ctx, ni_encoder_config_t* p
   p_config->ui8adaptiveLamdaMode = 0;
   p_config->ui8getCuInfo = 0;
   p_config->ui8adaptiveCrfMode = 0;
-  p_config->ui8cutreeFlushIframe = 0;
-  p_config->ui8qpScaleEnable = 0;
 }
 
 /*!******************************************************************************
@@ -11121,7 +10781,7 @@ END:
 }
 
 // Check encoder level parameters
-static ni_retcode_t ni_check_level(int level, int codec_id, int *level_index)
+static ni_retcode_t ni_check_level(int level, int codec_id)
 {
     const int l_levels_264[] = {10, 11, 12, 13, 20, 21, 22, 30, 31, 32,
                                 40, 41, 42, 50, 51, 52, 60, 61, 62, 0};
@@ -11129,9 +10789,6 @@ static ni_retcode_t ni_check_level(int level, int codec_id, int *level_index)
                                 50, 51, 52, 60, 61, 62, 0};
     const int l_levels_av1[] = {20, 21, 30, 31, 40, 41, 50, 51, 52, 53, 60, 61, 62, 63, 0};
     const int *l_levels = l_levels_264;
-    int index = 0;
-
-    *level_index = -1;
 
     if (level == 0)
     {
@@ -11150,205 +10807,12 @@ static ni_retcode_t ni_check_level(int level, int codec_id, int *level_index)
     {
         if (*l_levels == level)
         {
-            *level_index = index;
             return NI_RETCODE_SUCCESS;
         }
         l_levels++;
-        index++;
     }
 
     return NI_RETCODE_FAILURE;
-}
-
-static uint32_t get_max_pic_size( ni_codec_format_t codecFormat , int32_t levelIdx )
-{
-  assert( levelIdx >= 0);
-  int32_t level      = MAX(0, levelIdx);
-  uint32_t maxPicSize = 0;
-
-  switch( codecFormat )
-  {
-    case NI_CODEC_FORMAT_H265:
-      assert( level < HEVC_LEVEL_NUM );
-      level      = MIN( level, (HEVC_LEVEL_NUM - 1));
-      maxPicSize = max_pic_size_h265[ level ];
-      break;
-
-    case NI_CODEC_FORMAT_H264:
-      assert( level < H264_LEVEL_NUM );
-      level      = MIN( level, (H264_LEVEL_NUM - 1));
-      maxPicSize = max_pic_size_h264[ level ];
-      break;
-
-    case NI_CODEC_FORMAT_AV1:
-      level      = MIN( level, (AV1_LEVEL_NUM - 1));
-      maxPicSize = max_pic_size_av1[ level ];
-      break;
-
-    default:
-      break;
-  }
-
-  return maxPicSize;
-}
-
-static uint64_t get_max_sample_rate_second( ni_codec_format_t codecFormat , int32_t levelIdx )
-{
-  assert( levelIdx >= 0);
-  int32_t level   = MAX(0, levelIdx);
-  uint64_t maxSBPS = 0;
-
-  switch( codecFormat )
-  {
-    case NI_CODEC_FORMAT_H265:
-      assert( level < HEVC_LEVEL_NUM );
-      level   = MIN( level, (HEVC_LEVEL_NUM - 1));
-      maxSBPS = max_sample_rate_second_h265[ level ];
-      break;
-
-    case NI_CODEC_FORMAT_H264:
-      assert( level < H264_LEVEL_NUM );
-      level   = MIN( level, (H264_LEVEL_NUM - 1));
-      maxSBPS = max_sample_rate_second_h264[ level ];
-      break;
-
-    case NI_CODEC_FORMAT_AV1:
-      level   = MIN( level, (AV1_LEVEL_NUM - 1));
-      maxSBPS = max_sample_rate_second_av1[ level ];
-      break;
-
-    default:
-      break;
-  }
-
-  return maxSBPS;
-}
-
-// type 0: returns maximum bitrate, type 1: returns maximum vbv buffer size
-static uint32_t get_max_cpb_bitrate( ni_codec_format_t codecFormat , int32_t levelIdx, int32_t profile, int32_t tier, int32_t type )
-{
-  assert( levelIdx >= 0);
-  int32_t level     = MAX(0, levelIdx);
-  uint32_t maxBR    = 0;
-
-  switch( codecFormat )
-  {
-    case NI_CODEC_FORMAT_H265:
-      assert( level < HEVC_LEVEL_NUM );
-      level   = MIN( level, (HEVC_LEVEL_NUM - 1));
-      maxBR   = (tier == HIGH_TIER) ? max_cpb_hightier_second_h265[ level ] : max_cpb_second_h265[ level ];
-      break;
-
-    case NI_CODEC_FORMAT_H264:
-      assert( level < H264_LEVEL_NUM );
-      level   = MIN( level, (H264_LEVEL_NUM - 1));
-      float h264_high10_factor = 1;
-      if(profile == 4) /* High Profile */
-        h264_high10_factor = 1.25;
-      else if(profile == 5) /* High 10 Profile */
-        h264_high10_factor = 3.0;
-      if(type == 0)
-        maxBR   = (uint32_t)(max_bitrate_h264[ level ] * h264_high10_factor);
-      else
-        maxBR   = (uint32_t)(max_cpb_second_h264[ level ] * h264_high10_factor);
-      break;
-
-    case NI_CODEC_FORMAT_AV1:
-      level   = MIN( level, (AV1_LEVEL_NUM - 1));
-      maxBR   = ((level > 7) && (tier == HIGH_TIER)) ? max_cpb_hightier_second_av1[ level ] : max_cpb_second_av1[ level ];
-      break;
-
-    default:
-      break;
-  }
-
-  return maxBR;
-}
-
-// Check encoder level parameters
-static ni_retcode_t ni_check_level_tier_compliance(int level,
-                                              ni_session_context_t *p_ctx,
-                                              ni_encoder_config_t *p_cfg,
-                                              ni_xcoder_params_t *p_src,
-                                              char *p_param_err,
-                                              char* p_param_warn,
-                                              uint32_t max_err_len,
-                                              ni_retcode_t *warning,
-                                              int level_index)
-{
-    if( (!p_ctx) || (!p_cfg) || (!p_src) || (!p_param_err) || (!p_param_warn) || (!warning) )
-    {
-        ni_log(NI_LOG_ERROR, "ERROR: %s() Null pointer parameters passed\n", __func__);
-        return NI_RETCODE_INVALID_PARAM;
-    }
-
-    // level and tier check
-    uint32_t sample_per_picture = p_src->source_width * p_src->source_height;
-    uint64_t sample_per_second = sample_per_picture * p_cfg->i32frameRateInfo / p_cfg->i32frameRateDenominator;
-    uint32_t max_pic_size = get_max_pic_size(p_ctx->codec_format, level_index);
-    uint64_t max_sample_rate_second = get_max_sample_rate_second(p_ctx->codec_format, level_index);
-    uint32_t max_bitrate = get_max_cpb_bitrate(p_ctx->codec_format, level_index, p_cfg->niParamT408.profile, p_cfg->niParamT408.tier, 0);
-    uint32_t max_vbv = get_max_cpb_bitrate(p_ctx->codec_format, level_index, p_cfg->niParamT408.profile, p_cfg->niParamT408.tier, 1);
-
-    ni_log2(p_ctx, NI_LOG_DEBUG, "%s(): sample_per_picture %u sample_per_second %" PRIu64 " fr num %d den %d level_index %d\n",
-             __func__, sample_per_picture, sample_per_second, p_cfg->i32frameRateInfo, p_cfg->i32frameRateDenominator,
-             level_index);
-    ni_log2(p_ctx, NI_LOG_DEBUG, "%s(): max_pic_size %d max_sample_rate_second %" PRIu64 " max_bitrate %u\n",
-             __func__, max_pic_size, max_sample_rate_second, max_bitrate);
-
-    ni_log2(p_ctx, NI_LOG_DEBUG, "%s(): i8crf %d i32bitRate %d ui32vbvMaxRate %u i32vbvBufferSize %d\n",
-             __func__, p_cfg->i8crf, p_cfg->i32bitRate, p_cfg->ui32vbvMaxRate, p_cfg->i32vbvBufferSize);
-
-    if (p_cfg->i8crf != -1)
-    {
-        if(p_cfg->i32vbvBufferSize == 0)
-        {
-            snprintf(p_param_warn, max_err_len, "Level (%.1f): Switched crf to capped crf to be compliant with the level",
-                (float) level/10);
-            *warning = NI_RETCODE_PARAM_WARN;
-            p_cfg->ui32vbvMaxRate = p_cfg->i32bitRate = max_bitrate;
-            p_cfg->i32vbvBufferSize = 1000;
-        }
-    }
-    else if (p_cfg->ui8rcEnable == 0) // enable rate control if fixed QP mode
-    {
-        ni_strncpy(p_param_warn, max_err_len, "Enabled rate control because level parameter is used", max_err_len - 1);
-        *warning = NI_RETCODE_PARAM_WARN;
-        p_cfg->ui8rcEnable = p_src->cfg_enc_params.rc.enable_rate_control = 1;
-        p_cfg->i32vbvBufferSize = 1000;
-    }
-
-    if(sample_per_picture > max_pic_size)
-    {
-        snprintf(p_param_err, max_err_len, "Invalid Encoder Level (%.1f): picture size %u exceeds supported limits %u",
-            (float) level/10, sample_per_picture, max_pic_size);
-        return NI_RETCODE_INVALID_PARAM;
-    }
-
-    if(sample_per_second > max_sample_rate_second)
-    {
-        snprintf(p_param_err, max_err_len, "Invalid Encoder Level (%.1f): picture sample rate %" PRIu64 " exceeds supported limits %" PRIu64 "",
-            (float) level/10, sample_per_second, max_sample_rate_second);
-        return NI_RETCODE_INVALID_PARAM;
-    }
-
-    if(p_cfg->i32bitRate > (int32_t)max_bitrate)
-    {
-        snprintf(p_param_warn, max_err_len, "Level (%.1f): bitrate %d exceeds supported limit. Changed it to maximum %u",
-            (float) level/10, p_cfg->i32bitRate, max_bitrate);
-        *warning = NI_RETCODE_PARAM_WARN;
-        p_cfg->i32bitRate = (int32_t)max_bitrate;
-    }
-
-    if(p_cfg->ui32vbvMaxRate > (int32_t)max_vbv)
-    {
-        snprintf(p_param_warn, max_err_len, "Level (%.1f): vbvMaxRate %u exceeds supported limit. Changed it to maximum %u",
-            (float) level/10, p_cfg->ui32vbvMaxRate, max_vbv);
-        *warning = NI_RETCODE_PARAM_WARN;
-        p_cfg->ui32vbvMaxRate = (int32_t)max_vbv;
-    }
-
-    return NI_RETCODE_SUCCESS;
 }
 
 /*!******************************************************************************
@@ -11369,7 +10833,6 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
   char* p_param_warn = malloc(sizeof(p_ctx->param_err_msg));
   ni_encoder_cfg_params_t *p_enc;
   int i;
-  int level_index = 0;
 
   if( (!p_ctx) || (!p_cfg) || (!p_src) || (!p_param_err) )
   {
@@ -11678,22 +11141,12 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       }
   }
 
-  if (p_src->cfg_enc_params.level_idc)
+  if (NI_RETCODE_SUCCESS !=
+      ni_check_level(p_src->cfg_enc_params.level_idc, p_ctx->codec_format))
   {
-      if (NI_RETCODE_SUCCESS !=
-          ni_check_level(p_src->cfg_enc_params.level_idc, p_ctx->codec_format, &level_index))
-      {
-          ni_strncpy(p_param_err, max_err_len, "Invalid Encoder Level: out of range", max_err_len - 1);
-          param_ret = NI_RETCODE_PARAM_ERROR_OOR;
-          LRETURN;
-      }
-
-      param_ret = ni_check_level_tier_compliance(
-          p_src->cfg_enc_params.level_idc, p_ctx, p_cfg, p_src, p_param_err, p_param_warn, max_err_len, &warning, level_index);
-      if(param_ret != NI_RETCODE_SUCCESS)
-      {
-          LRETURN;
-      }
+      ni_strncpy(p_param_err, max_err_len, "Invalid Encoder Level: out of range", max_err_len - 1);
+      param_ret = NI_RETCODE_PARAM_ERROR_OOR;
+      LRETURN;
   }
 
   if ((p_src->cfg_enc_params.intra_mb_refresh_mode < 0 ||
@@ -11994,36 +11447,6 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
           }
       }
 
-      if (p_cfg->ui8qpScaleEnable != 0)
-      {
-          if (p_cfg->ui8LookAheadDepth == 0 || p_cfg->ui8LookAheadDepth == 1)
-          {
-              ni_strncpy(p_param_err, max_err_len,
-                      "qpScaleEnable is invalid without lookahead",
-                      max_err_len - 1);
-              param_ret = NI_RETCODE_PARAM_ERROR_LOOK_AHEAD_DEPTH;
-              LRETURN;
-          }
-
-          if (p_cfg->i8crf < 0)
-          {
-              ni_strncpy(p_param_err, max_err_len,
-                      "qpScaleEnable is only supported in CRF or Capped CRF modes",
-                      max_err_len - 1);
-              param_ret = NI_RETCODE_INVALID_PARAM;
-              LRETURN;
-          }
-
-          if (p_cfg->ui8adaptiveCrfMode != 0)
-          {
-              ni_strncpy(p_param_err, max_err_len,
-                      "adaptiveCrfMode is invalid when qpScaleEnable",
-                      max_err_len - 1);
-              param_ret = NI_RETCODE_INVALID_PARAM;
-              LRETURN;
-          }
-      }
-
       if (GOP_PRESET_IDX_DEFAULT == p_cfg->niParamT408.gop_preset_index)
       {
           // when gop_preset_index = -1 (default), gop pattern is decided by gopSize and gopLowdelay
@@ -12193,22 +11616,12 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         {
           break;
         }
-        else
+        else if (NI_RETCODE_SUCCESS !=
+          ni_check_level((int)p_cfg->ui8av1OpLevel[i], p_ctx->codec_format))
         {
-            if (NI_RETCODE_SUCCESS !=
-              ni_check_level((int)p_cfg->ui8av1OpLevel[i], p_ctx->codec_format, &level_index))
-            {
-                ni_strncpy(p_param_err, max_err_len, "Invalid av1OpLevel: out of range", max_err_len - 1);
-                param_ret = NI_RETCODE_PARAM_ERROR_OOR;
-                LRETURN;
-            }
-
-            param_ret = ni_check_level_tier_compliance(
-                p_cfg->ui8av1OpLevel[i], p_ctx, p_cfg, p_src, p_param_err, p_param_warn, max_err_len, &warning, level_index);
-            if(param_ret != NI_RETCODE_SUCCESS)
-            {
-                LRETURN;
-            }
+            ni_strncpy(p_param_err, max_err_len, "Invalid av1OpLevel: out of range", max_err_len - 1);
+            param_ret = NI_RETCODE_PARAM_ERROR_OOR;
+            LRETURN;
         }
       }
       if (i > 0)
@@ -12430,13 +11843,6 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
-      if (p_enc->getBitstreamFeatures)
-      {
-          ni_strncpy(p_param_err, max_err_len, "getBitstreamFeatures is not supported for h.265 encoder",
-                  max_err_len - 1);
-          param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
-          LRETURN;
-      }
     }
   } else if (NI_CODEC_FORMAT_AV1 == p_ctx->codec_format)
   {
@@ -12569,13 +11975,6 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       if (p_cfg->ui8vbvBufferReencode && p_cfg->ui8multicoreJointMode)
       {
           ni_strncpy(p_param_err, max_err_len, "vbvBufferReencode is not supported for av1 multicoreJointMode", max_err_len - 1);
-          param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
-          LRETURN;
-      }
-      if (p_enc->getBitstreamFeatures)
-      {
-          ni_strncpy(p_param_err, max_err_len, "getBitstreamFeatures is not supported for av1 encoder",
-                  max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
@@ -13040,14 +12439,6 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       if (p_cfg->ui8av1OpLevel[0] != 0)
       {
           ni_strncpy(p_param_err, max_err_len, "av1OpLevel is not supported for Jpeg",
-                  max_err_len - 1);
-          param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
-          LRETURN;
-      }
-      if (p_enc->getBitstreamFeatures != 0)
-      {
-          ni_strncpy(p_param_err, max_err_len,
-                  "getBitstreamFeatures is not supported for jpeg encoder",
                   max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
@@ -13591,41 +12982,6 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         warning = NI_RETCODE_PARAM_WARN;
         p_cfg->ui8avccHvcc = 0;
       }
-    }
-
-    if (p_enc->getBitstreamFeatures)
-    {
-        if(1 != p_cfg->niParamT408.gop_preset_index &&
-            3 != p_cfg->niParamT408.gop_preset_index &&
-            7 != p_cfg->niParamT408.gop_preset_index &&
-            9 != p_cfg->niParamT408.gop_preset_index)
-        {
-            ni_strncpy(p_param_err, max_err_len,
-                    "getBitstreamFeatures is only supported for gopPresetIndex 1, 3, 7, 9",
-                    max_err_len - 1);
-            param_ret = NI_RETCODE_PARAM_ERROR_GOP_PRESET;
-            LRETURN;
-        }
-
-        if (p_cfg->ui32cropWidth || p_cfg->ui32cropHeight)
-        {
-            ni_strncpy(p_param_err, max_err_len,
-                    "getBitstreamFeatures is not supported when Crop Width > 0 || Crop Height > 0",
-                    max_err_len - 1);
-            param_ret = NI_RETCODE_INVALID_PARAM;
-            LRETURN;
-        }
-
-        if (ni_cmp_fw_api_ver(
-                (char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
-                "6sM") < 0)
-        {
-            ni_strncpy(p_param_err, max_err_len,
-                  "getBitstreamFeatures is not supported in FW API version < 6sM\n",
-                      max_err_len - 1);
-            param_ret = NI_RETCODE_INVALID_PARAM;
-            LRETURN;
-        }
     }
   }
 
@@ -14283,7 +13639,7 @@ void *ni_session_keep_alive_thread(void *arguments)
     ni_retcode_t retval = NI_RETCODE_SUCCESS;
     ni_thread_arg_struct_t *args = (ni_thread_arg_struct_t *)arguments;
     ni_session_stats_t inst_info = {0};
-    ni_session_context_t *session_ctx = NULL;
+    ni_session_context_t ctx = {0};
     uint64_t endtime = ni_gettime_ns();
     uint64_t current_time;
     ni_pthread_mutex_t *p_mutex;
@@ -14349,34 +13705,29 @@ void *ni_session_keep_alive_thread(void *arguments)
 #endif
 #endif
     // Initializes the session context variables that keep alive command and query status command need.
-    session_ctx = ni_device_session_context_alloc_init();
-    if (!session_ctx)
-    {
-        retval = NI_RETCODE_ERROR_MEM_ALOC;
-        LRETURN;
-    }
-    session_ctx->last_access_time = endtime;
-    session_ctx->hw_id = args->hw_id;
-    session_ctx->session_id = args->session_id;
-    session_ctx->session_timestamp = args->session_timestamp;
-    session_ctx->device_type = args->device_type;
-    session_ctx->blk_io_handle = args->device_handle;
-    session_ctx->event_handle = args->thread_event_handle;
-    session_ctx->p_all_zero_buf = args->p_buffer;
-    session_ctx->keep_alive_timeout = args->keep_alive_timeout;
+    ni_device_session_context_init(&ctx);
+    ctx.last_access_time = endtime;
+    ctx.hw_id = args->hw_id;
+    ctx.session_id = args->session_id;
+    ctx.session_timestamp = args->session_timestamp;
+    ctx.device_type = args->device_type;
+    ctx.blk_io_handle = args->device_handle;
+    ctx.event_handle = args->thread_event_handle;
+    ctx.p_all_zero_buf = args->p_buffer;
+    ctx.keep_alive_timeout = args->keep_alive_timeout;
     volatile uint64_t * plast_access_time = args->plast_access_time;
-    if((session_ctx->last_access_time - *plast_access_time) >=
-            (uint64_t)(session_ctx->keep_alive_timeout * 1000000000LL))
+    if((ctx.last_access_time - *plast_access_time) >=
+            (uint64_t)(ctx.keep_alive_timeout * 1000000000LL))
     {
       ni_log(NI_LOG_ERROR,
             "%s creation timeout. session_id=0x%X requested timeout: %" PRIu64
             "ns, ping time delta: %" PRIu64 "ns\n ",
-            __func__, session_ctx->session_id,
-            (uint64_t)session_ctx->keep_alive_timeout * 1000000000LL,
-            session_ctx->last_access_time - *plast_access_time);
+            __func__, ctx.session_id,
+            (uint64_t)ctx.keep_alive_timeout * 1000000000LL,
+            ctx.last_access_time - *plast_access_time);
     }
     ni_log(NI_LOG_DEBUG, "%s ctx.keep_alive_timeout: %us.\n", __func__,
-           session_ctx->keep_alive_timeout);
+           ctx.keep_alive_timeout);
     p_mutex = args->p_mutex;
 
     for (;;)
@@ -14384,13 +13735,11 @@ void *ni_session_keep_alive_thread(void *arguments)
         ni_pthread_mutex_lock(p_mutex);
 
         retval =
-            ni_send_session_keep_alive(session_ctx->session_id,
-                                       session_ctx->blk_io_handle,
-                                       session_ctx->event_handle,
-                                       session_ctx->p_all_zero_buf);
+            ni_send_session_keep_alive(ctx.session_id, ctx.blk_io_handle,
+                                       ctx.event_handle, ctx.p_all_zero_buf);
 
-        retval = ni_query_session_stats(session_ctx,
-                               session_ctx->device_type,
+        retval = ni_query_session_stats(&ctx,
+                               ctx.device_type,
                                &inst_info,
                                retval,
                                nvme_admin_cmd_xcoder_config);
@@ -14399,9 +13748,9 @@ void *ni_session_keep_alive_thread(void *arguments)
         {
             retval = ni_nvme_check_error_code(inst_info.ui32LastTransactionCompletionStatus,
                                             nvme_admin_cmd_xcoder_config,
-                                            session_ctx->device_type,
-                                            session_ctx->hw_id,
-                                            &(session_ctx->session_id));
+                                            ctx.device_type,
+                                            ctx.hw_id,
+                                            &(ctx.session_id));
         }
 
         ni_pthread_mutex_unlock(p_mutex);
@@ -14415,37 +13764,37 @@ void *ni_session_keep_alive_thread(void *arguments)
                  but LastTransactionCompletionStatus may be overwrited and cause
                  incorrect log. In this case, check LastErrorStatus.*/
                 ni_log(NI_LOG_ERROR, "session_no 0x%x inst_err_no may be overwrited!\n",
-                                  session_ctx->session_id);
+                                  ctx.session_id);
                 ni_nvme_check_error_code(inst_info.ui32LastErrorStatus,
                                   nvme_admin_cmd_xcoder_config,
-                                  session_ctx->device_type,
-                                  session_ctx->hw_id,
-                                  &(session_ctx->session_id));
+                                  ctx.device_type,
+                                  ctx.hw_id,
+                                  &(ctx.session_id));
                 error_status = inst_info.ui32LastErrorStatus;
             }
             ni_log(NI_LOG_ERROR,
                    "Persistent failures detected, %s() line-%d: session_no 0x%x sess_err_no %u "
                    "inst_err_no %u\n",
-                   __func__, __LINE__, session_ctx->session_id, inst_info.ui16ErrorCount, error_status);
+                   __func__, __LINE__, ctx.session_id, inst_info.ui16ErrorCount, error_status);
             LRETURN;
         }
         current_time = ni_gettime_ns();
         /*If the interval between two heartbeats is greater then expected(interval) or
         acceptable(timeout) then the thread might have been blocked.*/
-        if ((current_time - session_ctx->last_access_time) >= (2 * interval) ||   //*2 is for safety
-            (current_time - session_ctx->last_access_time) >=
+        if ((current_time - ctx.last_access_time) >= (2 * interval) ||   //*2 is for safety
+            (current_time - ctx.last_access_time) >=
                 (uint64_t)(args->keep_alive_timeout * 1000000000LL))
         {
             ni_log(
                 NI_LOG_INFO,
                 "%s was possibly blocked. session_id=0x%X requested timeout: %" PRIu64
                 "ns, ping time delta: %" PRIu64 "ns\n ",
-                __func__, session_ctx->session_id,
-                (uint64_t)session_ctx->keep_alive_timeout * 1000000000LL,
-                current_time - session_ctx->last_access_time);
+                __func__, ctx.session_id,
+                (uint64_t)ctx.keep_alive_timeout * 1000000000LL,
+                current_time - ctx.last_access_time);
         }
-        *plast_access_time = session_ctx->last_access_time = current_time;
-        if (session_ctx->session_id == NI_INVALID_SESSION_ID)
+        *plast_access_time = ctx.last_access_time = current_time;
+        if (ctx.session_id == NI_INVALID_SESSION_ID)
         {
             retval = NI_RETCODE_ERROR_INVALID_SESSION;
         }
@@ -14480,7 +13829,7 @@ END:
         args->close_thread = true;
     }
 
-    ni_device_session_context_free(session_ctx);
+    ni_device_session_context_clear(&ctx);
 
     ni_log(NI_LOG_DEBUG, "%s(): exit\n", __func__);
 
@@ -17579,25 +16928,7 @@ ni_retcode_t ni_config_instance_hvsplus(ni_session_context_t *p_ctx)
 
     ((ni_instance_mgr_stream_info_t *)p_stream_info)->picture_width = p_ctx->active_video_width;
     ((ni_instance_mgr_stream_info_t *)p_stream_info)->picture_height = p_ctx->active_video_height;
-    if (p_ctx->hvsplus_type == 0)
-    {
-        ((ni_instance_mgr_stream_info_t *)p_stream_info)->ai_model_type = AI_MODEL_TYPE_HVSPLUS_FILTER;
-    }
-    else
-    {
-        if (ni_cmp_fw_api_ver(
-            (char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
-            "6sW") >= 0)
-        {
-            ((ni_instance_mgr_stream_info_t *)p_stream_info)->ai_model_type = AI_MODEL_TYPE_USM_FILTER;
-        }
-        else
-        {
-            ni_log2(p_ctx, NI_LOG_ERROR, "ERROR: USM filter not support for FW version lower than 6sW\n");
-            retval = NI_RETCODE_INVALID_PARAM;
-            LRETURN;
-        }
-    }
+    ((ni_instance_mgr_stream_info_t *)p_stream_info)->ai_model_type = AI_MODEL_TYPE_HVSPLUS_FILTER;
     ((ni_instance_mgr_stream_info_t *)p_stream_info)->ai_enhance_level = p_ctx->hvsplus_level;
     ((ni_instance_mgr_stream_info_t *)p_stream_info)->pix_format = p_ctx->pixel_format;
 
@@ -19662,9 +18993,6 @@ char *ni_get_core_name(ni_core_type_t eCoreType)
         case FP_CORE:
             CoreName = (char *)"fp";
             break;
-        case FL_CORE:
-            CoreName = (char *)"fl";
-            break;
         default:
             CoreName = (char *)"Not Found";
             break;
@@ -19692,9 +19020,6 @@ uint32_t ni_get_log_lba(ni_core_type_t eCoreType)
         case FP_CORE:
             lba = FP_LOG_OFFSET_IN_4K;
             break;
-        case FL_CORE:
-            lba = FL_LOG_OFFSET_IN_4K;
-            break;
         default:
             ni_log(NI_LOG_ERROR, "%s:() Invalid core ID:%u\n", __func__, eCoreType);
             lba = 0;
@@ -19702,49 +19027,6 @@ uint32_t ni_get_log_lba(ni_core_type_t eCoreType)
     }
 
     return lba;
-}
-
-static int ni_write_fl_log_decoded_file(void *p_data, uint32_t buf_len, FILE *p_file)
-{
-    uint32_t fllen;
-    uint32_t flsign;
-    uint32_t log_lines;
-    uint64_t payload_u;
-    size_t payload_len;
-    size_t max_payload;
-    const uint8_t *in;
-    uint8_t *out;
-    size_t i, j;
-
-    if (buf_len < 4 || !p_data || !p_file)
-        return -1;
-
-    memcpy(&flsign, p_data, sizeof(flsign));
-    if (flsign != FL_SIGNATURE)
-    {
-        return -4;
-    }
-    memcpy(&fllen, (const uint8_t *)p_data + 4, sizeof(fllen));
-    log_lines = fllen & 0xFFFFFFU;
-    payload_u = (uint64_t)log_lines * 128ULL;
-    max_payload = (size_t)buf_len - 4;
-    payload_len = (payload_u > max_payload) ? max_payload : (size_t)payload_u;
-
-    in = (const uint8_t *)p_data + 8;
-    out = (uint8_t *)malloc(payload_len ? payload_len : 1);
-    if (!out)
-        return -2;
-
-    for (i = 0, j = 0; i < payload_len; i++)
-        if (in[i] != 0)
-            out[j++] = in[i];
-
-    if (j > 0 && fwrite(out, 1, j, p_file) != j) {
-        free(out);
-        return -3;
-    }
-    free(out);
-    return 0;
 }
 
 ni_retcode_t  ni_dump_log_single_core(ni_session_context_t *p_ctx, void* p_data, uint32_t core_id, bool gen_log_file)
@@ -19763,15 +19045,7 @@ ni_retcode_t  ni_dump_log_single_core(ni_session_context_t *p_ctx, void* p_data,
         return NI_RETCODE_INVALID_PARAM;
     }
 
-    if (core_id == FL_CORE)
-    {
-       data_len = CPU_FL_LOG_BUFFER_SIZE * CPU_FL_LOG_BUFFER_LEN;
-       memset(p_data, 0, CPU_FL_LOG_BUFFER_SIZE * CPU_FL_LOG_BUFFER_LEN);
-    }
-    else
-    {
-        memset(p_data, 0, CPU_LOG_BUFFER_SIZE);
-    }
+    memset(p_data, 0, CPU_LOG_BUFFER_SIZE);
     *(uint8_t *)p_data = 0x55;
 
     lba = ni_get_log_lba((ni_core_type_t)core_id);
@@ -19842,39 +19116,10 @@ ni_retcode_t  ni_dump_log_single_core(ni_session_context_t *p_ctx, void* p_data,
                 p_ctx->blk_io_handle, core_name, filename);
 #endif
         ni_fopen(&p_file, filename, "wb");
-
         if (p_file)
         {
-            if (core_id == FL_CORE)
-            {
-              int wrc = ni_write_fl_log_decoded_file(p_data, data_len, p_file);
-              if (wrc == -2)
-              {
-                ni_log2(p_ctx, NI_LOG_INFO, "%s:():%d: FL log decode: malloc failed\n",
-                    __func__, __LINE__);
-                    retval = NI_RETCODE_FAILURE;
-              }
-              else if (wrc == -3)
-              {
-                ni_log2(p_ctx, NI_LOG_INFO, "%s:():%d: FL log decode: fwrite failed\n",
-                    __func__, __LINE__);
-                retval = NI_RETCODE_FAILURE;
-              }
-              else if (wrc == -1)
-              {
-                ni_log2(p_ctx, NI_LOG_INFO, "%s:():%d: FL log decode: invalid buffer\n",
-                      __func__, __LINE__);
-                retval = NI_RETCODE_FAILURE;
-              }
-              else if (wrc == -4)
-              {
-                ni_log2(p_ctx, NI_LOG_INFO, "%s:():%d: FL log decode: invalid signature\n",
-                      __func__, __LINE__);
-                retval = NI_RETCODE_FAILURE;
-              }
-
-            }
-            else if (fwrite((uint8_t *)p_data ,
+            /* Write out the stream header */
+            if (fwrite((uint8_t *)p_data ,
                        data_len, 1, p_file) != 1)
             {
                 ni_log2(p_ctx, NI_LOG_ERROR, "%s:():%d: Error: writing data %u bytes error!\n",
@@ -19904,7 +19149,6 @@ ni_retcode_t  ni_dump_log_single_core(ni_session_context_t *p_ctx, void* p_data,
 ni_retcode_t ni_dump_log_all_cores(ni_session_context_t *p_ctx, void* p_data, bool gen_log_file)
 {
     int i = 1;
-    int max_cores = 0;
 
     if (!p_ctx || !p_data)
     {
@@ -19913,16 +19157,7 @@ ni_retcode_t ni_dump_log_all_cores(ni_session_context_t *p_ctx, void* p_data, bo
         return NI_RETCODE_INVALID_PARAM;
     }
 
-    if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
-                          "6t1") < 0)
-    {
-        max_cores = FP_CORE;
-    }
-    else
-    {
-        max_cores = FL_CORE;
-    }
-    for (i = NVME_CORE; i<= max_cores; i++)
+    for (i = NVME_CORE; i< NUM_OF_CORES; i++)
     {
         ni_dump_log_single_core(p_ctx, p_data, i, gen_log_file);
         p_data = (void*)((uint8_t *)p_data + CPU_LOG_BUFFER_SIZE);
@@ -19931,40 +19166,16 @@ ni_retcode_t ni_dump_log_all_cores(ni_session_context_t *p_ctx, void* p_data, bo
     return NI_RETCODE_SUCCESS;
 }
 
-/*!*****************************************************************************
- *  \brief   Generates and writes a nvme command with sgl list
- *
- *  \param[in] p_ctx          Pointer to source card session
- *  \param[in] pSrcFrame      Pointer to source P2P frame
- *  \param[in] dmaAddrs       Destination DMA address on target device
- *
- *  \return on success
- *              NI_RETCODE_SUCCESS
- *          on failure
- *              NI_RETCODE_INVALID_PARAM
- *              NI_RETCODE_ERROR_INVALID_SESSION
- *              NI_RETCODE_ERROR_MEM_ALOC
- *              NI_RETCODE_ERROR_NVME_CMD_FAILED
-*******************************************************************************/
-ni_retcode_t ni_send_to_target_v2(ni_session_context_t *p_ctx,
-    ni_frame_t *pSrcFrame,
-    const ni_p2p_sgl_t *dmaAddrs)
-
+ni_retcode_t ni_send_to_target(ni_session_context_t *p_ctx,
+                               niFrameSurface1_t *source,
+                               uint64_t ui64DestAddr,
+                               uint32_t ui32FrameSize)
 {
     void *p_buffer = NULL;
     ni_retcode_t retval;
-    uint32_t ui32LBA = 0;
-    niFrameSurface1_t *pSurface;
+    uint32_t ui32LBA;
     uint8_t *p_data;
     uint16_t ui16Direction = NI_P2P_SEND;
-    uint32_t i;
-
-    if (dmaAddrs->ui32NumEntries > NI_MAX_P2P_SGL_ENTRIES)
-    {
-        ni_log2(p_ctx, NI_LOG_ERROR, "Too many SGL entries\n");
-        retval = NI_RETCODE_INVALID_PARAM;
-        LRETURN;
-    }
 
     /* allocate memory aligned buffer */
     retval = ni_posix_memalign(&p_buffer, sysconf(_SC_PAGESIZE), NI_DATA_BUFFER_LEN);
@@ -19974,121 +19185,22 @@ ni_retcode_t ni_send_to_target_v2(ni_session_context_t *p_ctx,
         LRETURN;
     }
 
-    pSurface = (niFrameSurface1_t *) pSrcFrame->p_data[3];
-
     memset(p_buffer, 0, NI_DATA_BUFFER_LEN);
 
     p_data = (uint8_t *) p_buffer;
 
     /* Add payload */
-    memcpy(p_data, &dmaAddrs->ui64DMAAddr[0], 8);    // dummy data, not used
-    memcpy(p_data + 8, &dmaAddrs->ui32DMALen[0], 4);               // dummy data, not used
-    memcpy(p_data + 12, &pSurface->ui16FrameIdx, 2); // dummy data, not used
+    memcpy(p_data, &ui64DestAddr, sizeof(uint64_t));
+    memcpy(p_data + 8, &ui32FrameSize, sizeof(uint32_t));
+    memcpy(p_data + 12, &source->ui16FrameIdx, sizeof(uint16_t));
     memcpy(p_data + 14, MAGIC_P2P_VALUE, 4);
-    memcpy(p_data + 18, &ui16Direction, 2);
-
-    /* if any SGL entry exceeds the DMA engine max transfer size (>16MB or >24-bit),
-     * then split the entry into two or more entries that are <=16MB */
-    {
-        uint32_t ui32NeedsSplit = 0;
-        uint32_t ui32EntryIdx = 0;
-
-        for (ui32EntryIdx = 0; ui32EntryIdx < dmaAddrs->ui32NumEntries; ui32EntryIdx++)
-        {
-            if (dmaAddrs->ui32DMALen[ui32EntryIdx] > NI_DMA_SGL_MAX_XFER_SIZE)
-            {
-                ui32NeedsSplit = 1;
-                break;
-            }
-        }
-
-        if (ui32NeedsSplit)
-        {
-            ni_p2p_sgl_t sSplitSgl;
-            uint32_t ui32SglIdx = 0;
-            uint32_t ui32OrigEntries = dmaAddrs->ui32NumEntries;
-
-            memset(&sSplitSgl, 0, sizeof(sSplitSgl));
-            for (ui32EntryIdx = 0;
-                 ui32EntryIdx < ui32OrigEntries && ui32SglIdx < NI_MAX_P2P_SGL_ENTRY;
-                 ui32EntryIdx++)
-            {
-                uint64_t ui64BaseAddr = dmaAddrs->ui64DMAAddr[ui32EntryIdx];
-                uint32_t ui32RemainingData = dmaAddrs->ui32DMALen[ui32EntryIdx];
-                uint32_t ui32Offset = 0;
-
-                while (ui32RemainingData > 0 && ui32SglIdx < NI_MAX_P2P_SGL_ENTRY)
-                {
-                    uint32_t ui32Seg = (ui32RemainingData > NI_DMA_SGL_MAX_XFER_SIZE)
-                                       ? NI_DMA_SGL_MAX_XFER_SIZE : ui32RemainingData;
-                    sSplitSgl.ui64DMAAddr[ui32SglIdx] = ui64BaseAddr + ui32Offset;
-                    sSplitSgl.ui32DMALen[ui32SglIdx] = ui32Seg;
-                    ui32Offset += ui32Seg;
-                    ui32RemainingData -= ui32Seg;
-                    ui32SglIdx++;
-                }
-
-                if (ui32RemainingData > 0)
-                {
-                    ni_log2(p_ctx, NI_LOG_ERROR,
-                            "%s: SGL overflow: table full (%u slots) at entry"
-                            " %u/%u, %u bytes unprocessed\n",
-                            __func__, NI_MAX_P2P_SGL_ENTRY,
-                            ui32EntryIdx, ui32OrigEntries, ui32RemainingData);
-                    retval = NI_RETCODE_INVALID_PARAM;
-                    LRETURN;
-                }
-            }
-
-            if (ui32EntryIdx < ui32OrigEntries)
-            {
-                ni_log2(p_ctx, NI_LOG_ERROR,
-                        "%s: SGL overflow: table full (%u slots), "
-                        "%u/%u entries not processed\n",
-                        __func__, NI_MAX_P2P_SGL_ENTRY,
-                        ui32OrigEntries - ui32EntryIdx, ui32OrigEntries);
-                retval = NI_RETCODE_INVALID_PARAM;
-                LRETURN;
-            }
-
-            sSplitSgl.ui32NumEntries = ui32SglIdx;
-
-            ni_log2(p_ctx, NI_LOG_INFO,
-                    "%s: SGL split: %u original entr%s -> %u chunks "
-                    "(max 0x%X bytes/chunk)\n", __func__,
-                    ui32OrigEntries, ui32OrigEntries == 1 ? "y" : "ies",
-                    ui32SglIdx, NI_DMA_SGL_MAX_XFER_SIZE);
-
-            memcpy(p_data + 20, &sSplitSgl.ui32NumEntries, 4);
-            for (i = 0; i < sSplitSgl.ui32NumEntries; i++)
-            {
-                memcpy(&p_data[24] + (i * 8), &sSplitSgl.ui64DMAAddr[i], 8);
-            }
-            for (i = 0; i < sSplitSgl.ui32NumEntries; i++)
-            {
-                memcpy(&p_data[24] + (sSplitSgl.ui32NumEntries * 8) + (i * 4),
-                       &sSplitSgl.ui32DMALen[i], 4);
-            }
-        }
-        else
-        {
-            memcpy(p_data + 20, &dmaAddrs->ui32NumEntries, 4);
-            for (i = 0; i < dmaAddrs->ui32NumEntries; i++)
-            {
-                memcpy(&p_data[24] + (i * 8), &dmaAddrs->ui64DMAAddr[i], 8);
-            }
-            for (i = 0; i < dmaAddrs->ui32NumEntries; i++)
-            {
-                memcpy(&p_data[24] + (dmaAddrs->ui32NumEntries * 8) + (i * 4),
-                       &dmaAddrs->ui32DMALen[i], 4);
-            }
-        }
-    }
+    memcpy(p_data + 18, &ui16Direction, sizeof(uint16_t));
 
     ui32LBA = CONFIG_INSTANCE_SetP2P_W(p_ctx->session_id, NI_DEVICE_TYPE_ENCODER);
 
-    retval = ni_nvme_send_write_cmd(p_ctx->blk_io_handle, NI_INVALID_DEVICE_HANDLE,
-                                        p_buffer, NI_DATA_BUFFER_LEN, ui32LBA);
+    retval = ni_nvme_send_write_cmd((ni_device_handle_t)(int64_t)source->device_handle,
+                                    NI_INVALID_DEVICE_HANDLE, p_buffer,
+                                    NI_DATA_BUFFER_LEN, ui32LBA);
 
     if (retval < 0)
     {
@@ -20498,7 +19610,6 @@ ni_retcode_t ni_device_get_and_print_firmware_logs(ni_session_context_t *p_ctx)
     bool gen_log_file = false;
     void *p_log_buffer = NULL;
     int i;
-    int max_cores;
     if(!p_ctx)
     {
         ni_log2(p_ctx, NI_LOG_ERROR, "%s:():%d: ERROR invalid pointer p_ctx %p\n",
@@ -20515,17 +19626,7 @@ ni_retcode_t ni_device_get_and_print_firmware_logs(ni_session_context_t *p_ctx)
         return NI_RETCODE_ERROR_MEM_ALOC;
     }
 
-    if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
-                          "6t1") < 0)
-    {
-        max_cores = FP_CORE;
-    }
-    else
-    {
-        max_cores = FL_CORE;
-    }
-
-    for (i = NVME_CORE; i<= max_cores; i++)
+    for (i = NVME_CORE; i< NUM_OF_CORES; i++)
     {
         memset(p_log_buffer, 0, CPU_LOG_BUFFER_SIZE);
         retval = ni_dump_log_single_core(p_ctx, p_log_buffer, i, gen_log_file);

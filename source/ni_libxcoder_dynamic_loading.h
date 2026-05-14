@@ -162,7 +162,6 @@ typedef ni_retcode_t (LIB_API* PNIDEVICESESSIONQUERYDETAILV1) (ni_session_contex
 typedef ni_retcode_t (LIB_API* PNIDEVICECONFIGNAMESPACENUM) (ni_device_handle_t device_handle, uint32_t namespace_num, uint32_t sriov_index);
 typedef ni_retcode_t (LIB_API* PNIDEVICECONFIGQOS) (ni_device_handle_t device_handle, uint32_t mode);
 typedef ni_retcode_t (LIB_API* PNIDEVICECONFIGQOSOP) (ni_device_handle_t device_handle, ni_device_handle_t device_handle_t, uint32_t over_provision);
-typedef ni_retcode_t (LIB_API* PNIDEVICECONFIGQOSALLOWANCE) (ni_device_handle_t device_handle, ni_device_handle_t device_handle_t, uint32_t allowance);
 typedef ni_retcode_t (LIB_API* PNIFRAMEBUFFERALLOC) (ni_frame_t *p_frame, int video_width, int video_height, int alignment, int metadata_flag, int factor, int hw_frame_count, int is_planar);
 typedef ni_retcode_t (LIB_API* PNIENCFRAMEBUFFERALLOC) (ni_frame_t *p_frame, int video_width, int video_height, int alignment, int metadata_flag, int factor, int hw_frame_count, int is_planar, ni_pix_fmt_t pix_fmt);
 typedef ni_retcode_t (LIB_API* PNIFRAMEBUFFERALLOCDL) (ni_frame_t *p_frame, int video_width, int video_height, int pixel_format);
@@ -241,8 +240,6 @@ typedef ni_retcode_t (LIB_API* PNIQUERYFLFWVERSIONS) (ni_device_handle_t device_
 typedef ni_retcode_t (LIB_API* PNIQUERYVFNSID) (ni_device_handle_t device_handle, ni_device_vf_ns_id_t *p_dev_ns_vf, uint8_t fw_rev[]);
 typedef ni_retcode_t (LIB_API* PNIQUERYTEMPERATURE) (ni_device_handle_t device_handle, ni_device_temp_t *p_dev_temp, uint8_t fw_rev[]);
 typedef ni_retcode_t (LIB_API* PNIQUERYEXTRAINFO) (ni_device_handle_t device_handle, ni_device_extra_info_t *p_dev_extra_info, uint8_t fw_rev[]);
-typedef ni_retcode_t (LIB_API* PNIQUERYQOSINFO) (ni_device_handle_t device_handle, ni_qos_header_info_log_page_t *p_dev_qos_header, uint8_t fw_rev[]);
-typedef ni_retcode_t (LIB_API* PNIQUERYQOSNAMESPACEINFO) (ni_device_handle_t device_handle, ni_qos_namespace_info_log_page_t *p_dev_qos_ns, uint8_t fw_rev[]);
 typedef ni_retcode_t (LIB_API* PNIENCODERFRAMEZEROCOPYCHECK) (ni_session_context_t *p_enc_ctx, ni_xcoder_params_t *p_enc_params, int width, int height, const int linesize[], bool set_linesize);
 typedef ni_retcode_t (LIB_API* PNIENCODERFRAMEZEROCOPYADJUST) (ni_session_context_t *p_enc_ctx, ni_frame_t *p_frame, int video_height, const int linesize[], const uint8_t *data[], int buf_size0, int buf_size1, int buf_size2, uint8_t *buf_data0, uint8_t *buf_data1, uint8_t *buf_data2);
 typedef ni_retcode_t (LIB_API* PNIENCODERFRAMEZEROCOPYBUFFERALLOC) (ni_frame_t *p_frame, int video_width, int video_height, const int linesize[], const uint8_t *data[], int extra_len);
@@ -262,7 +259,6 @@ typedef ni_retcode_t (LIB_API* PNIRECONFIGINTRAPRD) (ni_session_context_t *p_ctx
 typedef ni_retcode_t (LIB_API* PNIP2PXFER) (ni_session_context_t *pSession, niFrameSurface1_t *source, uint64_t ui64DestAddr, uint32_t ui32FrameSize);
 #endif
 typedef ni_retcode_t (LIB_API* PNIP2PSEND) (ni_session_context_t *pSession, niFrameSurface1_t *source, uint64_t ui64DestAddr, uint32_t ui32FrameSize);
-typedef ni_retcode_t (LIB_API* PNIP2PSENDV2) (ni_session_context_t *pSession, ni_frame_t *pSrcFrame, const ni_p2p_sgl_t *dmaAddrs);
 typedef int (LIB_API* PNICALCULATETOTALFRAMESIZE) (const ni_session_context_t *p_upl_ctx, const int linesize[]);
 typedef ni_retcode_t (LIB_API* PNIRECONFIGSLICEARG) (ni_session_context_t *p_ctx, int16_t sliceArg);
 typedef ni_retcode_t (LIB_API* PNIP2PRECV) (ni_session_context_t *pSession, const ni_p2p_sgl_t *dmaAddrs, ni_frame_t *pDstFrame);
@@ -383,7 +379,6 @@ typedef struct _NETINT_LIBXCODER_API_FUNCTION_LIST
     PNIDEVICECONFIGNAMESPACENUM          niDeviceConfigNamespaceNum;           /** Client should access ::ni_device_config_namespace_num API through this pointer */
     PNIDEVICECONFIGQOS                   niDeviceConfigQos;                    /** Client should access ::ni_device_config_qos API through this pointer */
     PNIDEVICECONFIGQOSOP                 niDeviceConfigQosOp;                  /** Client should access ::ni_device_config_qos_op API through this pointer */
-    PNIDEVICECONFIGQOSALLOWANCE          niDeviceConfigQosAllowance;           /** Client should access ::ni_device_config_qos_allowance API through this pointer */
     PNIFRAMEBUFFERALLOC                  niFrameBufferAlloc;                   /** Client should access ::ni_frame_buffer_alloc API through this pointer */
     PNIFRAMEBUFFERALLOCDL                niFrameBufferAllocDl;                 /** Client should access ::ni_frame_buffer_alloc_dl API through this pointer */
     PNIDECODERFRAMEBUFFERALLOC           niDecoderFrameBufferAlloc;            /** Client should access ::ni_decoder_frame_buffer_alloc API through this pointer */
@@ -460,8 +455,6 @@ typedef struct _NETINT_LIBXCODER_API_FUNCTION_LIST
     PNIQUERYVFNSID                       niQueryVfNsId;                        /** Client should access ::ni_query_vf_ns_id API through this pointer */
     PNIQUERYTEMPERATURE                  niQueryTemperature;                   /** Client should access ::ni_query_temperature API through this pointer */
     PNIQUERYEXTRAINFO                    niQueryExtraInfo;                     /** Client should access ::ni_query_extra_info API through this pointer */
-    PNIQUERYQOSINFO                      niQueryQosInfo;                       /** Client should access ::ni_query_qos_info API through this pointer */
-    PNIQUERYQOSNAMESPACEINFO             niQueryQosNamespaceInfo;              /** Client should access ::ni_query_qos_namespace_info API through this pointer */
     PNIENCODERFRAMEZEROCOPYCHECK         niEncoderFrameZerocopyCheck;          /** Client should access ::ni_encoder_frame_zerocopy_check API through this pointer */
     PNIENCODERFRAMEZEROCOPYADJUST        niEncoderFrameZerocopyAdjust;         /** Client should access ::ni_encoder_frame_zerocopy_adjust API through this pointer */
     PNIENCODERFRAMEZEROCOPYBUFFERALLOC   niEncoderFrameZerocopyBufferAlloc;    /** Client should access ::ni_encoder_frame_zerocopy_buffer_alloc API through this pointer */
@@ -484,10 +477,7 @@ typedef struct _NETINT_LIBXCODER_API_FUNCTION_LIST
 #ifndef DEPRECATION_AS_ERROR
     PNIP2PXFER                           niP2PXfer;                            /** Client should access ::ni_p2p_xfer API through this pointer */
 #endif
-#ifndef DEPRECATION_AS_ERROR
     PNIP2PSEND                           niP2PSend;                            /** Client should access ::ni_p2p_send API through this pointer */
-#endif
-    PNIP2PSENDV2                         niP2PSendV2;                          /** Client should access ::ni_p2p_send_v2 API through this pointer */
     PNICALCULATETOTALFRAMESIZE           niCalculateTotalFrameSize;            /** Client should access ::ni_calculate_total_frame_size API through this pointer */
     PNIRECONFIGSLICEARG                  niReconfigSliceArg;                   /** Client should access ::ni_reconfig_slice_arg API through this pointer */
     PNIP2PRECV                           niP2PRecv;                            /** Client should access ::ni_p2p_recv API through this pointer */
@@ -611,7 +601,6 @@ public:
         functionList->niDeviceConfigNamespaceNum = reinterpret_cast<decltype(ni_device_config_namespace_num)*>(dlsym(lib,"ni_device_config_namespace_num"));
         functionList->niDeviceConfigQos = reinterpret_cast<decltype(ni_device_config_qos)*>(dlsym(lib,"ni_device_config_qos"));
         functionList->niDeviceConfigQosOp = reinterpret_cast<decltype(ni_device_config_qos_op)*>(dlsym(lib,"ni_device_config_qos_op"));
-        functionList->niDeviceConfigQosAllowance = reinterpret_cast<decltype(ni_device_config_qos_allowance)*>(dlsym(lib,"ni_device_config_qos_allowance"));
         functionList->niFrameBufferAlloc = reinterpret_cast<decltype(ni_frame_buffer_alloc)*>(dlsym(lib,"ni_frame_buffer_alloc"));
         functionList->niFrameBufferAllocDl = reinterpret_cast<decltype(ni_frame_buffer_alloc_dl)*>(dlsym(lib,"ni_frame_buffer_alloc_dl"));
         functionList->niDecoderFrameBufferAlloc = reinterpret_cast<decltype(ni_decoder_frame_buffer_alloc)*>(dlsym(lib,"ni_decoder_frame_buffer_alloc"));
@@ -689,8 +678,6 @@ public:
         functionList->niQueryVfNsId = reinterpret_cast<decltype(ni_query_vf_ns_id)*>(dlsym(lib,"ni_query_vf_ns_id"));
         functionList->niQueryTemperature = reinterpret_cast<decltype(ni_query_temperature)*>(dlsym(lib,"ni_query_temperature"));
         functionList->niQueryExtraInfo = reinterpret_cast<decltype(ni_query_extra_info)*>(dlsym(lib,"ni_query_extra_info"));
-        functionList->niQueryQosInfo = reinterpret_cast<decltype(ni_query_qos_info)*>(dlsym(lib,"ni_query_qos_info"));
-        functionList->niQueryQosNamespaceInfo = reinterpret_cast<decltype(ni_query_qos_namespace_info)*>(dlsym(lib,"ni_query_qos_namespace_info"));
         functionList->niEncoderFrameZerocopyCheck = reinterpret_cast<decltype(ni_encoder_frame_zerocopy_check)*>(dlsym(lib,"ni_encoder_frame_zerocopy_check"));
         functionList->niEncoderFrameZerocopyAdjust = reinterpret_cast<decltype(ni_encoder_frame_zerocopy_adjust)*>(dlsym(lib,"ni_encoder_frame_zerocopy_adjust"));
         functionList->niEncoderFrameZerocopyBufferAlloc = reinterpret_cast<decltype(ni_encoder_frame_zerocopy_buffer_alloc)*>(dlsym(lib,"ni_encoder_frame_zerocopy_buffer_alloc"));
@@ -713,10 +700,7 @@ public:
 #ifndef DEPRECATION_AS_ERROR
         functionList->niP2PXfer = reinterpret_cast<decltype(ni_p2p_xfer)*>(dlsym(lib,"ni_p2p_xfer"));
 #endif
-#ifndef DEPRECATION_AS_ERROR
         functionList->niP2PSend = reinterpret_cast<decltype(ni_p2p_send)*>(dlsym(lib,"ni_p2p_send"));
-#endif
-        functionList->niP2PSendV2 = reinterpret_cast<decltype(ni_p2p_send_v2)*>(dlsym(lib,"ni_p2p_send_v2"));
         functionList->niCalculateTotalFrameSize = reinterpret_cast<decltype(ni_calculate_total_frame_size)*>(dlsym(lib,"ni_calculate_total_frame_size"));
         functionList->niReconfigSliceArg = reinterpret_cast<decltype(ni_reconfig_slice_arg)*>(dlsym(lib,"ni_reconfig_slice_arg"));
         functionList->niP2PRecv = reinterpret_cast<decltype(ni_p2p_recv)*>(dlsym(lib,"ni_p2p_recv"));

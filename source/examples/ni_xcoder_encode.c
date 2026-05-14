@@ -80,16 +80,7 @@ static void print_usage(void)
         "                               (Default: \"\")\n"
         "-u | --hwupload                (No argument) When enabled, upload raw frame to device first before encoding\n"
         "                               Multiple input files and yuv444p format input are not supported in this mode\n"
-        "-b | --bitstream-features      Log filename for bitstream features output.\n"
-        "                               Can be specified multiple (max %d) times,\n"
-        "                               must match the number of -o outputs specified.\n"
-        "                               When specified, bitstream features will be logged after each packet receive.\n"
-        "                               Each log file corresponds to the output file in the same order.\n"
-        "                               Please note for this feature to take effects,\n"
-        "                               'getBitstreamFeatures' parameter must be included in --encoder-params.\n"
-        "                               Currently this feature is only supported for h.264.\n"
-        "                               (Default: none)\n"
-        , NI_XCODER_REVISION, MAX_INPUT_FILES, MAX_OUTPUT_FILES, MAX_OUTPUT_FILES, MAX_OUTPUT_FILES);
+        , NI_XCODER_REVISION, MAX_INPUT_FILES, MAX_OUTPUT_FILES, MAX_OUTPUT_FILES);
 }
 
 int main(int argc, char *argv[])
@@ -102,7 +93,7 @@ int main(int argc, char *argv[])
     FILE* input_fp[MAX_INPUT_FILES] = {0};
     FILE* output_fp[MAX_OUTPUT_FILES] = {0};
     uint64_t prev_num_pkt[MAX_OUTPUT_FILES] = {0};
-    int i_index = 0, s_index = 0, o_index = 0, e_index = 0, g_index = 0, f_index = 0;
+    int i_index = 0, s_index = 0, o_index = 0, e_index = 0, g_index = 0;
     int input_total = 0, output_total = 0;
     int enc_codec_format = -1;
     ni_log_level_t log_level;
@@ -131,12 +122,10 @@ int main(int argc, char *argv[])
     uint64_t current_time, previous_time;
     int end_of_all_streams = 0, read_size = 0, eos = 0;
     niFrameSurface1_t *p_hwframe = NULL;
-    char bitstream_features_log_file[MAX_OUTPUT_FILES][FILE_NAME_LEN] = {0};
-    FILE *bitstream_features_fp[MAX_OUTPUT_FILES] = {0};
 
     int opt;
     int opt_index;
-    const char *opt_string = "hvi:o:m:l:c:r:k:p:s:e:g:ub:";
+    const char *opt_string = "hvi:o:m:l:c:r:k:p:s:e:g:u";
     static struct option long_options[] = {
         {"help", no_argument, NULL, 'h'},
         {"version", no_argument, NULL, 'v'},
@@ -152,7 +141,6 @@ int main(int argc, char *argv[])
         {"encoder-params", required_argument, NULL, 'e'},
         {"encoder-gop", required_argument, NULL, 'g'},
         {"hwupload", no_argument, NULL, 'u'},
-        {"bitstream-features", required_argument, NULL, 'b'},
         {NULL, 0, NULL, 0},
     };
 
@@ -337,16 +325,6 @@ int main(int argc, char *argv[])
             case 'u':
                 hwupload = 1;
                 break;
-            case 'b':
-                if (f_index == MAX_OUTPUT_FILES)
-                {
-                    ni_log(NI_LOG_ERROR, "Error: number of bitstream features log files cannot exceed %d\n", MAX_OUTPUT_FILES);
-                    ret = -1;
-                    goto end;
-                }
-                ni_strcpy(bitstream_features_log_file[f_index], FILE_NAME_LEN, optarg);
-                f_index++;
-                break;
             default:
                 print_usage();
                 ret = -1;
@@ -376,18 +354,6 @@ int main(int argc, char *argv[])
         ni_log(NI_LOG_ERROR, "Error: Missing encoder codec argument (-m | --enc-codec)\n");
         ret = -1;
         goto end;
-    }
-
-    // Validate that number of bitstream features log files matches number of output files
-    // Skip this check if bitstream-features option was not specified (optional feature)
-    if (f_index > 0)
-    {
-        if (f_index != o_index)
-        {
-            ni_log(NI_LOG_ERROR, "Error: Number of bitstream features log files (%d) must match number of output files (%d)\n", f_index, o_index);
-            ret = -1;
-            goto end;
-        }
     }
 
     input_total = i_index;
@@ -497,26 +463,6 @@ int main(int argc, char *argv[])
         {
             output_fp[i] = NULL;
             ni_log(NI_LOG_INFO, "Note: Requested NULL output for index %d, no output file will be generated\n", i);
-        }
-    }
-
-    // Open bitstream features log files if specified
-    if (f_index > 0)
-    {
-        for (i = 0; i < output_total; i++)
-        {
-            if (bitstream_features_log_file[i][0] != 0)
-            {
-                bitstream_features_fp[i] = NULL;
-                ni_fopen(&bitstream_features_fp[i], bitstream_features_log_file[i], "w");
-                if (!bitstream_features_fp[i])
-                {
-                    ni_log(NI_LOG_ERROR, "Error: Failed to open bitstream features log file %s\n", bitstream_features_log_file[i]);
-                    ret = -1;
-                    goto end;
-                }
-                ni_log(NI_LOG_INFO, "Opened bitstream features log file: %s (for output %d)\n", bitstream_features_log_file[i], i);
-            }
         }
     }
 
@@ -670,17 +616,6 @@ receive_pkt:
 
             receive_rc = encoder_receive(&ctx, enc_ctx, p_in_frame, out_packet,
                                          video_width[0], video_height[0], output_total, output_fp);
-            // Write bitstream features if log files are specified and packets were received
-            if (f_index > 0 && receive_rc == NI_TEST_RETCODE_SUCCESS)
-            {
-                for (i = 0; i < output_total; i++)
-                {
-                    if (out_packet[i].data.packet.data_len > 0 && bitstream_features_fp[i] != NULL)
-                    {
-                        ni_write_bitstream_features(&enc_ctx[i], &out_packet[i].data.packet, bitstream_features_fp[i]);
-                    }
-                }
-            }
             for (i = 0; receive_rc >= 0 && i < output_total; i++)
             {
                 if (!ctx.enc_eos_received[i])
@@ -832,17 +767,6 @@ receive_pkt:
 
             receive_rc = encoder_receive(&ctx, enc_ctx, &in_frame, out_packet,
                                         video_width[0], video_height[0], output_total, output_fp);
-            // Write bitstream features if log files are specified and packets were received
-            if (f_index > 0 && receive_rc == NI_TEST_RETCODE_SUCCESS)
-            {
-                for (i = 0; i < output_total; i++)
-                {
-                    if (out_packet[i].data.packet.data_len > 0 && bitstream_features_fp[i] != NULL)
-                    {
-                        ni_write_bitstream_features(&enc_ctx[i], &out_packet[i].data.packet, bitstream_features_fp[i]);
-                    }
-                }
-            }
             for (i = 0; receive_rc >= 0 && i < output_total; i++)
             {
                 if (!ctx.enc_eos_received[i])
@@ -954,19 +878,6 @@ end:
         if (input_fp[i])
         {
             fclose(input_fp[i]);
-        }
-    }
-
-    // Close bitstream features log files if they were opened
-    if (f_index > 0)
-    {
-        for (i = 0; i < output_total; i++)
-        {
-            if (bitstream_features_fp[i] != NULL)
-            {
-                fclose(bitstream_features_fp[i]);
-                bitstream_features_fp[i] = NULL;
-            }
         }
     }
 

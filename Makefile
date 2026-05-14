@@ -28,8 +28,10 @@ else
 		CFLAGS = -g
 	else
 		CFLAGS = -O3
-		ifeq ($(OPENHARMONY), TRUE)
+		ifeq ($(WINDOWS), FALSE)
+		ifneq ($(UNAME), Darwin)
 			LDFLAGS = -Wl,-strip-all
+		endif
 		endif
 	endif
 endif

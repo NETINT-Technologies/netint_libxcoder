@@ -516,7 +516,7 @@ int scale_filter(ni_session_context_t *p_ctx, ni_frame_t *p_frame_in,
 {
     int ret;
     niFrameSurface1_t *p_surface_in;
-    ni_scaler_input_params_t scale_params;
+    ni_scaler_input_params_t scale_params = {0};
 
     p_surface_in = (niFrameSurface1_t *)p_frame_in->p_data[3];
     scale_params.output_format = out_format;   // rgba or bgrp or yuv420p;

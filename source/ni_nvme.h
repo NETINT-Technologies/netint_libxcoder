@@ -447,8 +447,6 @@ typedef enum _nvme_xcoder_general_subtype
   nvme_xcoder_general_nsvf_query = 4,
   nvme_xcoder_general_temperature_query = 5,
   nvme_xcoder_general_extra_info_query = 5,
-  nvme_xcoder_general_qos_info_query = 6,
-  nvme_xcoder_general_qos_ns_query = 7,
 } nvme_xcoder_general_subtype_t;
 
 typedef struct _ni_nvme_write_complete_dw0_t
@@ -665,7 +663,6 @@ int32_t ni_nvme_send_io_pass_through_command(ni_device_handle_t fd, ni_nvme_pass
 #define DP_LOG_OFFSET_IN_4K (EP_LOG_OFFSET_IN_4K + MBs_to_4k(1))
 #define TP_LOG_OFFSET_IN_4K (DP_LOG_OFFSET_IN_4K + MBs_to_4k(1))
 #define FP_LOG_OFFSET_IN_4K (TP_LOG_OFFSET_IN_4K + MBs_to_4k(1))
-#define FL_LOG_OFFSET_IN_4K (FP_LOG_OFFSET_IN_4K + MBs_to_4k(1))
 
 #define HIGH_OFFSET_IN_4K(sid, instance)                                       \
     ((((sid & 0x1FFUL) << NI_SESSION_ID_SHIFT_HI) | (instance))                \
@@ -801,10 +798,6 @@ int32_t ni_nvme_send_io_pass_through_command(ni_device_handle_t fd, ni_nvme_pass
                                 nvme_xcoder_general_temperature_query, 0)
 #define QUERY_GET_EXTTRA_INFO_R HIGH_OFFSET_IN_4K(0,0) + CTL_OFFSET_IN_4K(GAP(nvme_admin_cmd_xcoder_general), \
                                 nvme_xcoder_general_extra_info_query, 0)
-#define QUERY_GET_QOS_INFO_R HIGH_OFFSET_IN_4K(0,0) + CTL_OFFSET_IN_4K(GAP(nvme_admin_cmd_xcoder_general), \
-                                nvme_xcoder_general_qos_info_query, 0)
-#define QUERY_GET_QOS_NS_INFO_R HIGH_OFFSET_IN_4K(0,0) + CTL_OFFSET_IN_4K(GAP(nvme_admin_cmd_xcoder_general), \
-                                nvme_xcoder_general_qos_ns_query, 0)
 
 //config instance
 #define CONFIG_INSTANCE_SetSOS_W(sid,instance)      HIGH_OFFSET_IN_4K(sid,instance) + CTL_OFFSET_IN_4K(GAP(nvme_admin_cmd_xcoder_config),  \
