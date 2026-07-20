@@ -96,7 +96,7 @@ static void change_log_level(void)
     {
         ni_log_set_level(log_level);
     } else {
-        fprintf(stderr, "ERROR: unknown log level selected: %s", log_str);
+        (void)fprintf(stderr, "ERROR: unknown log level selected: %s", log_str);
     }
 }
 
@@ -110,9 +110,15 @@ static void change_log_level(void)
 static int getInt(const char *prompt)
 {
   char para[64];
+  int32_t tmp_val;
 
   getStr(prompt, para, sizeof(para));
-  return atoi(para);
+  if (ni_strtoi(para, &tmp_val) != NI_RETCODE_SUCCESS)
+  {
+    ni_log(NI_LOG_ERROR, "%s: invalid integer value '%s'\n", __func__, para);
+    return -1;
+  }
+  return (int)tmp_val;
 }
 
 /*******************************************************************************
@@ -125,9 +131,15 @@ static int getInt(const char *prompt)
 NI_UNUSED static float getFloat(const char *prompt)
 {
   char para[64];
+  double tmp_val;
 
   getStr(prompt, para, sizeof(para));
-  return (float)atof(para);
+  if (ni_strtod_val(para, &tmp_val) != NI_RETCODE_SUCCESS)
+  {
+    ni_log(NI_LOG_ERROR, "%s: invalid float value '%s'\n", __func__, para);
+    return -1.0f;
+  }
+  return (float)tmp_val;
 }
 
 /*******************************************************************************
@@ -140,9 +152,18 @@ NI_UNUSED static float getFloat(const char *prompt)
 NI_UNUSED static long getLong(const char *prompt)
 {
   char para[64];
+  char *end;
+  long val;
 
   getStr(prompt, para, sizeof(para));
-  return atol(para);
+  errno = 0;
+  val = strtol(para, &end, 10);
+  if (end == para || *end != '\0' || errno == ERANGE)
+  {
+    ni_log(NI_LOG_ERROR, "%s: invalid long value '%s'\n", __func__, para);
+    return -1;
+  }
+  return val;
 }
 
 /*******************************************************************************
@@ -158,7 +179,13 @@ static void listOneTypeCoders(void)
   int i, count = 0;
   ni_device_info_t coders[NI_MAX_DEVICE_CNT] = {0};
 
-  type = (ni_device_type_t)getInt("coder type, decoder (0) encoder (1): ");
+  int type_val = getInt("coder type, decoder (0) encoder (1): ");
+  if (type_val < 0)
+  {
+    ni_log(NI_LOG_ERROR, "ERROR: invalid input for type\n");
+    return;
+  }
+  type = (ni_device_type_t)type_val;
   if (ni_rsrc_list_devices(type, coders, &count) == 0)
   {
       for (i = 0; i < count; i++)
@@ -188,7 +215,7 @@ static void listModuleId(void)
 #ifdef _WIN32
     if (WAIT_ABANDONED == WaitForSingleObject(p_device_pool->lock, INFINITE)) // no time-out interval)
     {
-      fprintf(stderr, "ERROR: listModuleId() failed o obtain mutex: %p", p_device_pool->lock);
+      (void)fprintf(stderr, "ERROR: listModuleId() failed o obtain mutex: %p", p_device_pool->lock);
       return;
     }
 #elif __linux__
@@ -196,7 +223,7 @@ static void listModuleId(void)
     {
         char errmsg[NI_ERRNO_LEN] = {0};
         ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
-        fprintf(stderr, "ERROR: %s() lockf() failed: %s\n", __func__,
+        (void)fprintf(stderr, "ERROR: %s() lockf() failed: %s\n", __func__,
                 errmsg);
     }
 #endif
@@ -224,7 +251,7 @@ static void listModuleId(void)
 #elif __linux__
     if (lockf(p_device_pool->lock, F_ULOCK, 0))
     {
-      fprintf(stderr, "Error lockf() failed\n");
+      (void)fprintf(stderr, "Error lockf() failed\n");
     }
 #endif
     ni_rsrc_free_device_pool(p_device_pool);
@@ -245,7 +272,7 @@ static void listAllCodersFull(void)
     p_coders = (ni_device_t *)malloc(sizeof(ni_device_t));
     if (p_coders == NULL)
     {
-        fprintf(stderr,
+        (void)fprintf(stderr,
                 "Error: memory allocation failed, fatal error, exiting\n");
         return;
     }
@@ -280,7 +307,13 @@ static void getCoderDetailInfo(void)
   int guid;
   ni_device_info_t *p_device_info;
 
-  type = (ni_device_type_t)getInt("coder type, decoder (0) encoder (1): ");
+  int type_val = getInt("coder type, decoder (0) encoder (1): ");
+  if (type_val < 0)
+  {
+    ni_log(NI_LOG_ERROR, "ERROR: invalid input for type\n");
+    return;
+  }
+  type = (ni_device_type_t)type_val;
   guid = getInt("Coder module ID: ");
   printf("type: %d  id  %d\n", type, guid);
   p_device_info = ni_rsrc_get_device_info(type, guid);
@@ -332,7 +365,7 @@ static void displayRsrcMon(void)
     p_device_pool = ni_rsrc_get_device_pool();
     if (!p_device_pool)
     {
-        fprintf(stderr, "FATAL: cannot get devices info\n");
+        (void)fprintf(stderr, "FATAL: cannot get devices info\n");
         return;
     }
 
@@ -352,17 +385,17 @@ static void displayRsrcMon(void)
 
         if (!IS_XCODER_DEVICE_TYPE(module_type))
         {
-            fprintf(stderr, "ERROR: unsupported module_type %d\n", module_type);
+            (void)fprintf(stderr, "ERROR: unsupported module_type %d\n", module_type);
             break;
         }
 
-        module_count = coders->xcoder_cnt[module_type];
+        module_count = (int)coders->xcoder_cnt[module_type];
         ni_strcpy(module_name, sizeof(module_name), g_device_type_str[module_type]);
 
         module_id_arr = malloc(sizeof(*module_id_arr) * module_count);
         if (!module_id_arr)
         {
-            fprintf(stderr, "ERROR: malloc() failed for module_id_arr\n");
+            (void)fprintf(stderr, "ERROR: malloc() failed for module_id_arr\n");
             break;
         }
         memcpy(module_id_arr, coders->xcoders[module_type],
@@ -400,7 +433,7 @@ static void displayRsrcMon(void)
                 {
                     char errmsg[NI_ERRNO_LEN] = {0};
                     ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
-                    fprintf(stderr,
+                    (void)fprintf(stderr,
                             "ERROR: ni_device_open2() failed for %s: %s\n",
                             p_device_context->p_device_info->dev_name,
                             errmsg);
@@ -413,7 +446,7 @@ static void displayRsrcMon(void)
                     ni_device_session_query(sessionCtxt, module_type))
                 {
                     ni_device_close(sessionCtxt->device_handle);
-                    fprintf(stderr, "Error query %s %s.%d\n", module_name,
+                    (void)fprintf(stderr, "Error query %s %s.%d\n", module_name,
                             p_device_context->p_device_info->dev_name,
                             p_device_context->p_device_info->hw_id);
                     ni_rsrc_free_device_context(p_device_context);
@@ -560,11 +593,11 @@ static void checkHWInfo(void)
 #if defined(_MSC_VER)
     int ret_scanf = scanf_s("%d %d %d %d",&task_mode,&device_type,&hw_mode,&consider_mem);
 #else
-    int ret_scanf = scanf("%d %d %d %d",&task_mode,&device_type,&hw_mode,&consider_mem);
+    int ret_scanf = scanf("%d %d %d %d",&task_mode,&device_type,&hw_mode,&consider_mem); // NOLINT(cert-err34-c) - return value checked below
 #endif
     if(ret_scanf == EOF || ret_scanf < 4)
     {
-        fprintf(stderr, "%s, read parameters failed", __func__);
+        (void)fprintf(stderr, "%s, read parameters failed", __func__);
     }
     ni_hw_device_info_quadra_t *device_info = NULL;
     ni_hw_device_info_quadra_threshold_param_t threshold[4];
@@ -612,8 +645,15 @@ static void allocAuto(void)
   ni_alloc_rule_t rule;
   uint64_t model_load;
 
-  type = (ni_device_type_t)getInt("coder type, decoder (0) encoder (1): ");
-  rule = (ni_alloc_rule_t)getInt("auto-alloc rule, least-load (0) load-instance (1): ");
+  int type_val = getInt("coder type, decoder (0) encoder (1): ");
+  int rule_val = getInt("auto-alloc rule, least-load (0) load-instance (1): ");
+  if (type_val < 0 || rule_val < 0)
+  {
+    ni_log(NI_LOG_ERROR, "ERROR: invalid input for type or rule\n");
+    return;
+  }
+  type = (ni_device_type_t)type_val;
+  rule = (ni_alloc_rule_t)rule_val;
   printf("type: %d  rule  %d\n", type, rule);
 
   p_device_context = ni_rsrc_allocate_auto(type, rule, EN_H265, 1920, 1080, 30, &model_load);

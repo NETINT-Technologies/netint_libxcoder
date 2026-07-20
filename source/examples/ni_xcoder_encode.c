@@ -304,7 +304,12 @@ int main(int argc, char *argv[])
                     goto end;
                 }
                 video_width[s_index] = (int)strtol(optarg, &n, 10);
-                video_height[s_index] = atoi(n + 1);
+                {
+                    int32_t tmp_height;
+                    if (ni_strtoi(n + 1, &tmp_height) != NI_RETCODE_SUCCESS)
+                        tmp_height = 0;
+                    video_height[s_index] = tmp_height;
+                }
                 if ((*n != 'x') || (video_width[s_index] <= 0 || video_height[s_index] <= 0))
                 {
                     ni_log(NI_LOG_ERROR, "Error: Invalid value \"%s\" for -s | --size option\n"

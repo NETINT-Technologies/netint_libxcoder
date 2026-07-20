@@ -113,6 +113,8 @@ void ni_bs_writer_copy(uint8_t *dst, const ni_bitstream_writer_t *stream);
 // clear and reset bitstream
 void ni_bs_writer_clear(ni_bitstream_writer_t *stream);
 
+int ni_bs_writer_leb128(ni_bitstream_writer_t *stream, uint32_t data);
+
 // the following is for bitstream get operations
 
 // bitstream reader and operations

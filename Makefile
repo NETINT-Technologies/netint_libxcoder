@@ -9,6 +9,7 @@ DONT_WRITE_SONAME ?= FALSE
 SETUP_SYSTEMD ?= FALSE
 DEPRECATION_AS_ERROR ?= FALSE
 CPU_AFFINITY ?= FALSE
+HAVE_MCTF ?= FALSE
 
 C_STANDARD = -std=gnu99
 CXX_STANDARD = -std=c++11
@@ -67,20 +68,29 @@ TARGETP2P = xcoderp2p
 TARGETP2PREAD = xcoderp2p_read
 TARGET_LIB = lib${TARGETNAME}.a
 TARGET_LIB_SHARED = lib${TARGETNAME}.so
+TARGET_LIB_DLL_A = lib${TARGETNAME}.dll.a
 TARGET_VERSION = $(shell grep 'Version: '.* < build/xcoder.pc  | cut -d ' ' -f 2)
 ifeq ($(WINDOWS), FALSE)
-	TARGET_INCS = ni_device_api.h ni_rsrc_api.h ni_defs.h ni_av_codec.h ni_bitstream.h ni_util.h ni_log.h ni_release_info.h ni_libxcoder_dynamic_loading.h ni_p2p_ioctl.h ni_quadraprobe.h
+	TARGET_INCS = ni_device_api.h ni_rsrc_api.h ni_defs.h ni_av_codec.h ni_bitstream.h ni_util.h ni_log.h ni_release_info.h ni_libxcoder_dynamic_loading.h ni_p2p_ioctl.h ni_quadraprobe.h ni_host_ts.h
 else
 	TARGET_INCS = ni_device_api.h ni_rsrc_api.h ni_defs.h ni_av_codec.h ni_bitstream.h ni_util.h ni_log.h ni_release_info.h
 endif
+ifeq ($(HAVE_MCTF), TRUE)
+	TARGET_INCS += mctf.h
+endif
 TARGET_PC = xcoder.pc
+MCTF_TARGET_PC = nimctf.pc
 SERVICE_FILE = nilibxcoder.service
 OBJECTS = ni_nvme.o ni_device_api_priv.o ni_device_api.o ni_util.o ni_lat_meas.o ni_log.o ni_rsrc_priv.o ni_rsrc_api.o ni_av_codec.o ni_bitstream.o
 LINK_OBJECTS = ${OBJS_PATH}/ni_nvme.o ${OBJS_PATH}/ni_device_api_priv.o ${OBJS_PATH}/ni_device_api.o ${OBJS_PATH}/ni_util.o ${OBJS_PATH}/ni_lat_meas.o ${OBJS_PATH}/ni_log.o ${OBJS_PATH}/ni_rsrc_priv.o ${OBJS_PATH}/ni_rsrc_api.o ${OBJS_PATH}/ni_av_codec.o ${OBJS_PATH}/ni_bitstream.o
+ifeq ($(HAVE_MCTF), TRUE)
+    OBJECTS += mctf.o
+    LINK_OBJECTS += ${OBJS_PATH}/mctf.o
+endif
 ifeq ($(WINDOWS), FALSE)
 ifneq ($(UNAME), Darwin)
-    OBJECTS += ni_quadraprobe.o
-    LINK_OBJECTS += ${OBJS_PATH}/ni_quadraprobe.o
+    OBJECTS += ni_quadraprobe.o ni_host_ts.o
+    LINK_OBJECTS += ${OBJS_PATH}/ni_quadraprobe.o ${OBJS_PATH}/ni_host_ts.o
 endif
 endif
 DEMO_OBJECTS = ni_xcoder_decode.o ni_xcoder_encode.o ni_xcoder_scale.o ni_xcoder_transcode_filter.o ni_xcoder_multithread_transcode.o ni_generic_utils.o ni_decode_utils.o ni_encode_utils.o ni_filter_utils.o
@@ -94,9 +104,14 @@ endif
 
 SRC_PATH = ./source
 OBJS_PATH = ./build
+MCTF_PATH = ./nimctf
+ifeq ($(HAVE_MCTF), TRUE)
+CFLAGS += -I${MCTF_PATH}
+endif
 
 # Read the installation directory from path set in build/xcoder.pc
 # DESTDIR ?= $(shell sed -n 's/^prefix=\(.*\)/\1/p' $(OBJS_PATH)/$(TARGET_PC))
+PREFIX_NO_PREFIX = $(shell sed -n 's/^prefix=\(.*\)/\1/p' $(OBJS_PATH)/$(TARGET_PC))
 LIBDIR_NO_PREFIX = $(shell sed -n 's/^libdir=\(.*\)/\1/p' $(OBJS_PATH)/$(TARGET_PC))
 BINDIR_NO_PREFIX = $(shell sed -n 's/^bindir=\(.*\)/\1/p' $(OBJS_PATH)/$(TARGET_PC))
 INCLUDEDIR_NO_PREFIX = $(shell sed -n 's/^includedir=\(.*\)/\1/p' $(OBJS_PATH)/$(TARGET_PC))
@@ -107,6 +122,9 @@ ifeq ($(WINDOWS), FALSE)
 		LDFLAGS += -lpthread -lm
 	else
 		LDFLAGS += -lpthread -lrt -lm -ldl
+		ifeq ($(HAVE_MCTF), TRUE)
+			LDFLAGS += -L${MCTF_PATH} -lnimctf
+		endif
 	endif
 else
 	LDFLAGS += -lws2_32 -Wl,--stack,4194304
@@ -192,19 +210,27 @@ endif
 	${INSTALL} -m 755 ${OBJS_PATH}/ni_rsrc_update ${BINDIR}/.
 	${INSTALL} -m 755 ${OBJS_PATH}/ni_rsrc_list ${BINDIR}/.
 	${INSTALL} -m 755 ${OBJS_PATH}/init_rsrc ${BINDIR}/.
-	${INSTALL} -m 755 host_ts.sh ${BINDIR}/.
 ifeq ($(SETUP_SYSTEMD), TRUE)
 	mkdir -p ${SYSTEMDIR}/
 	$(COPY_CMD) $(SERVICE_FILE) $(SYSTEMDIR)
 	systemctl enable $(SERVICE_FILE)
 	systemctl start $(SERVICE_FILE)
 endif
+ifeq ($(HAVE_MCTF), TRUE)
+	sed -e 's|^prefix=.*|prefix=${PREFIX_NO_PREFIX}|' \
+		-e 's|^libdir=.*|libdir=${LIBDIR_NO_PREFIX}|' \
+		-e 's|^includedir=.*|includedir=${INCLUDEDIR_NO_PREFIX}|' \
+		${MCTF_PATH}/${MCTF_TARGET_PC} > ${OBJS_PATH}/${MCTF_TARGET_PC}
+	${INSTALL} -m 644 ${MCTF_PATH}/ni_mctf.h ${INCLUDEDIR}/.
+	${INSTALL} -m 644 ${MCTF_PATH}/libnimctf.a ${LIBDIR}/.
+	${INSTALL} -m 644 ${OBJS_PATH}/${MCTF_TARGET_PC} ${LIBDIR}/pkgconfig/.
+endif
 
 uninstall:
 	for TARGET_INC in ${TARGET_INCS}; do \
 		rm -f ${INCLUDEDIR}/$${TARGET_INC}; \
 	done
-	rm -f ${LIBDIR}/${TARGET_LIB} ${LIBDIR}/${TARGET_LIB_SHARED} ${LIBDIR}/${TARGET_LIB_SHARED}.${TARGET_VERSION} ${LIBDIR}/pkgconfig/${TARGET_PC} ${BINDIR}/ni_rsrc_mon ${BINDIR}/ni_rsrc_update ${BINDIR}/ni_rsrc_list ${BINDIR}/init_rsrc ${BINDIR}/ni_rsrc_namespace
+	rm -f ${LIBDIR}/${TARGET_LIB} ${LIBDIR}/${TARGET_LIB_SHARED} ${LIBDIR}/${TARGET_LIB_SHARED}.${TARGET_VERSION} ${LIBDIR}/${TARGET_LIB_DLL_A} ${LIBDIR}/pkgconfig/${TARGET_PC} ${BINDIR}/ni_rsrc_mon ${BINDIR}/ni_rsrc_update ${BINDIR}/ni_rsrc_list ${BINDIR}/init_rsrc ${BINDIR}/ni_rsrc_namespace
 ifneq ($(SHAREDDIR),)
 	rm -f ${SHAREDDIR}/${TARGET_LIB_SHARED}.${TARGET_VERSION} ${SHAREDDIR}/${TARGET_LIB_SHARED} 
 endif
@@ -213,6 +239,11 @@ ifeq ($(shell [ -e $(SYSTEMDIR)/$(SERVICE_FILE) ] && echo yes || echo no), yes)
 	systemctl stop $(SERVICE_FILE)
 	rm $(SYSTEMDIR)/$(SERVICE_FILE)
 	systemctl daemon-reload
+endif
+ifeq ($(HAVE_MCTF), TRUE)
+	rm -f ${INCLUDEDIR}/ni_mctf.h
+	rm -f ${LIBDIR}/libnimctf.a
+	rm -f ${LIBDIR}/pkgconfig/${MCTF_TARGET_PC}
 endif
 
 cleanall:clean

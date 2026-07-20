@@ -99,6 +99,7 @@ int getopt(int argc, char *argv[], const char *optstring)
 int getopt_long(int argc, char* argv[], const char* optstring,
                 const struct option* longopts, int* longindex)
 {
+    (void)longindex;   /* not implemented; part of standard POSIX getopt_long signature */
     int i, parse_long_mismatch = 0;
     static char* nextchar = NULL;
 

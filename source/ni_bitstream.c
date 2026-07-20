@@ -313,6 +313,43 @@ void ni_bs_writer_clear(ni_bitstream_writer_t *stream)
     ni_bitstream_writer_init(stream);
 }
 
+/*!*****************************************************************************
+ * \brief write unsigned LEB128 bit string to bitstream and return bytes written.
+ *        Commonly used for OBU sizes in AV1.
+ *
+ * \param stream  bitstream writer
+ * \param data    input data to encode
+ * \return        int: number of bytes written to the bitstream
+ ******************************************************************************/
+int ni_bs_writer_leb128(ni_bitstream_writer_t *stream, uint32_t data)
+{
+    int bytes_written = 0;
+
+    // LEB128 requires the stream to be byte-aligned as it writes full bytes
+    if (stream->cur_bit != 0)
+    {
+        ni_log(NI_LOG_DEBUG, "%s: aligning bitstream before LEB128 write\n", __func__);
+        ni_bs_writer_align_zero(stream);
+    }
+
+    do
+    {
+        uint8_t byte = data & 0x7F;
+        data >>= 7;
+
+        if (data != 0)
+        {
+            // Set the continuation bit (MSB) if more bytes follow
+            byte |= 0x80;
+        }
+
+        ni_bs_writer_write_byte(stream, byte);
+        bytes_written++;
+    } while (data != 0);
+
+    return bytes_written;
+}
+
 // the following is for bitstream get operations
 
 /*!*****************************************************************************
@@ -556,7 +593,7 @@ uint32_t ni_bs_reader_get_ue(ni_bitstream_reader_t *br)
 int32_t ni_bs_reader_get_se(ni_bitstream_reader_t *br)
 {
     // get ue
-    int32_t ret = ni_bs_reader_get_ue(br);
+    int32_t ret = (int32_t)ni_bs_reader_get_ue(br);
 
     // determine if it's odd or even
     if (ret & 0x01)   // odd: value before encode > 0

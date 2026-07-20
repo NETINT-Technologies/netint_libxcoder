@@ -117,7 +117,7 @@ int main(int argc, char *argv[])
     }
 
     // arg handling
-    while ((opt = getopt(argc, argv, "hvrDa:d:l:")) != -1)
+    while ((opt = getopt(argc, argv, "hvrDa:d:l:")) != -1) // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
     {
         switch (opt)
         {
@@ -125,7 +125,7 @@ int main(int argc, char *argv[])
                 rc = get_dev_name(optarg, char_dev_name);
                 if (rc)
                 {
-                    fprintf(stderr, "ERROR: get_dev_name() returned %d\n", rc);
+                    (void)fprintf(stderr, "ERROR: get_dev_name() returned %d\n", rc);
                     return EXIT_FAILURE;
                 }
                 del_dev = 1;
@@ -135,7 +135,7 @@ int main(int argc, char *argv[])
                 rc = get_dev_name(optarg, char_dev_name);
                 if (rc)
                 {
-                    fprintf(stderr, "ERROR: get_dev_name() returned %d\n", rc);
+                    (void)fprintf(stderr, "ERROR: get_dev_name() returned %d\n", rc);
                     return EXIT_FAILURE;
                 }
                 add_dev = 1;
@@ -153,9 +153,9 @@ int main(int argc, char *argv[])
                 {
                     ni_log_set_level(log_level);
                 } else {
-                    fprintf(stderr, "FATAL: invalid log level selected: %s\n",
+                    (void)fprintf(stderr, "FATAL: invalid log level selected: %s\n",
                             optarg);
-                    exit(1);
+                    exit(1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
                 }
                 break;
             case 'v':
@@ -177,14 +177,14 @@ int main(int argc, char *argv[])
 #ifdef __linux__
     if (add_dev && (del_dev || delete_all))
     {
-        fprintf(stderr, "Error: can not add and delete device at the same time\n\n");
+        (void)fprintf(stderr, "Error: can not add and delete device at the same time\n\n");
         display_help();
         return 1;
     }
 #endif
     if (!should_match_rev && !add_dev)
     {
-        fprintf(stderr, "Error: -r option must be used with -a option\n\n");
+        (void)fprintf(stderr, "Error: -r option must be used with -a option\n\n");
         display_help();
         return 1;
     }
@@ -217,7 +217,7 @@ int main(int argc, char *argv[])
     }
     else
     {
-        fprintf(stderr, "Error: ni_rsrc_update option must be used with -a or -b or -D option\n\n");
+        (void)fprintf(stderr, "Error: ni_rsrc_update option must be used with -a or -b or -D option\n\n");
         display_help();
         return 1;
     }

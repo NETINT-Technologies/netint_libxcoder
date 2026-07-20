@@ -1,0 +1,11 @@
+prefix=/usr/local
+exec_prefix=${prefix}
+libdir=/usr/local/lib
+includedir=/usr/local/include
+
+Name: nimctf
+Description: NetInt MCTF filter wrapper library
+Version: 1.0
+Libs: -L${libdir} -lnimctf
+Libs.private: -pthread -lm
+Cflags: -I${includedir}

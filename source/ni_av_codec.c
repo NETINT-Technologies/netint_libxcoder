@@ -31,6 +31,7 @@
 #include <arpa/inet.h>
 #endif
 #include <limits.h>
+#include <stddef.h>
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
@@ -322,10 +323,10 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
             mdm->white_point[1].den = chroma_den;
 
             mdm->min_luminance.num =
-                ntohl(pColourVolume->min_display_mastering_luminance);
+                (int)ntohl(pColourVolume->min_display_mastering_luminance);
             mdm->min_luminance.den = luma_den;
             mdm->max_luminance.num =
-                ntohl(pColourVolume->max_display_mastering_luminance);
+                (int)ntohl(pColourVolume->max_display_mastering_luminance);
             mdm->max_luminance.den = luma_den;
 
             mdm->has_luminance = mdm->has_primaries = 1;
@@ -401,13 +402,13 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
                 for (w = 1; w < hdrp->num_windows; w++)
                 {
                     hdrp->params[w - 1].window_upper_left_corner_x =
-                        ni_make_q(ni_bs_reader_get_bits(&br, 16), 1);
+                        ni_make_q((int)ni_bs_reader_get_bits(&br, 16), 1);
                     hdrp->params[w - 1].window_upper_left_corner_y =
-                        ni_make_q(ni_bs_reader_get_bits(&br, 16), 1);
+                        ni_make_q((int)ni_bs_reader_get_bits(&br, 16), 1);
                     hdrp->params[w - 1].window_lower_right_corner_x =
-                        ni_make_q(ni_bs_reader_get_bits(&br, 16), 1);
+                        ni_make_q((int)ni_bs_reader_get_bits(&br, 16), 1);
                     hdrp->params[w - 1].window_lower_right_corner_y =
-                        ni_make_q(ni_bs_reader_get_bits(&br, 16), 1);
+                        ni_make_q((int)ni_bs_reader_get_bits(&br, 16), 1);
                     hdrp->params[w - 1].center_of_ellipse_x =
                         ni_bs_reader_get_bits(&br, 16);
                     hdrp->params[w - 1].center_of_ellipse_y =
@@ -427,7 +428,7 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
 
                 // values are scaled down according to standard spec
                 hdrp->targeted_system_display_maximum_luminance.num =
-                    ni_bs_reader_get_bits(&br, 27);
+                    (int)ni_bs_reader_get_bits(&br, 27);
                 hdrp->targeted_system_display_maximum_luminance.den = 10000;
 
                 hdrp->targeted_system_display_actual_peak_luminance_flag =
@@ -466,7 +467,7 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
                         {
                             hdrp->targeted_system_display_actual_peak_luminance
                                 [i][j]
-                                    .num = ni_bs_reader_get_bits(&br, 4);
+                                    .num = (int)ni_bs_reader_get_bits(&br, 4);
                             hdrp->targeted_system_display_actual_peak_luminance
                                 [i][j]
                                     .den = 15;
@@ -485,13 +486,13 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
                     for (i = 0; i < 3; i++)
                     {
                         hdrp->params[w].maxscl[i].num =
-                            ni_bs_reader_get_bits(&br, 17);
+                            (int)ni_bs_reader_get_bits(&br, 17);
                         hdrp->params[w].maxscl[i].den = 100000;
                         ni_log(NI_LOG_DEBUG, "hdr10+ maxscl[%d][%d] %d\n", w, i,
                                        hdrp->params[w].maxscl[i].num);
                     }
                     hdrp->params[w].average_maxrgb.num =
-                        ni_bs_reader_get_bits(&br, 17);
+                        (int)ni_bs_reader_get_bits(&br, 17);
                     hdrp->params[w].average_maxrgb.den = 100000;
                     ni_log(NI_LOG_DEBUG, "hdr10+ average_maxrgb[%d] %d\n", w,
                                    hdrp->params[w].average_maxrgb.num);
@@ -509,7 +510,7 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
                         hdrp->params[w].distribution_maxrgb[i].percentage =
                             ni_bs_reader_get_bits(&br, 7);
                         hdrp->params[w].distribution_maxrgb[i].percentile.num =
-                            ni_bs_reader_get_bits(&br, 17);
+                            (int)ni_bs_reader_get_bits(&br, 17);
                         hdrp->params[w].distribution_maxrgb[i].percentile.den =
                             100000;
                         ni_log(NI_LOG_DEBUG,
@@ -527,7 +528,7 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
                     }
 
                     hdrp->params[w].fraction_bright_pixels.num =
-                        ni_bs_reader_get_bits(&br, 10);
+                        (int)ni_bs_reader_get_bits(&br, 10);
                     hdrp->params[w].fraction_bright_pixels.den = 1000;
                     ni_log(NI_LOG_DEBUG, "hdr10+ fraction_bright_pixels[%d] %d\n", w,
                                    hdrp->params[w].fraction_bright_pixels.num);
@@ -559,7 +560,7 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
                         for (j = 0; j < j_limit; j++)
                         {
                             hdrp->mastering_display_actual_peak_luminance[i][j]
-                                .num = ni_bs_reader_get_bits(&br, 4);
+                                .num = (int)ni_bs_reader_get_bits(&br, 4);
                             hdrp->mastering_display_actual_peak_luminance[i][j]
                                 .den = 15;
                             ni_log(NI_LOG_DEBUG,
@@ -583,10 +584,10 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
                     if (hdrp->params[w].tone_mapping_flag)
                     {
                         hdrp->params[w].knee_point_x.num =
-                            ni_bs_reader_get_bits(&br, 12);
+                            (int)ni_bs_reader_get_bits(&br, 12);
                         hdrp->params[w].knee_point_x.den = 4095;
                         hdrp->params[w].knee_point_y.num =
-                            ni_bs_reader_get_bits(&br, 12);
+                            (int)ni_bs_reader_get_bits(&br, 12);
                         hdrp->params[w].knee_point_y.den = 4095;
                         ni_log(NI_LOG_DEBUG, "hdr10+ knee_point_x[%d] %d\n", w,
                                        hdrp->params[w].knee_point_x.num);
@@ -602,7 +603,7 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
                              i < hdrp->params[w].num_bezier_curve_anchors; i++)
                         {
                             hdrp->params[w].bezier_curve_anchors[i].num =
-                                ni_bs_reader_get_bits(&br, 10);
+                                (int)ni_bs_reader_get_bits(&br, 10);
                             hdrp->params[w].bezier_curve_anchors[i].den = 1023;
                             ni_log(NI_LOG_DEBUG,
                                 "hdr10+ bezier_curve_anchors[%d][%d] %d\n", w,
@@ -618,7 +619,7 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
                     if (hdrp->params[w].color_saturation_mapping_flag)
                     {
                         hdrp->params[w].color_saturation_weight.num =
-                            ni_bs_reader_get_bits(&br, 6);
+                            (int)ni_bs_reader_get_bits(&br, 6);
                         hdrp->params[w].color_saturation_weight.den = 8;
                         ni_log(NI_LOG_DEBUG,
                             "hdr10+ color_saturation_weight[%d] %d\n", w,
@@ -691,6 +692,7 @@ static int set_roi_map(ni_session_context_t *p_enc_ctx,
                        const ni_aux_data_t *aux_data, int nb_roi, int width,
                        int height, int intra_qp)
 {
+    (void)intra_qp;
     int r;
     uint32_t i, j, k, m;
     const ni_region_of_interest_t *roi =
@@ -748,7 +750,7 @@ static int set_roi_map(ni_session_context_t *p_enc_ctx,
     // decreasing importance.
     for (r = nb_roi - 1; r >= 0; r--)
     {
-        roi = (const ni_region_of_interest_t *)((uint8_t *)aux_data->data + self_size * r);
+        roi = (const ni_region_of_interest_t *)((uint8_t *)aux_data->data + (size_t)self_size * r);
         if (!roi->qoffset.den)
         {
             ni_log2(p_enc_ctx, NI_LOG_DEBUG,  "ni_region_of_interest_t.qoffset.den must not be "
@@ -818,7 +820,7 @@ static int set_roi_map(ni_session_context_t *p_enc_ctx,
                         // j, k*subNumMbs+m);
                     }
                 }
-                sumQp += p_enc_ctx->roi_map[k * subNumMbs].field.qp_info;
+                sumQp += p_enc_ctx->roi_map[(size_t)k * subNumMbs].field.qp_info;
             }
         }
     }
@@ -941,17 +943,28 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
         }
     }
 
-    // prep SEI for HDR (mastering display color volume)
+    // 1. Prep SEI for HDR (mastering display color volume)
     aux_data = ni_frame_get_aux_data(
         p_dec_frame, NI_FRAME_AUX_DATA_MASTERING_DISPLAY_METADATA);
     if (aux_data)
     {
         p_enc_ctx->mdcv_max_min_lum_data_len = 8;
-        p_enc_ctx->sei_hdr_mastering_display_color_vol_len =
-            8 + 6 * 2 + 2 * 2 + 2 * 4 + 1;
-        if (NI_CODEC_FORMAT_H264 == codec_format)
+        if (NI_CODEC_FORMAT_AV1 == codec_format)
         {
-            p_enc_ctx->sei_hdr_mastering_display_color_vol_len--;
+            // AV1 Metadata OBU: Header(1) + MetadataType(1) + Payload(24) = 26 bytes
+            // No emulation prevention or trailing bits needed for AV1 OBUs
+            p_enc_ctx->sei_hdr_mastering_display_color_vol_len =
+               3 + 6 * 2 + 2 * 2 + 2 * 4 + 1;
+        }
+        else
+        {
+            p_enc_ctx->sei_hdr_mastering_display_color_vol_len =
+                8 + 6 * 2 + 2 * 2 + 2 * 4 + 1;
+
+            if (NI_CODEC_FORMAT_H264 == codec_format)
+            {
+                p_enc_ctx->sei_hdr_mastering_display_color_vol_len--;
+            }
         }
 
         ni_mastering_display_metadata_t *p_src =
@@ -981,35 +994,48 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
             memcpy(p_enc_ctx->ui8_mdcv_max_min_lum_data + 4, &uint32_t_tmp,
                    sizeof(uint32_t));
 
-            // emulation prevention checking of luminance data
-            int emu_bytes_inserted = ni_insert_emulation_prevent_bytes(
-                p_enc_ctx->ui8_mdcv_max_min_lum_data, 2 * 4);
+            // Emulation prevention checking (NOT required for AV1)
+            if (NI_CODEC_FORMAT_AV1 != codec_format)
+            {
+                // emulation prevention checking of luminance data
+                int emu_bytes_inserted = ni_insert_emulation_prevent_bytes(
+                    p_enc_ctx->ui8_mdcv_max_min_lum_data, 2 * 4);
 
-            p_enc_ctx->mdcv_max_min_lum_data_len += emu_bytes_inserted;
-            p_enc_ctx->sei_hdr_mastering_display_color_vol_len +=
-                emu_bytes_inserted;
+                p_enc_ctx->mdcv_max_min_lum_data_len += emu_bytes_inserted;
+                p_enc_ctx->sei_hdr_mastering_display_color_vol_len +=
+                    emu_bytes_inserted;
+            }
         }
     }
 
+    // 2. Construct the Bitstream Payload
     if (p_enc_ctx->sei_hdr_mastering_display_color_vol_len &&
         p_enc_ctx->p_master_display_meta_data && should_send_sei_with_frame)
     {
         dst = mdcv_data;
-        dst[0] = dst[1] = dst[2] = 0;
-        dst[3] = 1;
-
-        if (NI_CODEC_FORMAT_H264 == codec_format)
+        if (NI_CODEC_FORMAT_AV1 == codec_format)
         {
-            dst[4] = 0x6;
-            dst[5] = 0x89;   // payload type=137
-            dst[6] = 0x18;   // payload size=24
+            // AV1 Metadata OBU Header for obu_type: 5 (OBU_METADATA)
+            dst[0] = 0x2a;  // (5 << 3) + 2;
+            dst[1] = 0x1a;  // OBU length
+            dst[2] = 0x2;   // metadata_type METADATA_TYPE_HDR_MDCV  // See 5.8 in spec
+            dst += 3;
+        }
+        else if (NI_CODEC_FORMAT_H264 == codec_format)
+        {
+            dst[0] = dst[1] = dst[2] = 0; dst[3] = 1; // Annex B Start Code
+            dst[4] = 0x6;    // nal_unit_type = SEI
+            dst[5] = 0x89;   // payload type = 137 (mastering_display_colour_volume)
+            dst[6] = 0x18;   // payload size = 24
             dst += 7;
-        } else
+        }
+        else // H.265
         {
-            dst[4] = 0x4e;
-            dst[5] = 1;
-            dst[6] = 0x89;   // payload type=137
-            dst[7] = 0x18;   // payload size=24
+            dst[0] = dst[1] = dst[2] = 0; dst[3] = 1; // Annex B Start Code
+            dst[4] = 0x4e;   // nal_unit_type = PREFIX_SEI_NUT
+            dst[5] = 1;      // nuh_layer_id = 0, nuh_temporal_id_plus1 = 1
+            dst[6] = 0x89;   // payload type = 137
+            dst[7] = 0x18;   // payload size = 24
             dst += 8;
         }
 
@@ -1064,7 +1090,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
                p_enc_ctx->mdcv_max_min_lum_data_len);
 
         dst += p_enc_ctx->mdcv_max_min_lum_data_len;
-        *dst = 0x80;
+        *dst = 0x80; // RBSP Trailing bit
 
         p_enc_frame->sei_hdr_mastering_display_color_vol_len =
             p_enc_ctx->sei_hdr_mastering_display_color_vol_len;
@@ -1073,7 +1099,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
             p_enc_frame->sei_hdr_mastering_display_color_vol_len;
     }
 
-    // prep SEI for HDR (content light level info)
+    // prep HDR content light level info (MaxCLL / MaxFALL)
     aux_data = ni_frame_get_aux_data(p_dec_frame,
                                      NI_FRAME_AUX_DATA_CONTENT_LIGHT_LEVEL);
     if (aux_data)
@@ -1081,10 +1107,17 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
         // size of: start code + NAL unit header + payload type byte +
         //          payload size byte + payload + rbsp trailing bits, default HEVC
         p_enc_ctx->light_level_data_len = 4;
-        p_enc_ctx->sei_hdr_content_light_level_info_len = 8 + 2 * 2 + 1;
-        if (NI_CODEC_FORMAT_H264 == codec_format)
+        if (NI_CODEC_FORMAT_AV1 == codec_format)
         {
-            p_enc_ctx->sei_hdr_content_light_level_info_len--;
+            p_enc_ctx->sei_hdr_content_light_level_info_len = 3 + 2 * 2 + 1;
+        }
+        else
+        {
+            p_enc_ctx->sei_hdr_content_light_level_info_len = 8 + 2 * 2 + 1;
+            if (NI_CODEC_FORMAT_H264 == codec_format)
+            {
+                p_enc_ctx->sei_hdr_content_light_level_info_len--;
+            }
         }
 
         uint16_t max_content_light_level =
@@ -1101,29 +1134,41 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
         memcpy(&(p_enc_ctx->ui8_light_level_data[2]),
                &max_pic_average_light_level, sizeof(uint16_t));
 
-        // emulation prevention checking
-        int emu_bytes_inserted = ni_insert_emulation_prevent_bytes(
-            p_enc_ctx->ui8_light_level_data, p_enc_ctx->light_level_data_len);
+        // H.264 / H.265 require emulation-prevention
+        if (codec_format == NI_CODEC_FORMAT_H264 ||
+            codec_format == NI_CODEC_FORMAT_H265)
+        {
+            int emu_bytes_inserted = ni_insert_emulation_prevent_bytes(
+                p_enc_ctx->ui8_light_level_data, p_enc_ctx->light_level_data_len);
 
-        p_enc_ctx->light_level_data_len += emu_bytes_inserted;
-        p_enc_ctx->sei_hdr_content_light_level_info_len += emu_bytes_inserted;
+            p_enc_ctx->light_level_data_len += emu_bytes_inserted;
+            p_enc_ctx->sei_hdr_content_light_level_info_len += emu_bytes_inserted;
+        }
     }
 
     if (p_enc_ctx->sei_hdr_content_light_level_info_len &&
         should_send_sei_with_frame)
     {
         dst = cll_data;
-        dst[0] = dst[1] = dst[2] = 0;
-        dst[3] = 1;
 
-        if (NI_CODEC_FORMAT_H264 == codec_format)
+        if (NI_CODEC_FORMAT_AV1 == codec_format)
         {
+            // AV1 Metadata OBU Header for obu_type: 5 (OBU_METADATA)
+            dst[0] = 0x2a; // (5 << 3) + 2;
+            dst[1] = 0x6;  // OBU length
+            dst[2] = 0x1; // metadata_type METADATA_TYPE_HDR_CLL
+            dst += 3;
+        }
+        else if (NI_CODEC_FORMAT_H264 == codec_format)
+        {
+            dst[0] = dst[1] = dst[2] = 0; dst[3] = 1; // Annex B Start Code
             dst[4] = 0x6;
             dst[5] = 0x90;   // payload type=144
             dst[6] = 4;      // payload size=4
             dst += 7;
         } else
         {
+            dst[0] = dst[1] = dst[2] = 0; dst[3] = 1; // Annex B Start Code
             dst[4] = 0x4e;
             dst[5] = 1;
             dst[6] = 0x90;   // payload type=144
@@ -1158,15 +1203,20 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
             cc_size = NI_MAX_SEI_DATA;
         }
         memcpy(cc_data_emu_prevent, aux_data->data, cc_size);
-        int cc_size_emu_prevent = cc_size +
-            ni_insert_emulation_prevent_bytes(cc_data_emu_prevent, cc_size);
-        if (cc_size_emu_prevent != cc_size)
-        {
-            ni_log2(p_enc_ctx, NI_LOG_DEBUG,  "ni_enc_prep_aux_data: close caption "
-                           "emulation prevention bytes added: %d\n",
-                           cc_size_emu_prevent - cc_size);
-        }
 
+        int cc_size_emu_prevent = cc_size;
+        // H.264 / H.265 require emulation-prevention
+        if (codec_format == NI_CODEC_FORMAT_H264 ||
+            codec_format == NI_CODEC_FORMAT_H265)
+        {
+            cc_size_emu_prevent = cc_size + ni_insert_emulation_prevent_bytes(cc_data_emu_prevent, cc_size);
+            if (cc_size_emu_prevent != cc_size)
+            {
+                ni_log2(p_enc_ctx, NI_LOG_DEBUG, "ni_enc_prep_aux_data: close caption "
+                               "emulation prevention bytes added: %d\n",
+                               cc_size_emu_prevent - cc_size);
+            }
+        }
         dst = cc_data;
         // set header info fields and extra size based on codec
         if (NI_CODEC_FORMAT_H265 == codec_format)
@@ -1184,7 +1234,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
             memcpy(dst, cc_data_emu_prevent, cc_size_emu_prevent);
             dst += cc_size_emu_prevent;
             memcpy(dst, p_enc_ctx->sei_trailer, NI_CC_SEI_TRAILER_LEN);
-        } else   // H.264
+        } else if (NI_CODEC_FORMAT_H264 == codec_format)
         {
             p_enc_frame->sei_cc_len = NI_CC_SEI_HDR_H264_LEN +
                 cc_size_emu_prevent + NI_CC_SEI_TRAILER_LEN;
@@ -1199,6 +1249,54 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
             memcpy(dst, cc_data_emu_prevent, cc_size_emu_prevent);
             dst += cc_size_emu_prevent;
             memcpy(dst, p_enc_ctx->sei_trailer, NI_CC_SEI_TRAILER_LEN);
+        }
+        else if (NI_CODEC_FORMAT_AV1 == codec_format)
+        {
+            ni_bitstream_writer_t pb;
+            ni_bitstream_writer_init(&pb);
+
+            // 1. OBU Header: Type 5 (Metadata), Has Size = 1
+            // Byte: 0x2a (00101 0 1 0)
+            ni_bs_writer_put(&pb, 0x2a, 8);
+
+            // 2. OBU Size using LEB128
+            // Size = Metadata_type(1) + T.35_header(10) + cc_data(cc_size)
+            // Note: We use raw cc_size as AV1 doesn't use emulation prevention
+            uint32_t obu_payload_size = 1 + 10 + cc_size + NI_CC_SEI_TRAILER_LEN;
+            ni_bs_writer_leb128(&pb, obu_payload_size);
+
+            // 3. Metadata Type: METADATA_TYPE_ITUT_T35 (4)
+            ni_bs_writer_put(&pb, 0x04, 8);
+
+            // 4. ITU-T T.35 Payload Header (First 9 bytes of your template)
+            // This covers country_code, provider_code, and "GA94" identifier
+            // We skip index 0 (OBU Hdr), 1 (Old Size), and 2 (Meta Type)
+            for (int i = 3; i < 11; i++)
+            {
+                ni_bs_writer_put(&pb, p_enc_ctx->itu_t_t35_cc_sei_hdr_av1[i], 8);
+            }
+
+            // 5. Set CC count (Standard ATSC T.35 logic)
+            uint8_t cc_count_byte = (uint8_t)((cc_size / 3) | 0xc0);
+            ni_bs_writer_put(&pb, cc_count_byte, 8);
+
+            // 6. Marker bits / em_data (Index 12 of g_itu_t_t35_cc_sei_hdr_av1)
+            ni_bs_writer_put(&pb, p_enc_ctx->itu_t_t35_cc_sei_hdr_av1[12], 8);
+
+            // 7. Calculate total length and copy to destination
+            // The writer now contains the full dynamic header
+            uint32_t header_len = (uint32_t)(ni_bs_writer_tell(&pb) / 8);
+            p_enc_frame->sei_cc_len = header_len + cc_size + NI_CC_SEI_TRAILER_LEN;
+            p_enc_frame->sei_total_len += p_enc_frame->sei_cc_len;
+
+            ni_bs_writer_copy(dst, &pb);
+            dst += header_len;
+
+            // 8. Copy raw CC data
+            memcpy(dst, aux_data->data, cc_size);
+            dst += cc_size;
+            memcpy(dst, p_enc_ctx->sei_trailer, NI_CC_SEI_TRAILER_LEN);
+            ni_bs_writer_clear(&pb);
         }
     }
 
@@ -1420,7 +1518,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
             {
                 ui_tmp =
                     lrint(8 * ni_q2d(hdrp->params[w].color_saturation_weight));
-                ni_bs_writer_put(&pb, 6, ui_tmp);
+                ni_bs_writer_put(&pb, ui_tmp, 6);
                 ni_log2(p_enc_ctx, NI_LOG_DEBUG,  "hdr10+ color_saturation_weight[%d] %u\n", w,
                                ui_tmp);
             }
@@ -1477,6 +1575,43 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
                 (uint8_t)hdr10p_num_bytes + emu_bytes_inserted +
                 NI_RBSP_TRAILING_BITS_LEN;
             p_enc_frame->sei_total_len += p_enc_frame->sei_hdr_plus_len;
+        } else if (NI_CODEC_FORMAT_AV1 == codec_format)
+        {
+            ni_bitstream_writer_t header_pb;
+            ni_bitstream_writer_init(&header_pb);
+
+            // OBU Header: Type 5 (Metadata), Has Size = 1 (0x2a)
+            ni_bs_writer_put(&header_pb, 0x2a, 8);
+
+            // Calculate OBU Size
+            // Metadata_type(1) + country_code(1) + payload + trailing_byte(1)
+            uint32_t obu_payload_size = 1 + 1 + (uint32_t)hdr10p_num_bytes +
+                NI_RBSP_TRAILING_BITS_LEN;
+            ni_bs_writer_leb128(&header_pb, obu_payload_size);
+
+            // Metadata Type (4) and Country Code (0xb5)
+            ni_bs_writer_put(&header_pb, 0x04, 8);
+            ni_bs_writer_put(&header_pb, 0xb5, 8);
+
+            uint32_t header_len = (uint32_t)(ni_bs_writer_tell(&header_pb) / 8);
+
+            // Update frame tracking lengths
+            p_enc_frame->sei_hdr_plus_len = header_len + (uint32_t)hdr10p_num_bytes +
+                NI_RBSP_TRAILING_BITS_LEN;
+            p_enc_frame->sei_total_len += p_enc_frame->sei_hdr_plus_len;
+
+            // Copy Header (OBU Header + LEB128 Size + Metadata Type + Country Code)
+            ni_bs_writer_copy(dst, &header_pb);
+            dst += header_len;
+
+            // Copy HDR10+ Payload
+            ni_bs_writer_copy(dst, &pb);
+            dst += hdr10p_num_bytes;
+            *dst = p_enc_ctx->sei_trailer[1];
+            ni_bs_writer_clear(&header_pb);
+
+            ni_log2(p_enc_ctx, NI_LOG_DEBUG, "AV1 HDR10+ with Trailer: Total %u bytes\n",
+                    p_enc_frame->sei_hdr_plus_len);
         } else
         {
             ni_log2(p_enc_ctx, NI_LOG_ERROR,
@@ -1898,9 +2033,9 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
             {
                 uint32_t numUnitsInTick = 1000;
                 framerate_num = framerate_num / framerate_denom;
-                framerate_denom = numUnitsInTick + 1;
+                framerate_denom = (int32_t)(numUnitsInTick + 1);
                 framerate_num += 1;
-                framerate_num *= numUnitsInTick;
+                framerate_num = (int32_t)(framerate_num * numUnitsInTick);
             } else
             {
                 framerate_num = framerate_num / framerate_denom;
@@ -2271,6 +2406,7 @@ void ni_enc_copy_aux_data(ni_session_context_t *p_enc_ctx,
                           const uint8_t *hdrp_data, int is_hwframe,
                           int is_semiplanar)
 {
+    (void)p_dec_frame;
     ni_xcoder_params_t *api_params =
         (ni_xcoder_params_t *)p_enc_ctx->p_session_config;
 
@@ -2454,6 +2590,7 @@ LIB_API int ni_enc_insert_timecode(ni_session_context_t *p_enc_ctx, ni_frame_t *
 {
     uint8_t timecode_data[NI_MAX_SEI_DATA];
     uint8_t *dst = timecode_data;
+    uint8_t *extradata_dst;
     ni_bitstream_writer_t pb;
     uint32_t header_len, payload_len, total_len;
     int emu_bytes_inserted, is_hwframe, is_semiplanar;
@@ -2466,6 +2603,91 @@ LIB_API int ni_enc_insert_timecode(ni_session_context_t *p_enc_ctx, ni_frame_t *
     if (p_enc_ctx->codec_format != NI_CODEC_FORMAT_H264 && p_enc_ctx->codec_format != NI_CODEC_FORMAT_H265) {
         ni_log2(p_enc_ctx, NI_LOG_ERROR, "ERROR: %s insertion of timecode in SEI is only supported on H264 and H265 encoder\n", __func__);
         return NI_RETCODE_FAILURE;
+    }
+
+    is_hwframe = p_enc_ctx->hw_action != NI_CODEC_HW_NONE;
+    is_semiplanar = p_enc_ctx->pixel_format == NI_PIX_FMT_NV12 ||
+                    p_enc_ctx->pixel_format == NI_PIX_FMT_P010LE;
+    extradata_dst = (uint8_t *)p_enc_frame->p_data[2 + is_hwframe] +
+        p_enc_frame->data_len[2 + is_hwframe] + p_enc_frame->extra_data_len;
+    if (!is_hwframe)
+    {
+        extradata_dst = (uint8_t *)p_enc_frame->p_data[2 - is_semiplanar] +
+            p_enc_frame->data_len[2 - is_semiplanar] + p_enc_frame->extra_data_len;
+    }
+
+    // separate metadata buffer (not contiguous with YUV buffer)
+    if (p_enc_frame->separate_metadata)
+    {
+        extradata_dst = p_enc_frame->p_metadata_buffer + p_enc_frame->extra_data_len;
+    }
+
+    // H264 + hrdEnable=1 path: FW generates its own H264 picture timing SEI
+    // that includes timecode. Instead of formatting a second (conflicting) SEI
+    // NAL unit on the host side, append the raw timecode struct to the end of
+    // the frame's auxiliary data buffer so the FW can read it and override the
+    // timecode it writes into its picture timing SEI.
+    if (p_enc_ctx->codec_format == NI_CODEC_FORMAT_H264 &&
+        p_enc_ctx->p_session_config &&
+        ((ni_xcoder_params_t *)p_enc_ctx->p_session_config)->cfg_enc_params.hrdEnable)
+    {
+        ni_timecode_raw_t raw_tc;
+
+        // Reject the request if old FW is used to avoid sending the raw timecode
+        // data to old FW which it doesn't know how to interpret
+        if (ni_cmp_fw_api_ver(
+                (char *)&p_enc_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+                "6t9") < 0)
+        {
+            ni_log2(p_enc_ctx, NI_LOG_ERROR,
+                    "ERROR: %s timecode injection for H264 hrdEnable=1 case is not "
+                    "supported on FW API version < 6t9\n", __func__);
+            return NI_RETCODE_FAILURE;
+        }
+
+        // Fail if extra timecode data will make total SEI length exceed limit
+        if (p_enc_frame->sei_total_len + sizeof(ni_timecode_raw_t) > NI_ENC_MAX_SEI_BUF_SIZE)
+        {
+            ni_log2(p_enc_ctx, NI_LOG_ERROR,
+                    "ERROR: %s cannot insert timecode data because current sei total "
+                    "length %u + timecode data len %u exceeds maximum sei size %u\n",
+                    __func__, p_enc_frame->sei_total_len, sizeof(ni_timecode_raw_t),
+                    NI_ENC_MAX_SEI_BUF_SIZE);
+            return NI_RETCODE_FAILURE;
+        }
+
+        // fill the raw struct from ni_timecode_t fields
+        raw_tc.nuit_field_based_flag = p_timecode->nuit_field_based_flag;
+        raw_tc.counting_type         = p_timecode->counting_type;
+        raw_tc.full_timestamp_flag   = p_timecode->full_timestamp_flag;
+        raw_tc.discontinuity_flag    = p_timecode->discontinuity_flag;
+        raw_tc.cnt_dropped_flag      = p_timecode->cnt_dropped_flag;
+        raw_tc.n_frames              = p_timecode->n_frames;
+        raw_tc.seconds_flag          = p_timecode->seconds_flag;
+        raw_tc.seconds_value         = p_timecode->seconds_value;
+        raw_tc.minutes_flag          = p_timecode->minutes_flag;
+        raw_tc.minutes_value         = p_timecode->minutes_value;
+        raw_tc.hours_flag            = p_timecode->hours_flag;
+        raw_tc.hours_value           = p_timecode->hours_value;
+        raw_tc.time_offset_length    = p_timecode->time_offset_length;
+        raw_tc.time_offset_value     = p_timecode->time_offset_value;
+
+        memcpy(extradata_dst, &raw_tc, sizeof(raw_tc));
+
+        // Set the flag to indicate that raw timecode is present,
+        // ni_encoder_session_write will write this to the metadata header
+        p_enc_frame->timecode_present = 1;
+
+        // Only advance extra_data_len (not sei_total_len) so the raw timecode is not
+        // treated as part of the external SEI that's directly written to the output stream
+        p_enc_frame->extra_data_len += sizeof(ni_timecode_raw_t);
+
+        ni_log2(p_enc_ctx, NI_LOG_DEBUG,
+                "%s: H264 hrdEnable=1 path - appended %zu-byte raw timecode struct "
+                "to frame buffer (extra_data_len=%u)\n",
+                __func__, sizeof(ni_timecode_raw_t), p_enc_frame->extra_data_len);
+
+        return NI_RETCODE_SUCCESS;
     }
 
     ni_bitstream_writer_init(&pb);
@@ -2569,25 +2791,18 @@ LIB_API int ni_enc_insert_timecode(ni_session_context_t *p_enc_ctx, ni_frame_t *
     // total size of the timecode_data buffer to be copied
     total_len = header_len + payload_len + emu_bytes_inserted + 1;
 
-    is_hwframe = p_enc_ctx->hw_action != NI_CODEC_HW_NONE;
-    is_semiplanar = p_enc_ctx->pixel_format == NI_PIX_FMT_NV12 ||
-                    p_enc_ctx->pixel_format == NI_PIX_FMT_P010LE;
-    dst = (uint8_t *)p_enc_frame->p_data[2 + is_hwframe] +
-        p_enc_frame->data_len[2 + is_hwframe] + p_enc_frame->extra_data_len;
-    if (!is_hwframe)
+    // Fail if extra SEI data will make total SEI length exceed limit
+    if (p_enc_frame->sei_total_len + total_len > NI_ENC_MAX_SEI_BUF_SIZE)
     {
-        dst = (uint8_t *)p_enc_frame->p_data[2 - is_semiplanar] +
-            p_enc_frame->data_len[2 - is_semiplanar] + p_enc_frame->extra_data_len;
-    }
-
-    // separate metadata buffer (not contiguous with YUV buffer)
-    if (p_enc_frame->separate_metadata)
-    {
-        dst = p_enc_frame->p_metadata_buffer + p_enc_frame->extra_data_len;
+        ni_log2(p_enc_ctx, NI_LOG_ERROR,
+                "ERROR: %s cannot insert timecode data because current sei total length %u "
+                "+ pic_timing/timecode SEI length %u exceeds maximum sei size %u\n",
+                __func__, p_enc_frame->sei_total_len, total_len, NI_ENC_MAX_SEI_BUF_SIZE);
+        return NI_RETCODE_FAILURE;
     }
 
     // copy formatted SEI NAL unit data to the proper buffer
-    memcpy(dst, timecode_data, total_len);
+    memcpy(extradata_dst, timecode_data, total_len);
 
     // finally, update the relevant data size counters in ni_frame_t
     p_enc_frame->sei_total_len += total_len;
@@ -2654,8 +2869,8 @@ int ni_enc_write_from_yuv_buffer(ni_session_context_t *p_ctx,
     }
 
     is_hwframe = p_ctx->hw_action != NI_CODEC_HW_NONE;
-    frame_width = p_enc_frame->video_width;
-    frame_height = p_enc_frame->video_height;
+    frame_width = (int)p_enc_frame->video_width;
+    frame_height = (int)p_enc_frame->video_height;
     p_param = (ni_xcoder_params_t *)p_ctx->p_session_config;
 
     // extra data starts with metadata header
@@ -2766,8 +2981,8 @@ int ni_enc_write_from_yuv_buffer(ni_session_context_t *p_ctx,
         src_height[1] = src_height[0] / 2;
         src_height[2] = is_semiplanar ? 0 : src_height[1];
 
-        p_src[1] = p_src[0] + src_stride[0] * src_height[0];
-        p_src[2] = p_src[1] + src_stride[1] * src_height[1];
+        p_src[1] = p_src[0] + (ptrdiff_t)src_stride[0] * src_height[0];
+        p_src[2] = p_src[1] + (ptrdiff_t)src_stride[1] * src_height[1];
     }
 
     alignment_2pass_wa = (
@@ -3204,7 +3419,7 @@ int ni_dec_packet_parse(ni_session_context_t *p_session_ctx, ni_xcoder_params_t 
                                          48);   // 3 * 2 bytes * 8 = 48 bits
                 // skip some header
                 ni_bs_reader_skip_bits(&br, 16);
-                temporal_id = ni_bs_reader_get_bits(&br, 3);
+                temporal_id = (int)ni_bs_reader_get_bits(&br, 3);
                 if (temporal_id > svct_layer)
                 {
                     // H264_NAL_PREFIX UNIT will be sent with the last packet.
@@ -3484,7 +3699,7 @@ int ni_expand_frame(ni_frame_t *dst, ni_frame_t *src, int dst_stride[],
 
         for (h = 0; i < 3 && h < src_height[i]; h++)
         {
-            memcpy(dst_line, src_line, src_width[i] * (tenBit + 1));
+            memcpy(dst_line, src_line, (size_t)src_width[i] * (tenBit + 1));
 
             /* Add horizontal padding */
             if (hpad[i])
@@ -3493,8 +3708,8 @@ int ni_expand_frame(ni_frame_t *dst, ni_frame_t *src, int dst_stride[],
 
                 if (tenBit)
                 {
-                    sample = &src_line[(lastidx - 1) * 2];
-                    dest = &dst_line[lastidx * 2];
+                    sample = &src_line[(ptrdiff_t)(lastidx - 1) * 2];
+                    dest = &dst_line[(ptrdiff_t)lastidx * 2];
 
                     /* two bytes per sample */
                     for (j = 0; j < hpad[i] / 2; j++)

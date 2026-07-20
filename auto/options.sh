@@ -21,6 +21,7 @@ XCODER_ENABLE_CPU_AFFINITY=NO
 XCODER_SSIM_INFO_LEVEL_LOGGING=NO
 SETUP_SYSTEMD=NO
 XCODER_PRINT_FW_LOGS=NO
+XCODER_ENABLE_MCTF=NO
 
 #####################################################################################
 # menu
@@ -63,6 +64,9 @@ Options:
 
   --with-setup-systemd            Setup service to initilize libxcoder and resource monitor
   --without-setup-systemd         Do not setup service to initilize libxcoder and resource monitor (default)
+
+  --enable-mctf                   Enable MCTF (Motion Compensated Temporal Filtering) feature
+  --disable-mctf                  Disable MCTF feature (default)
 
   --prefix                        Set custom install location preix
                                   (default: /usr/local/)
@@ -132,6 +136,8 @@ function parse_user_option() {
             --without-setup-systemd)    SETUP_SYSTEMD=NO;;
             --with-print-fw-logs)       XCODER_PRINT_FW_LOGS=YES;;
             --without-print-fw-logs)    XCODER_PRINT_FW_LOGS=NO;;
+            --enable-mctf)              XCODER_ENABLE_MCTF=YES;;
+            --disable-mctf)             XCODER_ENABLE_MCTF=NO;;
             --prefix*)                  extract_arg "\-\-prefix" $1 $2; eprc=$?;
                                         if [ "$eprc" -eq 1 ]; then
                                             shift;
@@ -190,6 +196,7 @@ function regenerate_options() {
     if [ "$XCODER_ENABLE_CPU_AFFINITY" = YES ]; then XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --enable-cpu-affinity"; else XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --disable-cpu-affinity"; fi
     if [ "$SETUP_SYSTEMD" = YES ]; then XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --with-setup-systemd"; else XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --without-setup-systemd"; fi
     if [ "$XCODER_PRINT_FW_LOGS" = YES ]; then XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --with-print-fw-logs"; else XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --without-print-fw-logs"; fi
+    if [ "$XCODER_ENABLE_MCTF" = YES ]; then XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --enable-mctf"; else XCODER_AUTO_CONFIGURE="${XCODER_AUTO_CONFIGURE} --disable-mctf"; fi
     echo "regenerate config: ${XCODER_AUTO_CONFIGURE}"
 }
 
@@ -210,6 +217,7 @@ function check_option_conflicts() {
     if [ "$XCODER_ENABLE_CPU_AFFINITY" = RESERVED ]; then echo "you must specify whether to compile with cpu affinity, see: ./configure --help"; __check_ok=NO; fi
     if [ "$SETUP_SYSTEMD" = RESERVED ]; then echo "you must specify whether to setup systemd service for libxcoder, see: ./configure --help"; __check_ok=NO; fi
     if [ "$XCODER_PRINT_FW_LOGS" = RESERVED ]; then echo "you must specify whether to compile print-fw-logs macro, see: ./configure --help"; __check_ok=NO; fi
+    if [ "$XCODER_ENABLE_MCTF" = RESERVED ]; then echo "you must specify whether to enable mctf, see: ./configure --help"; __check_ok=NO; fi
 }
 
 #####################################################################################

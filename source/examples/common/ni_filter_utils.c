@@ -40,10 +40,18 @@ int ni_scaler_params_set_value(ni_scale_params_t *params, const char *name, cons
 
     if (!strcmp("width", name))
     {
-        params->width = atoi(value);
+        if (ni_strtoi(value, &params->width) != NI_RETCODE_SUCCESS)
+        {
+            ni_log(NI_LOG_ERROR, "ERROR: %s invalid value for %s: %s\n", __func__, name, value);
+            return -1;
+        }
     } else if (!strcmp("height", name))
     {
-        params->height = atoi(value);
+        if (ni_strtoi(value, &params->height) != NI_RETCODE_SUCCESS)
+        {
+            ni_log(NI_LOG_ERROR, "ERROR: %s invalid value for %s: %s\n", __func__, name, value);
+            return -1;
+        }
     } else if (!strcmp("format", name))
     {
         if (!strcmp(value, "yuv420p"))
@@ -82,16 +90,32 @@ int ni_drawbox_params_set_value(ni_drawbox_params_t *params, const char *name, c
 
     if (!strcmp("width", name))
     {
-        params->box_w = atoi(value);
+        if (ni_strtoi(value, &params->box_w) != NI_RETCODE_SUCCESS)
+        {
+            ni_log(NI_LOG_ERROR, "ERROR: %s invalid value for %s: %s\n", __func__, name, value);
+            return -1;
+        }
     } else if (!strcmp("height", name))
     {
-        params->box_h = atoi(value);
+        if (ni_strtoi(value, &params->box_h) != NI_RETCODE_SUCCESS)
+        {
+            ni_log(NI_LOG_ERROR, "ERROR: %s invalid value for %s: %s\n", __func__, name, value);
+            return -1;
+        }
     } else if (!strcmp("x", name))
     {
-        params->box_x = atoi(value);
+        if (ni_strtoi(value, &params->box_x) != NI_RETCODE_SUCCESS)
+        {
+            ni_log(NI_LOG_ERROR, "ERROR: %s invalid value for %s: %s\n", __func__, name, value);
+            return -1;
+        }
     } else if (!strcmp("y", name))
     {
-        params->box_y = atoi(value);
+        if (ni_strtoi(value, &params->box_y) != NI_RETCODE_SUCCESS)
+        {
+            ni_log(NI_LOG_ERROR, "ERROR: %s invalid value for %s: %s\n", __func__, name, value);
+            return -1;
+        }
     } else
     {
         ni_log(NI_LOG_ERROR, "Error: invalid drawbox param name %s\n", name);
@@ -516,7 +540,7 @@ int scale_filter(ni_session_context_t *p_ctx, ni_frame_t *p_frame_in,
 {
     int ret;
     niFrameSurface1_t *p_surface_in;
-    ni_scaler_input_params_t scale_params;
+    ni_scaler_input_params_t scale_params = {0};
 
     p_surface_in = (niFrameSurface1_t *)p_frame_in->p_data[3];
     scale_params.output_format = out_format;   // rgba or bgrp or yuv420p;

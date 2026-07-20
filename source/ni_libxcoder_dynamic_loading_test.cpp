@@ -32,21 +32,23 @@
 
 #include <fcntl.h>
 #include <errno.h>
-#define _NETINT_LIBXCODER_DYNAMIC_LOADING_TEST_
+#define _NETINT_LIBXCODER_DYNAMIC_LOADING_TEST_ // NOLINT(bugprone-reserved-identifier,cert-dcl37-c,cert-dcl51-cpp)
 #include "ni_libxcoder_dynamic_loading.h"
 
 int main(int argc, char **argv)
 {
+    (void)argc;
+    (void)argv;
     void *handle;
-    char *error;
-    NETINTLibxcoderAPI ni_libxcoder_api_dl;
+    const char *error;
+    const NETINTLibxcoderAPI ni_libxcoder_api_dl;
     NETINT_LIBXCODER_API_FUNCTION_LIST functionList;
     int failed_func_ptr_check = 0;
 
     handle = dlopen ("libxcoder.so", RTLD_NOW);
     if (!handle) {
-        fprintf(stderr, "%s\n", dlerror());
-        exit(1);
+        (void)fprintf(stderr, "%s\n", dlerror()); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
+        exit(1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
     }
 
     // Check load error on individual function
@@ -57,9 +59,10 @@ int main(int argc, char **argv)
     // }
 
     ni_libxcoder_api_dl.NiLibxcoderAPICreateInstance(handle, &functionList);
-    if ((error = dlerror()) != NULL)  {
-        fprintf(stderr, "%s\n", error);
-        exit(1);
+    error = dlerror(); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
+    if (error != NULL)  {
+        (void)fprintf(stderr, "%s\n", error);
+        exit(1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
     }
     printf("Dynamically loaded functionList\n");
 
@@ -68,7 +71,7 @@ int main(int argc, char **argv)
     {
         if (((void *) *(((void **) &functionList) + i)) == NULL)
         {
-            fprintf(stderr, "Failed to load function pointer at function %d in "
+            (void)fprintf(stderr, "Failed to load function pointer at function %d in "
                             "NETINT_LIBXCODER_API_FUNCTION_LIST\n", i);
             failed_func_ptr_check = 1;
         }
@@ -80,5 +83,5 @@ int main(int argc, char **argv)
     }
 
     dlclose(handle);
-    exit(failed_func_ptr_check);
+    exit(failed_func_ptr_check); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
 }

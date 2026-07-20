@@ -3,6 +3,7 @@
 target_windows=false;
 target_android=false;
 target_openharmony=false
+enable_mctf=false
 include_gdb=false;
 self_kill=false;
 latency_display=false;
@@ -45,7 +46,8 @@ while [ "$1" != "" ]; do
                          echo "--doxygen                        compile Doxygen (does not compile libxcoder)";
                          echo "--setup-systemd                  install systemd service to initialize libxcoder";
                          echo "--deprecation-as-error           compile without deprecated macros, functions and variables";
-                         echo "--print-fw-logs                  compile with dumping fw logs when fw return errors"; exit 0;
+                         echo "--print-fw-logs                  compile with dumping fw logs when fw return errors";
+                         echo "--enable-mctf                    compile with MCTF support"; exit 0;
         ;;
         -w | windows)                   target_windows=true
         ;;
@@ -82,6 +84,8 @@ while [ "$1" != "" ]; do
         --deprecation-as-error)         deprecation_as_error=true
         ;;
         --print-fw-logs)                print_fw_logs=true
+        ;;
+        --enable-mctf)                  enable_mctf=true
         ;;
         *)               echo "Usage: ./build.sh [OPTION]..."; echo "Try './build.sh --help' for more information"; exit 1
         ;;
@@ -181,6 +185,14 @@ fi
 
 if $print_fw_logs; then
     extra_config_flags="${extra_config_flags} --with-print-fw-logs"
+fi
+
+MCTF_PATH="nimctf"
+if ! $target_windows && ! $target_android && ! $target_openharmony && $enable_mctf; then
+    if [ -d "${MCTF_PATH}" ]; then
+        extra_config_flags="${extra_config_flags} --enable-mctf"
+        extra_make_flags="${extra_make_flags} HAVE_MCTF=TRUE"
+    fi
 fi
 
 # configure, build, and install

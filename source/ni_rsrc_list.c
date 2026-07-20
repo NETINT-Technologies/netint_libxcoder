@@ -81,7 +81,7 @@ int strcat_dyn_buf(dyn_str_buf_t *dyn_str_buf, const char *fmt, ...)
 
     if (!dyn_str_buf)
     {
-        fprintf(stderr, "ERROR: invalid param *dyn_str_buf\n");
+        (void)fprintf(stderr, "ERROR: invalid param *dyn_str_buf\n");
         return -1;
     }
 
@@ -114,7 +114,7 @@ int strcat_dyn_buf(dyn_str_buf_t *dyn_str_buf, const char *fmt, ...)
                                            add_buf_size);
         if (!tmp_char_ptr)
         {
-            fprintf(stderr, "ERROR: strcat_dyn_buf() failed realloc()\n");
+            (void)fprintf(stderr, "ERROR: strcat_dyn_buf() failed realloc()\n");
             va_end(vl);
             return -1;
         }
@@ -182,6 +182,8 @@ static void print_text(ni_device_t *p_device)
         strcat_dyn_buf(&output_buf, "  F/W build time: %s\n",
                p_dev_info->fw_build_time);
         strcat_dyn_buf(&output_buf, "  F/W build id: %s\n",p_dev_info->fw_build_id);
+        strcat_dyn_buf(&output_buf, "  F/W flavour: %c\n",
+               p_dev_info->fw_flavour ? p_dev_info->fw_flavour : '-');
         strcat_dyn_buf(&output_buf, "  DeviceID: %s\n", p_dev_info->dev_name);
         strcat_dyn_buf(&output_buf, "  PixelFormats: yuv420p, yuv420p10le, nv12, p010le"
                ", ni_quadra\n");
@@ -318,6 +320,8 @@ static void print_full_text(ni_device_t *p_device)
         strcat_dyn_buf(&output_buf, "  F/W build time: %s\n",
                p_dev_info->fw_build_time);
         strcat_dyn_buf(&output_buf, "  F/W build id: %s\n",p_dev_info->fw_build_id);
+        strcat_dyn_buf(&output_buf, "  F/W flavour: %c\n",
+               p_dev_info->fw_flavour ? p_dev_info->fw_flavour : '-');
         strcat_dyn_buf(&output_buf, "  DeviceID: %s\n", p_dev_info->dev_name);
 
         for (size_t dev_type = NI_DEVICE_TYPE_DECODER;
@@ -491,6 +495,7 @@ static void print_json(ni_device_t *p_device)
                                     "\t\t\"F/W commit hash\":  \"%s\",\n"
                                     "\t\t\"F/W build time\":  \"%s\",\n"
                                     "\t\t\"F/W build id\":  \"%s\",\n"
+                                    "\t\t\"F/W flavour\":  \"%c\",\n"
                                     "\t\t\"DeviceID\":  \"%s\",\n"
                                     , (int)sizeof(p_dev_info->serial_number), p_dev_info->serial_number,
                                     (int)sizeof(p_dev_info->model_number), p_dev_info->model_number,
@@ -499,7 +504,9 @@ static void print_json(ni_device_t *p_device)
                                     p_dev_info->fw_ver_compat_warning ? "no, possible missing features" : "yes",
                                     p_dev_info->fw_branch_name, p_dev_info->fw_commit_time,
                                     p_dev_info->fw_commit_hash, p_dev_info->fw_build_time,
-                                    p_dev_info->fw_build_id, p_dev_info->dev_name);
+                                    p_dev_info->fw_build_id,
+                                    p_dev_info->fw_flavour ? p_dev_info->fw_flavour : '-',
+                                    p_dev_info->dev_name);
         for (size_t dev_type = NI_DEVICE_TYPE_DECODER;
              dev_type != NI_DEVICE_TYPE_XCODER_MAX; dev_type++)
         {
@@ -673,7 +680,7 @@ int32_t main(int argc, char *argv[])
     int printFormat = FMT_TEXT;
 
     // arg handling
-    while ((opt = getopt(argc, argv, "ahvlo:")) != -1)
+    while ((opt = getopt(argc, argv, "ahvlo:")) != -1) // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
     {
         switch (opt)
         {
@@ -709,9 +716,9 @@ int32_t main(int argc, char *argv[])
                 {
                     ni_log_set_level(log_level);
                 } else {
-                    fprintf(stderr, "FATAL: invalid log level selected: %s\n",
+                    (void)fprintf(stderr, "FATAL: invalid log level selected: %s\n",
                             optarg);
-                    exit(1);
+                    exit(1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
                 }
                 break;
             case 'o':
@@ -730,12 +737,12 @@ int32_t main(int argc, char *argv[])
                 }
                 else
                 {
-                    fprintf(stderr, "Error: unknown selection for outputFormat: %s\n", optarg);
+                    (void)fprintf(stderr, "Error: unknown selection for outputFormat: %s\n", optarg);
                     return 1;
                 }
                 break;
             default:
-                fprintf(stderr, "FATAL: invalid arg '%c'\n", opt);
+                (void)fprintf(stderr, "FATAL: invalid arg '%c'\n", opt);
                 return 1;
         }
     }

@@ -156,6 +156,8 @@ ni_retcode_t ni_queue_print(ni_queue_t *p_queue);
 int32_t ni_atobool(const char *p_str, bool *b_error);
 int32_t ni_atoi(const char *p_str, bool *b_error);
 double ni_atof(const char *p_str, bool *b_error);
+LIB_API ni_retcode_t ni_strtoi(const char *str, int32_t *out_val);
+LIB_API ni_retcode_t ni_strtod_val(const char *str, double *out_val);
 int32_t ni_parse_name(const char *arg, const char *const *names, bool *b_error);
 uint32_t ni_decode_power_measurement(uint32_t power_value, const uint8_t *serial_number);
 

@@ -56,6 +56,7 @@
 #endif
 #endif
 
+#include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
@@ -73,7 +74,9 @@
 #include "ni_util.h"
 #include "ni_lat_meas.h"
 #include "ni_rsrc_priv.h"
-
+#ifdef NI_HAVE_MCTF
+#include "mctf.h"
+#endif
 #if defined(__linux__) && defined(XCODER_ENABLE_CPU_AFFINITY)
 #include <numa.h>
 #endif
@@ -98,10 +101,10 @@ static const uint64_t max_sample_rate_second_h265[ HEVC_LEVEL_NUM ] =
 };
 static const uint64_t max_sample_rate_second_h264[ H264_LEVEL_NUM ] =
 {
-  1485*256, 1485*256, 3000*256, 6000*256, 11880*256, 11880*256, 19800*256, 20250*256,
-  40500*256, 108000*256, 216000*256, 245760*256, 245760*256,
-  522240*256, 589824*256, 983040*256, 2073600*256,
-  4177920*256, 8355840*256, 16711680ULL*256
+  (uint64_t)1485*256, (uint64_t)1485*256, (uint64_t)3000*256, (uint64_t)6000*256, (uint64_t)11880*256, (uint64_t)11880*256, (uint64_t)19800*256, (uint64_t)20250*256,
+  (uint64_t)40500*256, (uint64_t)108000*256, (uint64_t)216000*256, (uint64_t)245760*256, (uint64_t)245760*256,
+  (uint64_t)522240*256, (uint64_t)589824*256, (uint64_t)983040*256, (uint64_t)2073600*256,
+  (uint64_t)4177920*256, (uint64_t)8355840*256, (uint64_t)16711680*256
 };
 static const uint64_t max_sample_rate_second_av1[ AV1_LEVEL_NUM ] =
 {
@@ -166,7 +169,7 @@ static const uint32_t max_bitrate_h264[ H264_LEVEL_NUM ] =
 #define AI_MODEL_TYPE_HVSPLUS_FILTER 3
 #define AI_MODEL_TYPE_USM_FILTER 4
 
-typedef enum _ni_t35_sei_mesg_type
+typedef enum _ni_t35_sei_mesg_type // NOLINT(bugprone-reserved-identifier,cert-dcl37-c,cert-dcl51-cpp)
 {
     NI_T35_SEI_CLOSED_CAPTION = 0,
     NI_T35_SEI_HDR10_PLUS = 1
@@ -262,6 +265,29 @@ static uint8_t g_itu_t_t35_hdr10p_sei_hdr_h264[NI_HDR10P_SEI_HDR_H264_LEN] = {
     //0x01, //  u16 itu_t_t35_provider_oriented_code = 0x0001
     // payLoadSize count starts from itu_t_t35_provider_code and goes until
     // and including trailer
+};
+
+static uint8_t g_itu_t_t35_cc_sei_hdr_av1[NI_CC_SEI_HDR_AV1_LEN] = {
+    0x2a,      // OBU Header (Type: Metadata, Has Size: True)
+    0 + 11,    // OBU Size (Metadata Type + T.35 Payload + Marker); to be set
+    0x04,      // Metadata Type (METADATA_TYPE_ITUT_T35)
+    0xb5,      // itu_t_t35_country_code = 181 (North America)
+    0x00,      // itu_t_t35_provider_code (Terminal)
+    0x31,      // itu_t_t35_provider_code = 49
+    0x47,      // "G"
+    0x41,      // "A"
+    0x39,      // "9"
+    0x34,      // "4" (ATSC_user_identifier)
+    0x03,      // ATSC1_data_user_data_type_code = 3
+    0 | 0xc0,  // (cc_count) | 0xc0; to be set
+    0xff       // Marker bits / em_data
+};
+
+static uint8_t g_itu_t_t35_hdr10p_sei_hdr_av1[NI_HDR10P_SEI_HDR_AV1_LEN] = {
+    0x2a,      // OBU Header (Type 5: Metadata, Has Size: 1)
+    0,         // OBU Size (to be set: payload_bytes + 2)
+    0x04,      // Metadata Type (METADATA_TYPE_ITUT_T35)
+    0xb5       // itu_t_t35_country_code = 181 (North America)
 };
 
 static uint8_t g_sei_trailer[NI_CC_SEI_TRAILER_LEN] = {
@@ -394,10 +420,11 @@ static void trace_recon_tile2raster_y(FILE *fRecon, uint8_t *mem, int width, int
                                     int leftOffset, int topOffset,
                                     int src_stride, int pixDepth, uint8_t *luma_mem_temp)
 {
+  (void)fRecon;
   int i;
   int write_data_len = 0;
   int bytesPerPix = (pixDepth == 8 ? 1 : 2);
-  uint8_t *tmp_mem = (uint8_t *)malloc(bytesPerPix*src_stride);
+  uint8_t *tmp_mem = (uint8_t *)malloc((size_t)bytesPerPix*src_stride);
   int num_tiles = (leftOffset + width + 3) / 4 - leftOffset/4;
   if(tmp_mem == NULL)
     return;
@@ -406,31 +433,31 @@ static void trace_recon_tile2raster_y(FILE *fRecon, uint8_t *mem, int width, int
     memcpyToPelByBits(tmp_mem, mem, 4, num_tiles, 4, 16*pixDepth/8, pixDepth);
     if(i >= topOffset && i < topOffset + height){
       // write_(fRecon, tmp_mem + (leftOffset & 3)*bytesPerPix, width*bytesPerPix, 1, src_stride);
-      memcpy(luma_mem_temp + write_data_len, tmp_mem + (leftOffset & 3) * bytesPerPix, width * bytesPerPix);
+      memcpy(luma_mem_temp + write_data_len, tmp_mem + (ptrdiff_t)(leftOffset & 3) * bytesPerPix, (size_t)width * bytesPerPix);
       write_data_len += width * bytesPerPix;
     }
     memcpyToPelByBits(tmp_mem, mem+4*pixDepth/8, 4, num_tiles, 4, 16*pixDepth/8, pixDepth);
     if(i+1 >= topOffset && i+1 < topOffset + height)
     {
       // write_(fRecon, tmp_mem + (leftOffset & 3)*bytesPerPix, width*bytesPerPix, 1, src_stride);
-      memcpy(luma_mem_temp + write_data_len, tmp_mem + (leftOffset & 3) * bytesPerPix, width * bytesPerPix);
+      memcpy(luma_mem_temp + write_data_len, tmp_mem + (ptrdiff_t)(leftOffset & 3) * bytesPerPix, (size_t)width * bytesPerPix);
       write_data_len += width * bytesPerPix;
     }
     memcpyToPelByBits(tmp_mem, mem+8*pixDepth/8, 4, num_tiles, 4, 16*pixDepth/8, pixDepth);
     if(i+2 >= topOffset && i+2 < topOffset + height)
     {
       // write_(fRecon, tmp_mem + (leftOffset & 3)*bytesPerPix, width*bytesPerPix, 1, src_stride);
-      memcpy(luma_mem_temp + write_data_len, tmp_mem + (leftOffset & 3) * bytesPerPix, width * bytesPerPix);
+      memcpy(luma_mem_temp + write_data_len, tmp_mem + (ptrdiff_t)(leftOffset & 3) * bytesPerPix, (size_t)width * bytesPerPix);
       write_data_len += width * bytesPerPix;
     }
     memcpyToPelByBits(tmp_mem, mem+12*pixDepth/8, 4, num_tiles, 4, 16*pixDepth/8, pixDepth);
     if(i+3 >= topOffset && i+3 < topOffset + height)
     {
       // write_(fRecon, tmp_mem + (leftOffset & 3)*bytesPerPix, width*bytesPerPix, 1, src_stride);
-      memcpy(luma_mem_temp + write_data_len, tmp_mem + (leftOffset & 3) * bytesPerPix, width * bytesPerPix);
+      memcpy(luma_mem_temp + write_data_len, tmp_mem + (ptrdiff_t)(leftOffset & 3) * bytesPerPix, (size_t)width * bytesPerPix);
       write_data_len += width * bytesPerPix;
     }
-    mem += 4*src_stride;
+    mem += (ptrdiff_t)4*src_stride;
   }
   free(tmp_mem);
 }
@@ -439,18 +466,19 @@ static void trace_recon_tile2raster_uv(FILE *fRecon, uint8_t *mem_uv, int width,
                                     int leftOffset, int topOffset,
                                     int src_stride, int pixDepth, uint8_t *ch_mem_temp)
 {
+  (void)fRecon;
   int i, j, k;
   int bytesPerPix = (pixDepth == 8 ? 1 : 2);
-  uint8_t *tmp_mem = (uint8_t *)malloc(bytesPerPix*src_stride*2);
+  uint8_t *tmp_mem = (uint8_t *)malloc((size_t)bytesPerPix*src_stride*2);
   int num_tiles = 2*((leftOffset + width + 3) / 4 - leftOffset/4);
   if(tmp_mem == NULL)
     return;
   uint8_t *mem;
   int uv;
   int write_data_len = 0;
-  memset(tmp_mem, 0x00, bytesPerPix * src_stride * 2);
+  memset(tmp_mem, 0x00, (size_t)bytesPerPix * src_stride * 2);
   for(uv = 0; uv <= 1; uv ++) {
-    mem = mem_uv + topOffset/4*8*src_stride + leftOffset/4*32*pixDepth/8;
+    mem = mem_uv + (ptrdiff_t)(topOffset/4)*8*src_stride + (ptrdiff_t)(leftOffset/4)*32*pixDepth/8;
     for(i = topOffset/4*4; i < topOffset + height; i += 4) {
       if(i >= topOffset && i < topOffset + height) {
         memcpyToPelByBits(tmp_mem, mem, 4, num_tiles, 4, 16*pixDepth/8, pixDepth);
@@ -461,7 +489,7 @@ static void trace_recon_tile2raster_uv(FILE *fRecon, uint8_t *mem_uv, int width,
             ((uint16_t*)tmp_mem)[k] = ((uint16_t*)tmp_mem)[j];
         }
         // write_(fRecon, tmp_mem + (leftOffset & 3)*bytesPerPix, width*bytesPerPix, 1, src_stride);
-        memcpy(ch_mem_temp + write_data_len, tmp_mem + (leftOffset & 3) * bytesPerPix, width * bytesPerPix);
+        memcpy(ch_mem_temp + write_data_len, tmp_mem + (ptrdiff_t)(leftOffset & 3) * bytesPerPix, (size_t)width * bytesPerPix);
         write_data_len += width * bytesPerPix;
       }
       if(i+1 >= topOffset && i+1 < topOffset + height) {
@@ -473,7 +501,7 @@ static void trace_recon_tile2raster_uv(FILE *fRecon, uint8_t *mem_uv, int width,
             ((uint16_t*)tmp_mem)[k] = ((uint16_t*)tmp_mem)[j];
         }
         // write_(fRecon, tmp_mem + (leftOffset & 3)*bytesPerPix, width*bytesPerPix, 1, src_stride);
-        memcpy(ch_mem_temp + write_data_len, tmp_mem + (leftOffset & 3) * bytesPerPix, width * bytesPerPix);
+        memcpy(ch_mem_temp + write_data_len, tmp_mem + (ptrdiff_t)(leftOffset & 3) * bytesPerPix, (size_t)width * bytesPerPix);
         write_data_len += width * bytesPerPix;
       }
       if(i+2 >= topOffset && i+2 < topOffset + height) {
@@ -485,7 +513,7 @@ static void trace_recon_tile2raster_uv(FILE *fRecon, uint8_t *mem_uv, int width,
             ((uint16_t*)tmp_mem)[k] = ((uint16_t*)tmp_mem)[j];
         }
         // write_(fRecon, tmp_mem + (leftOffset & 3)*bytesPerPix, width*bytesPerPix, 1, src_stride);
-        memcpy(ch_mem_temp + write_data_len, tmp_mem + (leftOffset & 3) * bytesPerPix, width * bytesPerPix);
+        memcpy(ch_mem_temp + write_data_len, tmp_mem + (ptrdiff_t)(leftOffset & 3) * bytesPerPix, (size_t)width * bytesPerPix);
         write_data_len += width * bytesPerPix;
       }
       memcpyToPelByBits(tmp_mem, mem+12*pixDepth/8, 4, num_tiles, 4, 16*pixDepth/8, pixDepth);
@@ -497,10 +525,10 @@ static void trace_recon_tile2raster_uv(FILE *fRecon, uint8_t *mem_uv, int width,
             ((uint16_t*)tmp_mem)[k] = ((uint16_t*)tmp_mem)[j];
         }
         // write_(fRecon, tmp_mem + (leftOffset & 3)*bytesPerPix, width*bytesPerPix, 1, src_stride);
-        memcpy(ch_mem_temp + write_data_len, tmp_mem + (leftOffset & 3) * bytesPerPix, width * bytesPerPix);
+        memcpy(ch_mem_temp + write_data_len, tmp_mem + (ptrdiff_t)(leftOffset & 3) * bytesPerPix, (size_t)width * bytesPerPix);
         write_data_len += width * bytesPerPix;
       }
-      mem += 8*src_stride;
+      mem += (ptrdiff_t)8*src_stride;
     }
   }
   free(tmp_mem);
@@ -580,8 +608,8 @@ void calculate_psnr(ni_session_context_t *p_ctx, ni_packet_t *p_packet)
       uint32_t chr_sz = 0;
       uint8_t *luma_mem_temp = NULL;
       uint8_t *ch_mem_temp   = NULL;
-      int width  = p_ctx->actual_video_width;
-      int height = p_ctx->active_video_height;//p_meta->reconLumaSize / p_meta->reconLumaWidth;
+      int width  = (int)p_ctx->actual_video_width;
+      int height = (int)p_ctx->active_video_height;//p_meta->reconLumaSize / p_meta->reconLumaWidth;
 
       uint8_t *luma_mem = (uint8_t *)p_packet->p_data + p_packet->data_len - p_meta->reconChromaSize - p_meta->reconLumaSize;
       uint8_t *ch_mem   = (uint8_t *)p_packet->p_data + p_packet->data_len - p_meta->reconChromaSize;
@@ -669,8 +697,8 @@ void calculate_psnr(ni_session_context_t *p_ctx, ni_packet_t *p_packet)
                   p_ctx->input_frame_fifo[i].pts == p_meta->frame_tstamp)
               {
                 p_y_src_buf = p_ctx->input_frame_fifo[i].p_input_buffer;
-                p_u_src_buf = p_y_src_buf + p_ctx->input_frame_fifo[i].video_width * p_ctx->input_frame_fifo[i].video_height;
-                p_v_src_buf = p_u_src_buf + (p_ctx->input_frame_fifo[i].video_width / 2) * (p_ctx->input_frame_fifo[i].video_height / 2);
+                p_u_src_buf = p_y_src_buf + (size_t)p_ctx->input_frame_fifo[i].video_width * p_ctx->input_frame_fifo[i].video_height;
+                p_v_src_buf = p_u_src_buf + (size_t)(p_ctx->input_frame_fifo[i].video_width / 2) * (p_ctx->input_frame_fifo[i].video_height / 2);
 
                 p_ctx->input_frame_fifo[i].usable = 1;
                 ni_log2(p_ctx, NI_LOG_DEBUG, "%s %d i %d pkt_num %ld frame_num %ld frame_tstamp %lld\n",
@@ -692,7 +720,7 @@ void calculate_psnr(ni_session_context_t *p_ctx, ni_packet_t *p_packet)
               if (p_meta->reconChromaSize != 0)
               {
                 noise_u = calc_noise(p_u_src_buf, ch_mem_temp,   (width / 2) * (height / 2));
-                noise_v = calc_noise(p_v_src_buf, ch_mem_temp + (width / 2) * (height / 2),   (width / 2) * (height / 2));
+                noise_v = calc_noise(p_v_src_buf, ch_mem_temp + (ptrdiff_t)(width / 2) * (height / 2),   (width / 2) * (height / 2));
               }
               noise_yuv = noise_y + noise_u + noise_v;
 
@@ -871,8 +899,8 @@ static void get_bitstream_features_from_cu_info(ni_session_context_t *p_ctx, ni_
       uint8_t *cuData = ctuOffset + p_meta->cuInfoTableSize + p_meta->aqInfoSize;
       uint32_t *ctuTable = (uint32_t *)ctuOffset;
       uint8_t *cuInfoBuf;
-      int width  = p_ctx->actual_video_width;
-      int height = p_ctx->active_video_height;
+      int width  = (int)p_ctx->actual_video_width;
+      int height = (int)p_ctx->active_video_height;
       int ctu_per_row;
       int ctu_per_column;
       int iCtuX, iCtuY, nCu, iCu;
@@ -901,15 +929,15 @@ static void get_bitstream_features_from_cu_info(ni_session_context_t *p_ctx, ni_
           {
             nCu = 1;
             // set CU info buffer pointer to this MB
-            cuInfoBuf = cuData + iCtu * CU_INFO_OUTPUT_SIZE_V1;
+            cuInfoBuf = cuData + (ptrdiff_t)iCtu * CU_INFO_OUTPUT_SIZE_V1;
           }
           else
           {
-            nCu = ctuTable[iCtu];
+            nCu = (int)ctuTable[iCtu];
             if (iCtu)
-              nCu -= ctuTable[iCtu - 1];
+              nCu -= (int)ctuTable[iCtu - 1];
             // set CU info buffer pointer to this CTU
-            cuInfoBuf = cuData + (iCtu ? ctuTable[iCtu - 1] : 0) * CU_INFO_OUTPUT_SIZE_V1;
+            cuInfoBuf = cuData + (ptrdiff_t)(iCtu ? ctuTable[iCtu - 1] : 0) * CU_INFO_OUTPUT_SIZE_V1;
           }
 
           // check each inter CU's MV
@@ -982,16 +1010,16 @@ static void get_bitstream_features_from_cu_info(ni_session_context_t *p_ctx, ni_
         }
       }
 
-      bitstream_features->average_qp = (float)qp_sum / total_cu_count;
+      bitstream_features->average_qp = (float)qp_sum / (float)total_cu_count;
       bitstream_features->initial_qp = p_meta->ppsInitQp;
       bitstream_features->max_qp = max_qp;
-      bitstream_features->avg_forward_pred_block_qp = inter_pred_L0_count > 0 ? (float)inter_pred_L0_qp_sum / inter_pred_L0_count : max_qp;
+      bitstream_features->avg_forward_pred_block_qp = inter_pred_L0_count > 0 ? (float)inter_pred_L0_qp_sum / (float)inter_pred_L0_count : (float)max_qp;
       bitstream_features->analyzed_mbs = analyzed_mbs;
-      bitstream_features->avg_intra_block_qp = num_intra_block_blocks > 0 ? (float)intra_block_qp_sum / num_intra_block_blocks : max_qp;
-      bitstream_features->avg_intra_plane_qp = num_intra_plane_blocks > 0 ? (float)intra_plane_qp_sum / num_intra_plane_blocks : max_qp;
+      bitstream_features->avg_intra_block_qp = num_intra_block_blocks > 0 ? (float)intra_block_qp_sum / (float)num_intra_block_blocks : (float)max_qp;
+      bitstream_features->avg_intra_plane_qp = num_intra_plane_blocks > 0 ? (float)intra_plane_qp_sum / (float)num_intra_plane_blocks : (float)max_qp;
       bitstream_features->num_intra_block_blocks = num_intra_block_blocks;
       bitstream_features->num_intra_plane_blocks = num_intra_plane_blocks;
-      bitstream_features->num_skip_blocks = p_meta->skipCu8Num * 4;
+      bitstream_features->num_skip_blocks = (int)(p_meta->skipCu8Num * 4);
       bitstream_features->num_forward_pred_blocks = inter_pred_L0_count - bitstream_features->num_skip_blocks;
       //ni_log2(p_ctx, NI_LOG_TRACE, "total_qp %llu mb_cnt %d av_qp %.2f\n",
       //        qp_sum, total_cu_count, p_packet->average_qp);
@@ -1026,10 +1054,10 @@ static ni_retcode_t check_err_rc(
 
     if(opt == OPT_1)
     {
-      retval = ni_nvme_check_error_code(stat.ui32LastTransactionCompletionStatus, opcode, type, hw_id, inst_id);
+      retval = ni_nvme_check_error_code((int)stat.ui32LastTransactionCompletionStatus, opcode, type, hw_id, inst_id);
 
       if(!retval)
-        retval = ni_nvme_check_error_code(ui32LastErrorStatus, opcode, type, hw_id, inst_id);
+        retval = ni_nvme_check_error_code((int)ui32LastErrorStatus, opcode, type, hw_id, inst_id);
     }
     else if(opt == OPT_2){
       if(!stat_full){
@@ -1039,7 +1067,7 @@ static ni_retcode_t check_err_rc(
 #endif
         return NI_RETCODE_INVALID_PARAM;
       }
-      retval = ni_nvme_check_error_code(stat_full->ui32LastTransactionCompletionStatus, opcode, type, hw_id, inst_id);
+      retval = ni_nvme_check_error_code((int)stat_full->ui32LastTransactionCompletionStatus, opcode, type, hw_id, inst_id);
       ui16ErrorCount = stat_full->ui16ErrorCount;
       ui32LastErrorStatus = stat_full->ui32LastErrorStatus;
       /* re-query error status for transactionId 0xFFFF */
@@ -1047,12 +1075,12 @@ static ni_retcode_t check_err_rc(
          ui16ErrorCount > 0 && !retval &&
          type == NI_DEVICE_TYPE_DECODER)
       {
-        retval = ni_nvme_check_error_code(ui32LastErrorStatus, opcode, type, hw_id, inst_id);
+        retval = ni_nvme_check_error_code((int)ui32LastErrorStatus, opcode, type, hw_id, inst_id);
       }
     }
     else if(opt == OPT_3)
     {
-      retval = ni_nvme_check_error_code(stat.ui32LastTransactionCompletionStatus, opcode, type, hw_id, inst_id);
+      retval = ni_nvme_check_error_code((int)stat.ui32LastTransactionCompletionStatus, opcode, type, hw_id, inst_id);
     }
 
     if (retval)
@@ -1113,8 +1141,8 @@ static void low_delay_wait(ni_session_context_t* p_ctx)
 
     abs_time_ns = ni_gettime_ns();
     abs_time_ns += p_ctx->decoder_low_delay * 1000000LL;
-    ts.tv_sec = abs_time_ns / 1000000000LL;
-    ts.tv_nsec = abs_time_ns % 1000000000LL;
+    ts.tv_sec = (time_t)(abs_time_ns / 1000000000LL);
+    ts.tv_nsec = (long)(abs_time_ns % 1000000000LL);
 
     ni_pthread_mutex_lock(&p_ctx->low_delay_sync_mutex);
     while (p_ctx->low_delay_sync_flag)
@@ -1176,6 +1204,7 @@ static void decoder_dump_dir_open(ni_session_context_t *p_ctx)
     int curr_stream_idx = 0;
     int earliest_stream_idx = 0;
     int max_exist_idx = 0;
+    int32_t tmp_val;
     time_t earliest_time = 0;
     struct stat file_stat;
 
@@ -1203,7 +1232,8 @@ static void decoder_dump_dir_open(ni_session_context_t *p_ctx)
         }
     }
 
-    if (NULL == (dir = opendir(dir_name)))
+    dir = opendir(dir_name);
+    if (NULL == dir)
     {
         ni_log2(p_ctx, NI_LOG_ERROR,  "Error %d: failed to open directory %s\n",
                        NI_ERRNO, dir_name);
@@ -1212,12 +1242,19 @@ static void decoder_dump_dir_open(ni_session_context_t *p_ctx)
         // have a quick first pass of streamY folders, and if existing Y < 128,
         // create a new folder Y+1 directly without checking existing ones'
         // content
-        while ((stream_folder = readdir(dir)))
+        while ((stream_folder = readdir(dir))) // NOLINT(concurrency-mt-unsafe) - thread-local dir handle, no shared DIR*
         {
             if (!strncmp(stream_folder->d_name, "stream", strlen("stream")))
             {
-                curr_stream_idx =
-                    atoi(&(stream_folder->d_name[strlen("stream")]));
+                if (ni_strtoi(&(stream_folder->d_name[strlen("stream")]),
+                              &tmp_val) != NI_RETCODE_SUCCESS)
+                {
+                    ni_log2(p_ctx, NI_LOG_ERROR,
+                            "ERROR: %s(): invalid stream index '%s'\n",
+                            __func__, stream_folder->d_name);
+                    continue;
+                }
+                curr_stream_idx = (int)tmp_val;
                 if (curr_stream_idx > 0)
                 {
                     if (curr_stream_idx > max_exist_idx)
@@ -1241,17 +1278,24 @@ static void decoder_dump_dir_open(ni_session_context_t *p_ctx)
         } else
         {
             rewinddir(dir);
-            while ((stream_folder = readdir(dir)))
+            while ((stream_folder = readdir(dir))) // NOLINT(concurrency-mt-unsafe) - thread-local dir handle, no shared DIR*
             {
                 // go through each of these streamY folders and get modified
                 // time of the first pkt-* file to simplify the searching
                 if (!strncmp(stream_folder->d_name, "stream", strlen("stream")))
                 {
-                    snprintf(file_name, sizeof(file_name), "%s/%s/pkt-0001.bin",
+                    (void)snprintf(file_name, sizeof(file_name), "%s/%s/pkt-0001.bin",
                              dir_name, stream_folder->d_name);
 
-                    curr_stream_idx =
-                        atoi(&(stream_folder->d_name[strlen("stream")]));
+                    if (ni_strtoi(&(stream_folder->d_name[strlen("stream")]),
+                                  &tmp_val) != NI_RETCODE_SUCCESS)
+                    {
+                        ni_log2(p_ctx, NI_LOG_ERROR,
+                                "ERROR: %s(): invalid stream index '%s'\n",
+                                __func__, stream_folder->d_name);
+                        continue;
+                    }
+                    curr_stream_idx = (int)tmp_val;
 
                     if (curr_stream_idx > 0 && 0 == access(file_name, F_OK))
                     {
@@ -1278,7 +1322,7 @@ static void decoder_dump_dir_open(ni_session_context_t *p_ctx)
 
             // set the access/modified time of chosen pkt file to NOW so its
             // stream folder won't be taken by other sessions.
-            snprintf(file_name, sizeof(file_name), "%s/stream%03d/pkt-0001.bin",
+            (void)snprintf(file_name, sizeof(file_name), "%s/stream%03d/pkt-0001.bin",
                      dir_name, curr_stream_idx);
             if (utime(file_name, NULL))
             {
@@ -1288,7 +1332,7 @@ static void decoder_dump_dir_open(ni_session_context_t *p_ctx)
         closedir(dir);
     }
 
-    snprintf(p_ctx->stream_dir_name, sizeof(p_ctx->stream_dir_name),
+    (void)snprintf(p_ctx->stream_dir_name, sizeof(p_ctx->stream_dir_name),
              "%s/stream%03d", dir_name, curr_stream_idx);
 
     if (0 != access(p_ctx->stream_dir_name, F_OK))
@@ -1311,7 +1355,7 @@ static void decoder_dump_dir_open(ni_session_context_t *p_ctx)
     flock(p_device_context->lock, LOCK_UN);
     ni_rsrc_free_device_context(p_device_context);
 
-    snprintf(file_name, sizeof(file_name), "%s/process_session_id.txt",
+    (void)snprintf(file_name, sizeof(file_name), "%s/process_session_id.txt",
              p_ctx->stream_dir_name);
 
     ni_fopen(&fp, file_name, "wb");
@@ -1319,10 +1363,10 @@ static void decoder_dump_dir_open(ni_session_context_t *p_ctx)
     {
         char number[64] = {'\0'};
         ni_log2(p_ctx, NI_LOG_DEBUG,  "Decoder pkt dump log created: %s\n", file_name);
-        snprintf(number, sizeof(number), "proc id: %ld\nsession id: %u\n",
+        (void)snprintf(number, sizeof(number), "proc id: %ld\nsession id: %u\n",
                  (long)getpid(), p_ctx->session_id);
-        fwrite(number, strlen(number), 1, fp);
-        fclose(fp);
+        (void)fwrite(number, strlen(number), 1, fp);
+        (void)fclose(fp);
     } else
     {
         ni_log2(p_ctx, NI_LOG_ERROR,  "Error create decoder pkt dump log: %s\n", file_name);
@@ -1338,7 +1382,7 @@ static void decoder_dump_dir_open(ni_session_context_t *p_ctx)
 static int find_pci_address(const char *dev_name, char *pci_addr) {
     char sys_block_path[256];
 
-    snprintf(sys_block_path, sizeof(sys_block_path), "/sys/class/block/%s/device", dev_name);
+    (void)snprintf(sys_block_path, sizeof(sys_block_path), "/sys/class/block/%s/device", dev_name);
 
     char *real_sysfs_path = realpath(sys_block_path, NULL);
     if (!real_sysfs_path) {
@@ -1358,7 +1402,7 @@ static int find_pci_address(const char *dev_name, char *pci_addr) {
         segment[MAX_BDF_LEN - 1] = '\0';
 
         unsigned domain, bus, dev, func;
-        if (sscanf(segment, "%x:%x:%x.%x", &domain, &bus, &dev, &func) == 4) {
+        if (sscanf(segment, "%x:%x:%x.%x", &domain, &bus, &dev, &func) == 4) { // NOLINT(cert-err34-c) - return value checked
             ni_strncpy(pci_addr, MAX_BDF_LEN, segment, MAX_BDF_LEN - 1);
             pci_addr[MAX_BDF_LEN - 1] = '\0';
             free(real_sysfs_path);
@@ -1432,11 +1476,11 @@ static ni_retcode_t p2p_fill_pcie_address(ni_session_context_t *p_ctx)
     if (fgets(pci_addr, sizeof(pci_addr), fp) == NULL)
     {
       ni_log2(p_ctx, NI_LOG_ERROR, "Failed to read line from address\n");
-      fclose(fp);
+      (void)fclose(fp);
       return NI_RETCODE_FAILURE;
     }
 
-    fclose(fp);
+    (void)fclose(fp);
 #else
     ret = find_pci_address(p_dev + 5, pci_addr);
     if (ret != 0)
@@ -1503,7 +1547,7 @@ void ni_print_backtrace() {
         ni_log(NI_LOG_ERROR, "%s\n", strs[i]);
     }
 
-    free(strs);
+    free((void *)strs);
 }
 #endif
 #endif
@@ -1583,7 +1627,7 @@ ni_retcode_t ni_decoder_session_open(ni_session_context_t* p_ctx)
     p_ctx->last_frame_offset = 0;
     p_ctx->last_frame_dropped = 0;
     p_ctx->pending_bitstream_buffer_realloc = 0;
-    memset(p_ctx->pkt_custom_sei_set, 0, NI_FIFO_SZ * sizeof(ni_custom_sei_set_t *));
+    memset((void *)p_ctx->pkt_custom_sei_set, 0, NI_FIFO_SZ * sizeof(ni_custom_sei_set_t *));
 
     //malloc zero data buffer
     if (ni_posix_memalign(&p_ctx->p_all_zero_buf, sysconf(_SC_PAGESIZE),
@@ -1641,7 +1685,7 @@ ni_retcode_t ni_decoder_session_open(ni_session_context_t* p_ctx)
 
     //Send keep alive timeout Info
     uint64_t keep_alive_timeout =
-        p_ctx->keep_alive_timeout * 1000000;   //send us to FW
+        (uint64_t)p_ctx->keep_alive_timeout * 1000000;   //send us to FW
     memset(p_buffer, 0, NI_DATA_BUFFER_LEN);
     memcpy(p_buffer, &keep_alive_timeout, sizeof(keep_alive_timeout));
     ni_log2(p_ctx, NI_LOG_DEBUG,  "%s keep_alive_timeout %" PRIx64 "\n", __func__,
@@ -1743,7 +1787,7 @@ ni_retcode_t ni_decoder_session_open(ni_session_context_t* p_ctx)
   p_ctx->pts_correction_last_pts = INT64_MIN;
 
   //p_ctx->p_leftover = malloc(NI_MAX_PACKET_SZ * 2);
-  p_ctx->p_leftover = malloc(p_ctx->max_nvme_io_size * 2);
+  p_ctx->p_leftover = malloc((size_t)p_ctx->max_nvme_io_size * 2);
   if (!p_ctx->p_leftover)
   {
       ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR %s(): Cannot allocate leftover buffer.\n",
@@ -1800,7 +1844,7 @@ ni_retcode_t ni_decoder_session_open(ni_session_context_t* p_ctx)
 #ifdef XCODER_DUMP_DATA
   char dir_name[256] = {0};
 
-  snprintf(dir_name, sizeof(dir_name), "%ld-%u-dec-fme", (long)getpid(),
+  (void)snprintf(dir_name, sizeof(dir_name), "%ld-%u-dec-fme", (long)getpid(),
            p_ctx->session_id);
   DIR *dir = opendir(dir_name);
   if (!dir && ENOENT == NI_ERRNO)
@@ -1972,6 +2016,7 @@ END:
  *******************************************************************************/
 ni_retcode_t ni_decoder_session_close(ni_session_context_t* p_ctx, int eos_recieved)
 {
+  (void)eos_recieved;
   ni_retcode_t retval = NI_RETCODE_SUCCESS;
   void* p_buffer = NULL;
   uint32_t ui32LBA = 0;
@@ -2197,7 +2242,7 @@ int ni_decoder_session_write(ni_session_context_t* p_ctx, ni_packet_t* p_packet)
 
   p_param = (ni_xcoder_params_t *)p_ctx->p_session_config;
   packet_size = p_packet->data_len;
-  current_pkt_size = packet_size;
+  current_pkt_size = (int)packet_size;
 
 #ifdef XCODER_311
   int max_retry = 200; // 20ms
@@ -2399,16 +2444,16 @@ int ni_decoder_session_write(ni_session_context_t* p_ctx, ni_packet_t* p_packet)
         char dump_file[512] = {0};
         long curr_pkt_num =
             ((long)p_ctx->pkt_num % p_param->dec_input_params.nb_save_pkt) + 1;
-        snprintf(dump_file, sizeof(dump_file), "%s/pkt-%04ld.bin",
+        (void)snprintf(dump_file, sizeof(dump_file), "%s/pkt-%04ld.bin",
                  p_ctx->stream_dir_name, curr_pkt_num);
 
         FILE *f = NULL;
         ni_fopen(&f, dump_file, "wb");
         if (f)
         {
-            fwrite(p_packet->p_data, sent_size, 1, f);
-            fflush(f);
-            fclose(f);
+            (void)fwrite(p_packet->p_data, sent_size, 1, f);
+            (void)fflush(f);
+            (void)fclose(f);
         }
     }
 
@@ -2530,7 +2575,7 @@ END:
                " sent_size = %u, status=%d\n",
                __func__, p_ctx->pkt_num, (uint64_t)p_packet->pos, sent_size,
                p_ctx->status);
-        return sent_size;
+        return (int)sent_size;
     } else
     {
         ni_log2(p_ctx, NI_LOG_ERROR,
@@ -2956,8 +3001,8 @@ start:
 
         // set up decoder YUV frame buffer pool
         if (ni_dec_fme_buffer_pool_initialize(
-              p_ctx, NI_DEC_FRAME_BUF_POOL_SIZE_INIT, p_ctx->actual_video_width,
-              p_ctx->active_video_height,
+              p_ctx, NI_DEC_FRAME_BUF_POOL_SIZE_INIT, (int)p_ctx->actual_video_width,
+              (int)p_ctx->active_video_height,
               p_ctx->codec_format == NI_CODEC_FORMAT_H264,
               p_ctx->bit_depth_factor))
         {
@@ -2980,7 +3025,7 @@ start:
 
         retval = ni_decoder_frame_buffer_alloc(
             p_ctx->dec_fme_buf_pool, p_frame, 1,   // get mem buffer
-            p_ctx->actual_video_width, p_ctx->active_video_height,
+            (int)p_ctx->actual_video_width, (int)p_ctx->active_video_height,
             p_ctx->codec_format == NI_CODEC_FORMAT_H264,
             p_ctx->bit_depth_factor, is_planar);
 
@@ -3419,15 +3464,15 @@ start:
 
 #ifdef XCODER_DUMP_DATA
     char dump_file[256];
-    snprintf(dump_file, sizeof(dump_file), "%ld-%u-dec-fme/fme-%04ld.yuv",
+    (void)snprintf(dump_file, sizeof(dump_file), "%ld-%u-dec-fme/fme-%04ld.yuv",
              (long)getpid(), p_ctx->session_id, (long)p_ctx->frame_num);
     FILE *f = NULL;
     ni_fopen(&f, dump_file, "wb");
-    fwrite(p_frame->p_buffer,
+    (void)fwrite(p_frame->p_buffer,
            p_frame->data_len[0] + p_frame->data_len[1] + p_frame->data_len[2],
            1, f);
-    fflush(f);
-    fclose(f);
+    (void)fflush(f);
+    (void)fclose(f);
 #endif
   }
 
@@ -3669,6 +3714,27 @@ ni_retcode_t ni_encoder_session_open(ni_session_context_t* p_ctx)
   ni_log2(p_ctx, NI_LOG_TRACE,  "%s(): enter hwframes = %d\n", __func__,
          p_param->hwframes);
 
+#ifdef NI_HAVE_MCTF
+  if (p_param->hwframes && p_param->useMCTF)
+  {
+      ni_log2(p_ctx, NI_LOG_ERROR,
+             "ERROR: %s() MCTF does not support hwframe input, return\n",
+             __func__);
+      retval = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
+      LRETURN;
+  }
+  if (p_param->useMCTF &&
+      (p_ctx->pixel_format == NI_PIX_FMT_YUV420P10LE ||
+       p_ctx->pixel_format == NI_PIX_FMT_P010LE))
+  {
+      ni_log2(p_ctx, NI_LOG_ERROR,
+             "ERROR: %s() MCTF only supports 8-bit input, return\n",
+             __func__);
+      retval = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
+      LRETURN;
+  }
+#endif
+
   // Select the CPU based on the NUMA node.
   if (p_param->enableCpuAffinity)
   {
@@ -3732,7 +3798,7 @@ ni_retcode_t ni_encoder_session_open(ni_session_context_t* p_ctx)
     p_ctx->enc_pts_w_idx = 0;
     p_ctx->enc_pts_r_idx = 0;
     p_ctx->session_timestamp = 0;
-    memset(p_ctx->pkt_custom_sei_set, 0, NI_FIFO_SZ * sizeof(ni_custom_sei_set_t *));
+    memset((void *)p_ctx->pkt_custom_sei_set, 0, NI_FIFO_SZ * sizeof(ni_custom_sei_set_t *));
     memset(&(p_ctx->param_err_msg[0]), 0, sizeof(p_ctx->param_err_msg));
     if (p_ctx->session_run_state != SESSION_RUN_STATE_SEQ_CHANGE_DRAINING)
     {
@@ -3794,7 +3860,7 @@ ni_retcode_t ni_encoder_session_open(ni_session_context_t* p_ctx)
 
     //Send keep alive timeout Info
     uint64_t keep_alive_timeout =
-        p_ctx->keep_alive_timeout * 1000000;   //send us to FW
+        (uint64_t)p_ctx->keep_alive_timeout * 1000000;   //send us to FW
     memset(p_buffer, 0, NI_DATA_BUFFER_LEN);
     memcpy(p_buffer, &keep_alive_timeout, sizeof(keep_alive_timeout));
     ni_log2(p_ctx, NI_LOG_DEBUG,  "%s keep_alive_timeout %" PRIx64 "\n", __func__,
@@ -3935,12 +4001,12 @@ ni_retcode_t ni_encoder_session_open(ni_session_context_t* p_ctx)
   // or 4*1024*1024*sizeof(long) on  64-bit  systems.
   // This macro is not defined in header file.
   // So, assume that is running on 64-bit systems
-  if (m_threshold > 4 * 1024 * 1024 * sizeof(long))
+  if (m_threshold > (size_t)4 * 1024 * 1024 * sizeof(long))
   {
       ni_log2(p_ctx, NI_LOG_INFO, "Warning: m_threshold (%d) is bigger than "
              "DEFAULT_MMAP_THRESHOLD_MAX, use default value (%d)\n",
-             m_threshold, 4 * 1024 * 1024 * sizeof(long));
-      m_threshold = 4 * 1024 * 1024 * sizeof(long);
+             m_threshold, (size_t)4 * 1024 * 1024 * sizeof(long));
+      m_threshold = (size_t)4 * 1024 * 1024 * sizeof(long);
   }
 
   if (p_param->staticMmapThreshold) // Set Static Mmap Threshold
@@ -3949,7 +4015,7 @@ ni_retcode_t ni_encoder_session_open(ni_session_context_t* p_ctx)
       // If the malloc buffer is larger than the threshold,
       // glibc will use mmap to malloc the memory, which is a low speed method.
       // So, set the M_MMAP_THRESHOLD >= 1 yuv buffer size here.
-      if (mallopt(M_MMAP_THRESHOLD, m_threshold) == 0)
+      if (mallopt(M_MMAP_THRESHOLD, m_threshold) == 0) // NOLINT(concurrency-mt-unsafe) - process-wide tuning at init
       {
           ni_log2(p_ctx, NI_LOG_ERROR,  "Error: could not set M_MMAP_THRESHOLD to %d\n",
                  m_threshold);
@@ -3962,7 +4028,7 @@ ni_retcode_t ni_encoder_session_open(ni_session_context_t* p_ctx)
       // free(3) employs sbrk(2) to release this memory back to the system.
       // So, set the M_TRIM_THRESHOLD to 3*m_threshold,
       // to avoid an inefficient case, frequently releasing and requesting physical memory.
-      if (mallopt(M_TRIM_THRESHOLD, 3 * m_threshold) == 0)
+      if (mallopt(M_TRIM_THRESHOLD, 3 * m_threshold) == 0) // NOLINT(concurrency-mt-unsafe) - process-wide tuning at init
       {
           ni_log2(p_ctx, NI_LOG_ERROR,  "Error: could not set M_TRIM_THRESHOLD to %ds\n",
                  3 * m_threshold);
@@ -4084,12 +4150,16 @@ ni_retcode_t ni_encoder_session_open(ni_session_context_t* p_ctx)
          NI_CC_SEI_HDR_HEVC_LEN);
   memcpy(p_ctx->itu_t_t35_cc_sei_hdr_h264, g_itu_t_t35_cc_sei_hdr_h264,
          NI_CC_SEI_HDR_H264_LEN);
+  memcpy(p_ctx->itu_t_t35_cc_sei_hdr_av1, g_itu_t_t35_cc_sei_hdr_av1,
+         NI_CC_SEI_HDR_AV1_LEN);
   memcpy(p_ctx->sei_trailer, g_sei_trailer, NI_CC_SEI_TRAILER_LEN);
   // init hdr10+ SEI header
   memcpy(p_ctx->itu_t_t35_hdr10p_sei_hdr_hevc, g_itu_t_t35_hdr10p_sei_hdr_hevc,
          NI_HDR10P_SEI_HDR_HEVC_LEN);
   memcpy(p_ctx->itu_t_t35_hdr10p_sei_hdr_h264, g_itu_t_t35_hdr10p_sei_hdr_h264,
          NI_HDR10P_SEI_HDR_H264_LEN);
+  memcpy(p_ctx->itu_t_t35_hdr10p_sei_hdr_av1, g_itu_t_t35_hdr10p_sei_hdr_av1,
+         NI_HDR10P_SEI_HDR_AV1_LEN);
 
   // query to check the final encoder config status
   for (;;)
@@ -4127,7 +4197,7 @@ ni_retcode_t ni_encoder_session_open(ni_session_context_t* p_ctx)
 
 #ifdef XCODER_DUMP_DATA
   char dir_name[256] = {0};
-  snprintf(dir_name, sizeof(dir_name), "%ld-%u-enc-pkt", (long)getpid(),
+  (void)snprintf(dir_name, sizeof(dir_name), "%ld-%u-enc-pkt", (long)getpid(),
            p_ctx->session_id);
   DIR *dir = opendir(dir_name);
   if (!dir && ENOENT == NI_ERRNO)
@@ -4140,7 +4210,7 @@ ni_retcode_t ni_encoder_session_open(ni_session_context_t* p_ctx)
       closedir(dir);
   }
 
-  snprintf(dir_name, sizeof(dir_name), "%ld-%u-enc-fme", (long)getpid(),
+  (void)snprintf(dir_name, sizeof(dir_name), "%ld-%u-enc-fme", (long)getpid(),
            p_ctx->session_id);
   dir = opendir(dir_name);
   if (!dir && ENOENT == NI_ERRNO)
@@ -4215,6 +4285,7 @@ END:
  *******************************************************************************/
 ni_retcode_t ni_encoder_session_close(ni_session_context_t* p_ctx, int eos_recieved)
 {
+  (void)eos_recieved;
   ni_retcode_t retval = NI_RETCODE_SUCCESS;
   void* p_buffer = NULL;
   uint32_t ui32LBA = 0;
@@ -4325,6 +4396,9 @@ END:
 
     ni_aligned_free(p_buffer);
     ni_aligned_free(p_ctx->p_all_zero_buf);
+#ifdef NI_HAVE_MCTF
+    clearMCTF(p_ctx);
+#endif
 
     //Sequence change related stuff cleanup here
     p_ctx->active_video_width = 0;
@@ -4393,7 +4467,7 @@ void enqueue_ni_frame(ni_session_context_t *p_ctx, ni_frame_t *ni_frame, int32_t
   else
   {
     int is_semiplanar = !ni_get_planar_from_pixfmt(p_ctx->pixel_format);
-    ni_get_hw_yuv420p_dim(ni_frame->video_width, ni_frame->video_height,
+    ni_get_hw_yuv420p_dim((int)ni_frame->video_width, (int)ni_frame->video_height,
                           p_ctx->bit_depth_factor, is_semiplanar,
                           width_stride, height_stride);
   }
@@ -4421,21 +4495,21 @@ void enqueue_ni_frame(ni_session_context_t *p_ctx, ni_frame_t *ni_frame, int32_t
 
       for (int j = 0; j < source_height; j++)
       {
-        memcpy(p_ctx->input_frame_fifo[i].p_input_buffer + source_width * p_ctx->bit_depth_factor * j,
-              ni_frame->p_data[0] + j * width_stride[0],
-              source_width * p_ctx->bit_depth_factor);
+        memcpy(p_ctx->input_frame_fifo[i].p_input_buffer + (ptrdiff_t)source_width * p_ctx->bit_depth_factor * j,
+              ni_frame->p_data[0] + (ptrdiff_t)j * width_stride[0],
+              (size_t)source_width * p_ctx->bit_depth_factor);
       }
       for (int j = 0; j < (source_height + 1) / 2; j++)
       {
-        memcpy(p_ctx->input_frame_fifo[i].p_input_buffer + source_width * p_ctx->bit_depth_factor * source_height + (source_width * p_ctx->bit_depth_factor / 2) * j,
-              ni_frame->p_data[1] + j * width_stride[1],
-              source_width / 2 * p_ctx->bit_depth_factor);
+        memcpy(p_ctx->input_frame_fifo[i].p_input_buffer + (ptrdiff_t)source_width * p_ctx->bit_depth_factor * source_height + ((ptrdiff_t)source_width * p_ctx->bit_depth_factor / 2) * j,
+              ni_frame->p_data[1] + (ptrdiff_t)j * width_stride[1],
+              (size_t)source_width / 2 * p_ctx->bit_depth_factor);
       }
       for (int j = 0; j < (source_height + 1) / 2; j++)
       {
-        memcpy(p_ctx->input_frame_fifo[i].p_input_buffer + source_width * p_ctx->bit_depth_factor * source_height * 5 / 4 + (source_width * p_ctx->bit_depth_factor / 2) * j,
-              ni_frame->p_data[2] + j * width_stride[2],
-              source_width / 2 * p_ctx->bit_depth_factor);
+        memcpy(p_ctx->input_frame_fifo[i].p_input_buffer + (ptrdiff_t)source_width * p_ctx->bit_depth_factor * source_height * 5 / 4 + ((ptrdiff_t)source_width * p_ctx->bit_depth_factor / 2) * j,
+              ni_frame->p_data[2] + (ptrdiff_t)j * width_stride[2],
+              (size_t)source_width / 2 * p_ctx->bit_depth_factor);
       }
 
       p_ctx->input_frame_fifo[i].video_width  = source_width;
@@ -4452,21 +4526,21 @@ void enqueue_ni_frame(ni_session_context_t *p_ctx, ni_frame_t *ni_frame, int32_t
     {
       for (int j = 0; j < source_height; j++)
       {
-        memcpy(p_ctx->input_frame_fifo[i].p_input_buffer + source_width * p_ctx->bit_depth_factor * j,
-              ni_frame->p_data[0] + j * width_stride[0],
-              source_width * p_ctx->bit_depth_factor);
+        memcpy(p_ctx->input_frame_fifo[i].p_input_buffer + (ptrdiff_t)source_width * p_ctx->bit_depth_factor * j,
+              ni_frame->p_data[0] + (ptrdiff_t)j * width_stride[0],
+              (size_t)source_width * p_ctx->bit_depth_factor);
       }
       for (int j = 0; j < (source_height + 1) / 2; j++)
       {
-        memcpy(p_ctx->input_frame_fifo[i].p_input_buffer + source_width * p_ctx->bit_depth_factor * source_height + (source_width * p_ctx->bit_depth_factor / 2) * j,
-              ni_frame->p_data[1] + j * width_stride[1],
-              source_width / 2 * p_ctx->bit_depth_factor);
+        memcpy(p_ctx->input_frame_fifo[i].p_input_buffer + (ptrdiff_t)source_width * p_ctx->bit_depth_factor * source_height + ((ptrdiff_t)source_width * p_ctx->bit_depth_factor / 2) * j,
+              ni_frame->p_data[1] + (ptrdiff_t)j * width_stride[1],
+              (size_t)source_width / 2 * p_ctx->bit_depth_factor);
       }
       for (int j = 0; j < (source_height + 1) / 2; j++)
       {
-        memcpy(p_ctx->input_frame_fifo[i].p_input_buffer + source_width * p_ctx->bit_depth_factor * source_height * 5 / 4 + (source_width * p_ctx->bit_depth_factor / 2) * j,
-              ni_frame->p_data[2] + j * width_stride[2],
-              source_width / 2 * p_ctx->bit_depth_factor);
+        memcpy(p_ctx->input_frame_fifo[i].p_input_buffer + (ptrdiff_t)source_width * p_ctx->bit_depth_factor * source_height * 5 / 4 + ((ptrdiff_t)source_width * p_ctx->bit_depth_factor / 2) * j,
+              ni_frame->p_data[2] + (ptrdiff_t)j * width_stride[2],
+              (size_t)source_width / 2 * p_ctx->bit_depth_factor);
       }
 
       p_ctx->input_frame_fifo[i].video_width  = source_width;
@@ -4497,6 +4571,11 @@ int ni_encoder_session_write(ni_session_context_t* p_ctx, ni_frame_t* p_frame)
   int retval = 0;
   ni_instance_buf_info_t buf_info = { 0 };
   ni_session_statistic_t sessionStatistic = {0};
+#ifdef NI_HAVE_MCTF
+  ni_frame_t* p_orig_frame = NULL;
+  bool checkMCTF = false;
+  int waitCnt = MCTF_LOOKAHEAD;
+#endif
 
   if (!p_ctx || !p_frame)
   {
@@ -4504,6 +4583,10 @@ int ni_encoder_session_write(ni_session_context_t* p_ctx, ni_frame_t* p_frame)
            __func__);
     return NI_RETCODE_INVALID_PARAM;
   }
+
+#ifdef NI_HAVE_MCTF
+  checkMCTF = ((ni_xcoder_params_t *)p_ctx->p_session_config)->useMCTF;
+#endif
   ishwframe = p_ctx->hw_action & NI_CODEC_HW_ENABLE;
   ni_log2(p_ctx, NI_LOG_TRACE, "%s(): enter hw=%d\n", __func__, ishwframe);
 
@@ -4530,9 +4613,8 @@ int ni_encoder_session_write(ni_session_context_t* p_ctx, ni_frame_t* p_frame)
 
   ni_pthread_mutex_lock(&p_ctx->mutex);
 
-  uint8_t separate_metadata = p_frame->separate_metadata;
-
-  uint8_t separate_start = (p_frame->separate_start && p_frame->total_start_len) ? 1 : 0;
+  uint8_t separate_metadata = 0;
+  uint8_t separate_start = 0;
 
   if (NI_INVALID_SESSION_ID == p_ctx->session_id)
   {
@@ -4541,6 +4623,11 @@ int ni_encoder_session_write(ni_session_context_t* p_ctx, ni_frame_t* p_frame)
     retval = NI_RETCODE_ERROR_INVALID_SESSION;
     LRETURN;
   }
+
+#ifdef NI_HAVE_MCTF
+  bool is_eos = p_frame->end_of_stream ? true : false;
+  p_orig_frame = p_frame;
+#endif
 
   low_delay_wait(p_ctx);
 
@@ -4557,6 +4644,29 @@ int ni_encoder_session_write(ni_session_context_t* p_ctx, ni_frame_t* p_frame)
   /*!************ Sequence Change related stuff *************************/
   //First check squence changed related stuff.
   //We need to record the current hight/width params if we didn't do it before:
+
+#ifdef NI_HAVE_MCTF
+start_write:
+  send_count = 0;
+  if (waitCnt > 0 && waitCnt < MCTF_LOOKAHEAD && p_frame != p_orig_frame) {
+    // send mctf buffered frame
+    p_frame = get_mctf_result(p_ctx, waitCnt);
+    waitCnt -= 1;
+  }
+
+  if (is_eos && p_frame == p_orig_frame && p_ctx->frame_num > 0 &&
+      p_ctx->mctf != NULL) {
+    checkMCTF = false;
+    // check if there's pending frame
+    int ret = performMCTF(p_ctx, p_frame, p_frame->video_width, p_frame->video_height);
+    if (ret == MCTF_RET_EOS_PENDING && waitCnt > 0) {
+      p_frame = get_mctf_result(p_ctx, waitCnt);
+      waitCnt -= 1;
+    } else if (ret == MCTF_RET_EOS_DONE) {
+      clearMCTF(p_ctx);
+    }
+  }
+#endif
 
   if( p_frame->video_height)
   {
@@ -4666,6 +4776,49 @@ int ni_encoder_session_write(ni_session_context_t* p_ctx, ni_frame_t* p_frame)
     }
   }
 
+#ifdef NI_HAVE_MCTF
+  if (checkMCTF && p_ctx->mctf == NULL && !is_eos)
+  {
+    int ret = initMCTF(p_ctx);
+    if (ret < 0)
+    {
+      ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR: %s() initMCTF failed with %d, return\n",
+             __func__, ret);
+      retval = NI_RETCODE_ERROR_MEM_ALOC;
+      LRETURN;
+    }
+  }
+  if (checkMCTF && !p_frame->end_of_stream) {
+    int ret = performMCTF(p_ctx, p_frame, p_frame->video_width, p_frame->video_height);
+    if (ret == MCTF_RET_NOT_REF || ret == MCTF_RET_LOOKBACK_REF) {
+      // not used by MCTF or lookback reference frame, send current frame as is
+    } else if (ret == MCTF_RET_BUFFERED) {
+      // need to wait for next frame, current frame is buffered internally
+      // return fake write complete
+      p_ctx->status = 0;
+      p_ctx->low_delay_sync_flag = 1;
+      retval = frame_size_bytes;
+      LRETURN;
+    } else if (ret == MCTF_RET_FILTERED) {
+      // MCTF is performed, need to write the filtered frame first, then write current frame
+      if (waitCnt > 0) {
+        p_frame = get_mctf_result(p_ctx, waitCnt);
+        waitCnt -= 1;
+      }
+    } else {
+      retval = NI_RETCODE_FAILURE;
+      ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR: %s() performMCTF failed with %d, return\n",
+             __func__, ret);
+      LRETURN;
+    }
+  }
+#endif
+
+  // Re-evaluate metadata/start-buffer mode after MCTF may have swapped p_frame.
+  separate_metadata = p_frame->separate_metadata;
+  separate_start =
+      (p_frame->separate_start && p_frame->total_start_len) ? 1 : 0;
+
   // fill in metadata such as timestamp
   ni_metadata_enc_frame_t *p_meta;
   if (separate_metadata)
@@ -4729,6 +4882,8 @@ int ni_encoder_session_write(ni_session_context_t* p_ctx, ni_frame_t* p_frame)
     p_frame->hor_adjust_offset = 0;
     ni_log2(p_ctx, NI_LOG_DEBUG,
            "### %s(): p_meta->hor_adjust_offset %d src_bit_depth %d\n", __func__, p_meta->hor_adjust_offset, p_ctx->src_bit_depth);
+    p_meta->timecode_present = p_frame->timecode_present;
+    p_frame->timecode_present = 0;
 
     if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
                           "6Q") >= 0)
@@ -4959,12 +5114,12 @@ int ni_encoder_session_write(ni_session_context_t* p_ctx, ni_frame_t* p_frame)
             }
 
             hwdl_session_data.data.frame.pts = p_frame->pts;
-            enqueue_ni_frame(p_ctx, &hwdl_session_data.data.frame, p_frame->video_width, p_frame->video_height);
+            enqueue_ni_frame(p_ctx, &hwdl_session_data.data.frame, (int32_t)p_frame->video_width, (int32_t)p_frame->video_height);
             ni_frame_buffer_free(&hwdl_session_data.data.frame);
           }
           else
           {
-            enqueue_ni_frame(p_ctx, p_frame, p_frame->video_width, p_frame->video_height);
+            enqueue_ni_frame(p_ctx, p_frame, (int32_t)p_frame->video_width, (int32_t)p_frame->video_height);
           }
       }
 
@@ -4982,22 +5137,37 @@ int ni_encoder_session_write(ni_session_context_t* p_ctx, ni_frame_t* p_frame)
       size = frame_size_bytes;
       p_ctx->low_delay_sync_flag = 1;
 
+#ifdef NI_HAVE_MCTF
+      if (p_orig_frame != p_frame)
+      {
+        if (waitCnt > 0) {
+          // go back to send next buffered frame
+        }
+        else {
+          // go back to send the original frame
+          p_frame = p_orig_frame;
+        }
+        checkMCTF = false;
+        goto start_write;
+      }
+#endif
+
 #ifdef XCODER_DUMP_DATA
       char dump_file[256];
-      snprintf(dump_file, sizeof(dump_file), "%ld-%u-enc-fme/fme-%04ld.yuv",
+      (void)snprintf(dump_file, sizeof(dump_file), "%ld-%u-enc-fme/fme-%04ld.yuv",
                (long)getpid(), p_ctx->session_id, (long)p_ctx->frame_num);
 
       FILE *f = NULL;
       ni_fopen(&f, dump_file, "wb");
-      fwrite(p_frame->p_buffer,
+      (void)fwrite(p_frame->p_buffer,
              p_frame->data_len[0] + p_frame->data_len[1] + p_frame->data_len[2],
              1, f);
-      fflush(f);
-      fclose(f);
+      (void)fflush(f);
+      (void)fclose(f);
 #endif
   }
 
-  retval = size;
+  retval = (int)size;
 
 END:
 
@@ -5291,7 +5461,7 @@ int ni_encoder_session_read(ni_session_context_t* p_ctx, ni_packet_t* p_packet)
 
   if (p_packet->buffer_size < actual_read_size)
   {
-      if (ni_packet_buffer_alloc(p_packet, actual_read_size))
+      if (ni_packet_buffer_alloc(p_packet, (int)actual_read_size))
       {
           ni_log2(p_ctx, NI_LOG_ERROR,
                  "ERROR %s(): packet buffer size %u allocation "
@@ -5326,8 +5496,8 @@ int ni_encoder_session_read(ni_session_context_t* p_ctx, ni_packet_t* p_packet)
       p_packet->frame_type = (p_meta->frame_type == 0) ?
           PIC_TYPE_IDR : ((p_meta->frame_type == 3) ? PIC_NOT_CODED : p_meta->frame_type);
       p_packet->avg_frame_qp = p_meta->avg_frame_qp;
-      p_packet->recycle_index = p_meta->recycle_index;
-      p_packet->av1_show_frame = p_meta->av1_show_frame;
+      p_packet->recycle_index = (int)p_meta->recycle_index;
+      p_packet->av1_show_frame = (int)p_meta->av1_show_frame;
       ni_log2(p_ctx, NI_LOG_DEBUG,  "%s RECYCLE INDEX = %u!!!\n", __FUNCTION__, p_meta->recycle_index);
       ni_log2(p_ctx, NI_LOG_DEBUG,  "%s MetaDataSize %d FrameType %d AvgFrameQp %d ssim %d %d %d\n",
         __FUNCTION__, p_meta->metadata_size, p_packet->frame_type, p_meta->avg_frame_qp, p_meta->ssimY, p_meta->ssimU, p_meta->ssimV);
@@ -5414,15 +5584,15 @@ int ni_encoder_session_read(ni_session_context_t* p_ctx, ni_packet_t* p_packet)
       p_packet->pts = (int64_t)(p_meta_rev61->frame_tstamp);
       p_packet->frame_type = p_meta_rev61->frame_type;
       p_packet->avg_frame_qp = p_meta_rev61->avg_frame_qp;
-      p_packet->recycle_index = p_meta_rev61->recycle_index;
-      p_packet->av1_show_frame = p_meta_rev61->av1_show_frame;
+      p_packet->recycle_index = (int)p_meta_rev61->recycle_index;
+      p_packet->av1_show_frame = (int)p_meta_rev61->av1_show_frame;
       ni_log2(p_ctx, NI_LOG_DEBUG,  "%s RECYCLE INDEX = %u!!!\n", __FUNCTION__, p_meta_rev61->recycle_index);
 
   }
 
   p_packet->data_len = to_read_size;
 
-  size = p_packet->data_len;
+  size = (int)p_packet->data_len;
 
   if (size > 0)
   {
@@ -5492,15 +5662,15 @@ int ni_encoder_session_read(ni_session_context_t* p_ctx, ni_packet_t* p_packet)
 
 #ifdef XCODER_DUMP_DATA
     char dump_file[256];
-    snprintf(dump_file, sizeof(dump_file), "%ld-%u-enc-pkt/pkt-%04ld.bin",
+    (void)snprintf(dump_file, sizeof(dump_file), "%ld-%u-enc-pkt/pkt-%04ld.bin",
              (long)getpid(), p_ctx->session_id, (long)p_ctx->pkt_num);
 
     FILE *f = NULL;
     ni_fopen(&f, dump_file, "wb");
-    fwrite((uint8_t *)p_packet->p_data + sizeof(ni_metadata_enc_bstream_t),
+    (void)fwrite((uint8_t *)p_packet->p_data + sizeof(ni_metadata_enc_bstream_t),
            p_packet->data_len - sizeof(ni_metadata_enc_bstream_t), 1, f);
-    fflush(f);
-    fclose(f);
+    (void)fflush(f);
+    (void)fclose(f);
 #endif
   }
 
@@ -5592,6 +5762,13 @@ ni_retcode_t ni_encoder_session_sequence_change(ni_session_context_t* p_ctx, ni_
                __func__);
         retval = NI_RETCODE_ERROR_NVME_CMD_FAILED;
     }
+#ifdef NI_HAVE_MCTF
+    else if (p_ctx->mctf)
+    {
+        // Rebuild MCTF state for the new resolution on the next submitted frame.
+        clearMCTF(p_ctx);
+    }
+#endif
 
 END:
 
@@ -5682,6 +5859,9 @@ int ni_scaler_session_open(ni_session_context_t* p_ctx)
     p_ctx->frame_num = 0;
     p_ctx->pkt_num = 0;
     p_ctx->pkt_index = 0;
+    if (!p_ctx->max_retry_count)
+        p_ctx->max_retry_count = NI_MAX_DEFAULT_RETRY;
+
 
     //malloc zero data buffer
     if (ni_posix_memalign(&p_ctx->p_all_zero_buf, sysconf(_SC_PAGESIZE),
@@ -5743,7 +5923,7 @@ int ni_scaler_session_open(ni_session_context_t* p_ctx)
 
     //Send keep alive timeout Info
     uint64_t keep_alive_timeout =
-        p_ctx->keep_alive_timeout * 1000000;   //send us to FW
+        (uint64_t)p_ctx->keep_alive_timeout * 1000000;   //send us to FW
     memset(p_buffer, 0, NI_DATA_BUFFER_LEN);
     memcpy(p_buffer, &keep_alive_timeout, sizeof(keep_alive_timeout));
     ni_log2(p_ctx, NI_LOG_DEBUG,  "%s keep_alive_timeout %" PRIx64 "\n", __func__,
@@ -5832,6 +6012,7 @@ END:
  *******************************************************************************/
 ni_retcode_t ni_scaler_session_close(ni_session_context_t* p_ctx, int eos_received)
 {
+  (void)eos_received;
   ni_retcode_t retval = NI_RETCODE_SUCCESS;
   void * p_buffer = NULL;
   uint32_t ui32LBA = 0;
@@ -5923,7 +6104,7 @@ ni_retcode_t ni_config_instance_set_scaler_params(ni_session_context_t *p_ctx,
 {
     void *p_scaler_config = NULL;
     ni_scaler_config_t *p_cfg = NULL;
-    uint32_t buffer_size = sizeof(ni_scaler_params_t);
+    uint32_t buffer_size = sizeof(ni_scaler_config_t);  /* wire struct, not param struct */
     ni_retcode_t retval = NI_RETCODE_SUCCESS;
     uint32_t ui32LBA = 0;
 
@@ -6046,6 +6227,118 @@ ni_retcode_t ni_config_instance_set_scaler_params(ni_session_context_t *p_ctx,
       }
       p_cfg->scaler_param_b = (uint16_t)(p_params->scaler_param_b * 10000);
       p_cfg->scaler_param_c = (uint16_t)(p_params->scaler_param_c * 10000);
+    }
+
+    /*
+     * User-defined Q14 polyphase kernel (NI_SCALER_ALGORITHM_USER_KERNEL = 6).
+     *
+     * Activated when kernel_taps > 0.  Takes priority over all other filterblit
+     * modes: overrides p_cfg->filterblit unconditionally.
+     *
+     * Firmware requirements validated here (fail fast before DMA):
+     *   1. kernel_taps in [1, NI_SCALER_MAX_KERNEL_TAPS]
+     *   2. Every one of the 17 subpixel-position rows must sum to exactly
+     *      NI_SCALER_Q14_ONE (0x4000) when the active taps are accumulated
+     *      as signed 16-bit integers.  This guarantees DC gain = 1 and prevents
+     *      luminance shift or overflow in the 2D scaler hardware.
+     */
+    if (p_cfg->filterblit == NI_SCALER_ALGORITHM_USER_KERNEL)
+    {
+      int pos, tap;
+      int padding;
+
+      // check fw revision
+      if (ni_cmp_fw_api_ver(
+              (char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+              "6t6") < 0)
+      {
+        ni_log2(p_ctx, NI_LOG_ERROR,  "%s: not supported config filterblit 6 "
+                      "on device with FW API version < 6t6\n", __func__);
+        // Close the session since we can't configure it as per fw
+        retval = ni_scaler_session_close(p_ctx, 0);
+        if (NI_RETCODE_SUCCESS != retval)
+        {
+          ni_log2(p_ctx, NI_LOG_ERROR,
+                  "ERROR: %s failed: blk_io_handle: %" PRIx64 ","
+                  "hw_id, %d, xcoder_inst_id: %d\n",
+                  __func__,
+                  (int64_t)p_ctx->blk_io_handle, p_ctx->hw_id,
+                  p_ctx->session_id);
+        }
+        retval = NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION;
+        LRETURN;
+      }
+      /* ---- 1. tap-count range check ------------------------------------ */
+      if (p_params->kernel_taps == 0 || p_params->kernel_taps > NI_SCALER_MAX_KERNEL_TAPS)
+      {
+        ni_log2(p_ctx, NI_LOG_ERROR,
+                "%s: kernel_taps=%u exceeds hardware maximum %d\n",
+                __func__, (unsigned)p_params->kernel_taps,
+                NI_SCALER_MAX_KERNEL_TAPS);
+        retval = NI_RETCODE_PARAM_INVALID_VALUE;
+        LRETURN;
+      }
+
+      /* ---- 2. per-row Q14 sum check ------------------------------------ */
+      padding = (NI_SCALER_KERNEL_SLOTS - (int)p_params->kernel_taps) / 2;
+
+      for (int idx = 0; idx < 2; idx++)
+      {
+        for (pos = 0; pos < NI_SCALER_KERNEL_POSITIONS; pos++)
+        {
+          int32_t row_sum = 0;
+          const uint16_t *row =
+              &p_params->kernel_array[idx][(size_t)pos * NI_SCALER_KERNEL_SLOTS];
+
+          for (tap = 0; tap < (int)p_params->kernel_taps; tap++)
+              row_sum += (int16_t)row[padding + tap];
+
+          if (row_sum != NI_SCALER_Q14_ONE)
+          {
+            ni_log2(p_ctx, NI_LOG_ERROR,
+                    "%s: Warning: USER_KERNEL idx %d row[%d] Q14 sum=0x%04x, "
+                    "expected 0x%04x (taps=%u, padding=%d)\n",
+                    __func__, idx, pos, (uint32_t)(uint16_t)row_sum,
+                    NI_SCALER_Q14_ONE,
+                    (unsigned)p_params->kernel_taps, padding);
+          }
+        }
+      }
+
+      /* ---- 3. populate config ----------------------------------------- */
+      p_cfg->filterblit  = NI_SCALER_ALGORITHM_USER_KERNEL;
+      p_cfg->kernel_taps = p_params->kernel_taps;
+      memcpy(p_cfg->kernel_array, p_params->kernel_array, sizeof(p_params->kernel_array));
+      ni_log2(p_ctx, NI_LOG_DEBUG,
+              "%s: USER_KERNEL configured, taps=%u\n",
+              __func__, (unsigned)p_params->kernel_taps);
+    }
+    else
+    {
+      // check fw revision
+      if (ni_cmp_fw_api_ver(
+              (char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+              "6t6") >= 0)
+      {
+        /* ---- 1. tap-count range check ------------------------------------ */
+        if (p_params->kernel_taps > NI_SCALER_MAX_KERNEL_TAPS)
+        {
+          ni_log2(p_ctx, NI_LOG_ERROR,
+                  "%s: kernel_taps=%u exceeds hardware maximum %d\n",
+                  __func__, (unsigned)p_params->kernel_taps,
+                  NI_SCALER_MAX_KERNEL_TAPS);
+          retval = NI_RETCODE_PARAM_INVALID_VALUE;
+          LRETURN;
+        }
+        else if (p_params->kernel_taps == 0)  //Set taps to default 5
+        {
+          p_cfg->kernel_taps = 5;
+        }
+        else
+        {
+          p_cfg->kernel_taps = p_params->kernel_taps;
+        }
+      }
     }
 
     retval = ni_nvme_send_write_cmd(p_ctx->blk_io_handle, p_ctx->event_handle,
@@ -6218,10 +6511,10 @@ ni_retcode_t ni_scaler_alloc_frame(ni_session_context_t* p_ctx,
     p_data->options = options;
     p_data->rectangle_width = rectangle_width;
     p_data->rectangle_height = rectangle_height;
-    p_data->rectangle_x = rectangle_x;
-    p_data->rectangle_y = rectangle_y;
-    p_data->rgba_color = rgba_color;
-    p_data->frame_index = frame_index;
+    p_data->rectangle_x = (int16_t)rectangle_x;
+    p_data->rectangle_y = (int16_t)rectangle_y;
+    p_data->rgba_color = (uint32_t)rgba_color;
+    p_data->frame_index = (uint16_t)frame_index;
 
     ni_log2(p_ctx, NI_LOG_DEBUG, "%s() options %d frame_index %u buffered_frame_index %d\n",
             __func__, options, p_data->frame_index, p_ctx->buffered_frame_index);
@@ -6829,6 +7122,7 @@ ni_retcode_t ni_query_session_stats(ni_session_context_t *p_ctx,
                                     ni_session_stats_t *p_session_stats, int rc,
                                     int opcode)
 {
+  (void)opcode;
   ni_retcode_t retval = NI_RETCODE_SUCCESS;
   void* p_buffer = NULL;
   uint64_t session_timestamp;
@@ -7128,7 +7422,7 @@ ni_parse_session_statistic_info(ni_session_context_t *p_ctx,
                "%s(): %s device 0x%" PRIx64 " last command Failed due to wrong "
                "session ID. Expected 0x%x, got 0x%x w_r <%u %u> keep alive "
                "last access time %" PRIu64 ", current %" PRIu64 "\n", __func__,
-               ni_get_device_type_str(p_ctx->device_type),
+               ni_get_device_type_str((int)p_ctx->device_type),
                (int64_t)p_ctx->device_handle, p_ctx->session_id,
                p_session_statistic->ui16SessionId,
                p_session_statistic->ui32WrBufAvailSize,
@@ -7247,7 +7541,7 @@ ni_query_session_statistic_info(ni_session_context_t *p_ctx,
     {
         retval = NI_RETCODE_ERROR_INVALID_SESSION;
         ni_log2(p_ctx, NI_LOG_ERROR, "ERROR %s(): Invalid session ID, %s return.\n",
-               __func__, ni_get_device_type_str(p_ctx->device_type));
+               __func__, ni_get_device_type_str((int)p_ctx->device_type));
         LRETURN;
     }
     p_ctx->session_statistic = *p_session_statistic;
@@ -7844,7 +8138,7 @@ ni_retcode_t ni_config_instance_set_encoder_params(ni_session_context_t* p_ctx)
       }
       memset(p_encoder_roi_qp_map, 0, buffer_size);
       memcpy(p_encoder_roi_qp_map, session_config->customize_roi_qp_map,
-            NI_CUSTOMIZE_ROI_QPOFFSET_LEVEL * NI_CUSTOMIZE_ROI_QP_NUM);
+            (size_t)NI_CUSTOMIZE_ROI_QPOFFSET_LEVEL * NI_CUSTOMIZE_ROI_QP_NUM);
       retval = ni_nvme_send_write_cmd(p_ctx->blk_io_handle, p_ctx->event_handle,
                                       p_encoder_roi_qp_map, buffer_size, ui32LBA);
       CHECK_ERR_RC(p_ctx, retval, 0, nvme_admin_cmd_xcoder_config,
@@ -7885,12 +8179,12 @@ ni_retcode_t ni_config_instance_set_encoder_params(ni_session_context_t* p_ctx)
   if (NI_RETCODE_PARAM_WARN == retval)
   {
       ni_log2(p_ctx, NI_LOG_INFO, "WARNING: ni_validate_custom_template() . %s\n", p_ctx->param_err_msg);
-      fflush(stdout);
+      (void)fflush(stdout);
   }
   else if (NI_RETCODE_SUCCESS != retval)
   {
       ni_log2(p_ctx, NI_LOG_ERROR, "ERROR: ni_validate_custom_template() failed. %s\n", p_ctx->param_err_msg);
-      fflush(stdout);
+      (void)fflush(stdout);
       retval = NI_RETCODE_INVALID_PARAM;
       LRETURN;
   }
@@ -7899,32 +8193,32 @@ ni_retcode_t ni_config_instance_set_encoder_params(ni_session_context_t* p_ctx)
 
   //Flip the bytes!! any param 16bits in size need ni_htons, 32bit need ni_htonl
   p_cfg = (ni_encoder_config_t*)p_encoder_config;
-  p_cfg->i32picWidth = ni_htonl(p_cfg->i32picWidth);
-  p_cfg->i32picHeight = ni_htonl(p_cfg->i32picHeight);
-  p_cfg->i32meBlkMode = ni_htonl(p_cfg->i32meBlkMode);
-  p_cfg->i32frameRateInfo = ni_htonl(p_cfg->i32frameRateInfo);
-  p_cfg->i32vbvBufferSize = ni_htonl(p_cfg->i32vbvBufferSize);
-  p_cfg->i32userQpMax = ni_htonl(p_cfg->i32userQpMax);
-  p_cfg->i32maxIntraSize = ni_htonl(p_cfg->i32maxIntraSize);
-  p_cfg->i32userMaxDeltaQp = ni_htonl(p_cfg->i32userMaxDeltaQp);
-  p_cfg->i32userMinDeltaQp = ni_htonl(p_cfg->i32userMinDeltaQp);
-  p_cfg->i32userQpMin = ni_htonl(p_cfg->i32userQpMin);
-  p_cfg->i32bitRate = ni_htonl(p_cfg->i32bitRate);
-  p_cfg->i32bitRateBL = ni_htonl(p_cfg->i32bitRateBL);
-  p_cfg->i32srcBitDepth = ni_htonl(p_cfg->i32srcBitDepth);
+  p_cfg->i32picWidth = (int32_t)ni_htonl(p_cfg->i32picWidth);
+  p_cfg->i32picHeight = (int32_t)ni_htonl(p_cfg->i32picHeight);
+  p_cfg->i32meBlkMode = (int32_t)ni_htonl(p_cfg->i32meBlkMode);
+  p_cfg->i32frameRateInfo = (int32_t)ni_htonl(p_cfg->i32frameRateInfo);
+  p_cfg->i32vbvBufferSize = (int32_t)ni_htonl(p_cfg->i32vbvBufferSize);
+  p_cfg->i32userQpMax = (int32_t)ni_htonl(p_cfg->i32userQpMax);
+  p_cfg->i32maxIntraSize = (int32_t)ni_htonl(p_cfg->i32maxIntraSize);
+  p_cfg->i32userMaxDeltaQp = (int32_t)ni_htonl(p_cfg->i32userMaxDeltaQp);
+  p_cfg->i32userMinDeltaQp = (int32_t)ni_htonl(p_cfg->i32userMinDeltaQp);
+  p_cfg->i32userQpMin = (int32_t)ni_htonl(p_cfg->i32userQpMin);
+  p_cfg->i32bitRate = (int32_t)ni_htonl(p_cfg->i32bitRate);
+  p_cfg->i32bitRateBL = (int32_t)ni_htonl(p_cfg->i32bitRateBL);
+  p_cfg->i32srcBitDepth = (int32_t)ni_htonl(p_cfg->i32srcBitDepth);
   p_cfg->hdrEnableVUI = ni_htonl(p_cfg->hdrEnableVUI);
   p_cfg->ui32VuiDataSizeBits = ni_htonl(p_cfg->ui32VuiDataSizeBits);
   p_cfg->ui32VuiDataSizeBytes = ni_htonl(p_cfg->ui32VuiDataSizeBytes);
-  p_cfg->i32hwframes = ni_htonl(p_cfg->i32hwframes);
+  p_cfg->i32hwframes = (int32_t)ni_htonl(p_cfg->i32hwframes);
   p_cfg->ui16HDR10MaxLight = ni_htons(p_cfg->ui16HDR10MaxLight);
   p_cfg->ui16HDR10AveLight = ni_htons(p_cfg->ui16HDR10AveLight);
   p_cfg->ui16gdrDuration = ni_htons(p_cfg->ui16gdrDuration);
   p_cfg->ui32ltrRefInterval = ni_htonl(p_cfg->ui32ltrRefInterval);
-  p_cfg->i32ltrRefQpOffset = ni_htonl(p_cfg->i32ltrRefQpOffset);
+  p_cfg->i32ltrRefQpOffset = (int32_t)ni_htonl(p_cfg->i32ltrRefQpOffset);
   p_cfg->ui32ltrFirstGap = ni_htonl(p_cfg->ui32ltrFirstGap);
-  p_cfg->i32tolCtbRcInter = ni_htonl(p_cfg->i32tolCtbRcInter);
-  p_cfg->i32tolCtbRcIntra = ni_htonl(p_cfg->i32tolCtbRcIntra);
-  p_cfg->i16bitrateWindow = ni_htons(p_cfg->i16bitrateWindow);
+  p_cfg->i32tolCtbRcInter = (int32_t)ni_htonl(p_cfg->i32tolCtbRcInter);
+  p_cfg->i32tolCtbRcIntra = (int32_t)ni_htonl(p_cfg->i32tolCtbRcIntra);
+  p_cfg->i16bitrateWindow = (int16_t)ni_htons(p_cfg->i16bitrateWindow);
   p_cfg->ui16hdr10_dx0 = ni_htons(p_cfg->ui16hdr10_dx0);
   p_cfg->ui16hdr10_dy0 = ni_htons(p_cfg->ui16hdr10_dy0);
   p_cfg->ui16hdr10_dx1 = ni_htons(p_cfg->ui16hdr10_dx1);
@@ -8485,7 +8779,7 @@ int ni_create_frame(ni_frame_t* p_frame, uint32_t read_length, uint64_t*
   ni_log(NI_LOG_DEBUG, "received [0x%08x] data size: %d, end of stream=%u\n",
                  read_length, rx_size, p_frame->end_of_stream);
 
-  return rx_size;
+  return (int)rx_size;
 }
 
 /*!******************************************************************************
@@ -8976,17 +9270,17 @@ void ni_set_custom_dec_template(ni_session_context_t *p_ctx,
     if (p_cfg->ui8MaxExtraHwFrameCnt != 255 &&
         ni_cmp_fw_api_ver((char *)&p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6sT") >= 0)
     {
-        p_cfg->asOutputConfig[i].sOutputPictureSize.i16Width = (p_dec->scale_wh[j][0] < 0) ?
-            (int16_t)(p_dec->scale_wh[j][0] & -2) : (int16_t)((p_dec->scale_wh[j][0]+1) & 0xFFFE);
-        p_cfg->asOutputConfig[i].sOutputPictureSize.i16Height = (p_dec->scale_wh[j][1] < 0) ?
-            (int16_t)(p_dec->scale_wh[j][1] & -2) : (int16_t)((p_dec->scale_wh[j][1]+1) & 0xFFFE);
+        p_cfg->asOutputConfig[i].sOutputPictureSize.i16Width = (int16_t)((p_dec->scale_wh[j][0] < 0) ?
+            (p_dec->scale_wh[j][0] & -2) : ((p_dec->scale_wh[j][0]+1) & 0xFFFE));
+        p_cfg->asOutputConfig[i].sOutputPictureSize.i16Height = (int16_t)((p_dec->scale_wh[j][1] < 0) ?
+            (p_dec->scale_wh[j][1] & -2) : ((p_dec->scale_wh[j][1]+1) & 0xFFFE));
     }
     else
     {
-        p_cfg->asOutputConfig[i].sOutputPictureSize.i16Width = (p_dec->scale_wh[j][0] < 0) ?
-            0 : (int16_t)((p_dec->scale_wh[j][0]+1) & 0xFFFE);
-        p_cfg->asOutputConfig[i].sOutputPictureSize.i16Height = (p_dec->scale_wh[j][1] < 0) ?
-            0 : (int16_t)((p_dec->scale_wh[j][1]+1) & 0xFFFE);
+        p_cfg->asOutputConfig[i].sOutputPictureSize.i16Width = (int16_t)((p_dec->scale_wh[j][0] < 0) ?
+            0 : ((p_dec->scale_wh[j][0]+1) & 0xFFFE));
+        p_cfg->asOutputConfig[i].sOutputPictureSize.i16Height = (int16_t)((p_dec->scale_wh[j][1] < 0) ?
+            0 : ((p_dec->scale_wh[j][1]+1) & 0xFFFE));
     }
 
     if (p_cfg->asOutputConfig[i].sOutputPictureSize.i16Width ||
@@ -9006,6 +9300,30 @@ void ni_set_custom_dec_template(ni_session_context_t *p_ctx,
   {
     ni_log2(p_ctx, NI_LOG_INFO, "Warning %s(): maxExtraHwFrameCnt is not support for FW < 6rB\n", __func__);
   }
+
+  p_cfg->ui8ExtendPoolSize = p_dec->extend_pool_size;
+  if (p_cfg->ui8ExtendPoolSize != 0 &&
+      ni_cmp_fw_api_ver((char *)&p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6t2") < 0)
+  {
+    ni_log2(p_ctx, NI_LOG_INFO, "Warning %s(): extendPoolSize is not support for FW < 6t2\n", __func__);
+  }
+
+  p_cfg->ui8DecoderMode = p_dec->decoder_mode;
+  if (p_cfg->ui8DecoderMode != 0)
+  {
+    if (p_ctx->codec_format != NI_CODEC_FORMAT_H264 &&
+        p_ctx->codec_format != NI_CODEC_FORMAT_H265)
+    {
+      ni_log2(p_ctx, NI_LOG_ERROR, "Warning %s(): decoderMode is only supported for H.264/H.265, resetting to default normal\n", __func__);
+      p_cfg->ui8DecoderMode = 0;
+    }
+    else if (ni_cmp_fw_api_ver((char *)&p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6tC") < 0)
+    {
+      ni_log2(p_ctx, NI_LOG_ERROR, "Warning %s(): decoderMode is not supported for FW < 6tC, resetting to default normal\n", __func__);
+      p_cfg->ui8DecoderMode = 0;
+    }
+  }
+
   p_cfg->ui8EcPolicy = p_dec->ec_policy;
   p_cfg->ui8EnableAdvancedEc = p_dec->enable_advanced_ec;
   p_cfg->ui32ErrRatioThreshold = p_dec->error_ratio_threshold;
@@ -9090,7 +9408,8 @@ void ni_set_custom_dec_template(ni_session_context_t *p_ctx,
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui8DisableAdaptiveBuffers = %u\n", p_cfg->ui8DisableAdaptiveBuffers);
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui32ErrRatioThreshold = %u\n", p_cfg->ui32ErrRatioThreshold);
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui8ReduceDpbDelay = %u\n", p_cfg->ui8ReduceDpbDelay);
-
+  ni_log2(p_ctx, NI_LOG_DEBUG, "ui8ExtendPoolSize = %u\n", p_cfg->ui8ExtendPoolSize);
+  ni_log2(p_ctx, NI_LOG_DEBUG, "ui8DecoderMode = %u\n", p_cfg->ui8DecoderMode);
 }
 
 
@@ -9134,9 +9453,9 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
   }else{
     p_cfg->ui8AiEnhanceLevel = 1;
   }
-  p_cfg->i8statisticOutputLevel = p_enc->statistic_output_level;
-  p_cfg->i8skipFrameEnable = p_enc->skip_frame_enable;
-  p_cfg->i8maxConsecutiveSkipFrameNum = p_enc->max_consecutive_skip_num;
+  p_cfg->i8statisticOutputLevel = (int8_t)p_enc->statistic_output_level;
+  p_cfg->i8skipFrameEnable = (int8_t)p_enc->skip_frame_enable;
+  p_cfg->i8maxConsecutiveSkipFrameNum = (int8_t)p_enc->max_consecutive_skip_num;
   p_cfg->u8skipFrameInterval = p_enc->skip_frame_interval;
   p_cfg->ui16iFrameSizeRatio = p_enc->iframe_size_ratio;
   p_cfg->ui8EnableAcqLimit = p_enc->enable_acq_limit;
@@ -9265,7 +9584,7 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
             p_cfg->i32vbvBufferSize = 0; // if user sets CRF but not vbvBufferSize, do not eanble capped CRF
     }
     p_cfg->ui32vbvMaxRate  = p_enc->rc.vbv_max_rate;
-    p_cfg->i8intraQpDelta = p_enc->rc.intra_qp_delta;
+    p_cfg->i8intraQpDelta = (int8_t)p_enc->rc.intra_qp_delta;
     p_cfg->ui8fillerEnable = p_enc->rc.enable_filler;
     p_cfg->ui8picSkipEnable = p_enc->rc.enable_pic_skip;
     p_cfg->ui16maxFrameSize = p_enc->maxFrameSize / 2000;
@@ -9308,13 +9627,13 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
           uint32_t numUnitsInTick = 1000;
           if (p_src->fps_denominator == numUnitsInTick + 1)
           {
-                p_cfg->i32frameRateDenominator = numUnitsInTick + 1;
+                p_cfg->i32frameRateDenominator = (int32_t)(numUnitsInTick + 1);
                 p_cfg->i32frameRateInfo = p_enc->frame_rate + 1;
-                p_cfg->i32frameRateInfo *= numUnitsInTick;
+                p_cfg->i32frameRateInfo *= (int32_t)numUnitsInTick;
           }
           else
           {
-                p_cfg->i32frameRateDenominator = numUnitsInTick + 1;
+                p_cfg->i32frameRateDenominator = (int32_t)(numUnitsInTick + 1);
                 p_cfg->i32frameRateInfo = (int32_t)(((uint64_t)p_src->fps_number * (uint64_t)numUnitsInTick) / (uint64_t)p_src->fps_denominator);
           }
       }
@@ -9591,7 +9910,7 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
   }
   if (p_enc->crf != -1)
   {
-    p_cfg->i8crf = p_enc->crf;
+    p_cfg->i8crf = (int8_t)p_enc->crf;
   }
   if (p_enc->HDR10MaxLight != 0)
   {
@@ -9680,7 +9999,7 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
 
   if (p_enc->chromaQpOffset != 0)
   {
-      p_cfg->i8chromaQpOffset = p_enc->chromaQpOffset;
+      p_cfg->i8chromaQpOffset = (int8_t)p_enc->chromaQpOffset;
   }
 
   if (p_enc->tolCtbRcInter != (float)0.1)
@@ -9695,7 +10014,7 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
 
   if (p_enc->bitrateWindow != -255)
   {
-      p_cfg->i16bitrateWindow = p_enc->bitrateWindow;
+      p_cfg->i16bitrateWindow = (int16_t)p_enc->bitrateWindow;
   }
 
   if (p_enc->inLoopDSRatio != 1)
@@ -9715,7 +10034,7 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
 
   if (p_enc->ctbRowQpStep != 0)
   {
-      p_cfg->i16ctbRowQpStep = p_enc->ctbRowQpStep;
+      p_cfg->i16ctbRowQpStep = (int16_t)p_enc->ctbRowQpStep;
   }
 
   if (p_enc->newRcEnable != -1)
@@ -9944,7 +10263,7 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
 
   if (p_enc->crfMax != -1)
   {
-    p_cfg->i8crfMax = (int8_t)(p_enc->crfMax) + 1; // for old libxcoder backward compatibility, use 1 to represent 0
+    p_cfg->i8crfMax = (int8_t)(p_enc->crfMax + 1); // for old libxcoder backward compatibility, use 1 to represent 0
   }
 
   if (p_enc->qcomp != (float)0.6)
@@ -9964,7 +10283,7 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
 
   if (p_enc->cuTreeFactor != 5)
   {
-    p_cfg->i8cuTreeFactor = p_enc->cuTreeFactor;
+    p_cfg->i8cuTreeFactor = (int8_t)p_enc->cuTreeFactor;
   }
 
   if (p_enc->ipRatio != (float)1.4)
@@ -9984,7 +10303,7 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
 
   if (p_enc->pps_init_qp != -1)
   {
-      p_cfg->i8ppsInitQp = (int8_t)(p_enc->pps_init_qp) + 1; // for old libxcoder backward compatibility, use 1 to represent 0
+      p_cfg->i8ppsInitQp = (int8_t)(p_enc->pps_init_qp + 1); // for old libxcoder backward compatibility, use 1 to represent 0
   }
 
   if (p_enc->bitrateMode != -1)
@@ -9994,7 +10313,7 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
 
   if (p_enc->pass1_qp != -1)
   {
-      p_cfg->i8pass1Qp = (int8_t)(p_enc->pass1_qp) + 1; // for old libxcoder backward compatibility, use 1 to represent 0
+      p_cfg->i8pass1Qp = (int8_t)((int8_t)(p_enc->pass1_qp) + 1); // for old libxcoder backward compatibility, use 1 to represent 0
   }
 
   if (p_enc->crfFloat != (float)-1.0)
@@ -10006,12 +10325,12 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
 
   if (p_enc->hvsBaseMbComplexity != 15)
   {
-      p_cfg->i8hvsBaseMbComplexity = (int8_t)p_enc->hvsBaseMbComplexity - 15; // for old libxcoder backward compatibility, use -15 to represent 0
+      p_cfg->i8hvsBaseMbComplexity = (int8_t)((int8_t)p_enc->hvsBaseMbComplexity - 15); // for old libxcoder backward compatibility, use -15 to represent 0
   }
 
   if (p_enc->enableipRatio != 0 && p_cfg->i32vbvBufferSize != 0) //vbvBufferSize !=0 for CBR not for ABR
   {
-    p_cfg->i8enableipRatio = p_enc->enableipRatio;
+    p_cfg->i8enableipRatio = (int8_t)p_enc->enableipRatio;
   }
 
   if (p_enc->crf_max_iframe_enable != 0)
@@ -11123,7 +11442,8 @@ END:
 // Check encoder level parameters
 static ni_retcode_t ni_check_level(int level, int codec_id, int *level_index)
 {
-    const int l_levels_264[] = {10, 11, 12, 13, 20, 21, 22, 30, 31, 32,
+    // '99' value in l_levels_264 holds the slot for level '1b'.
+    const int l_levels_264[] = {10, 99, 11, 12, 13, 20, 21, 22, 30, 31, 32,
                                 40, 41, 42, 50, 51, 52, 60, 61, 62, 0};
     const int l_levels_265[] = {10, 20, 21, 30, 31, 40, 41,
                                 50, 51, 52, 60, 61, 62, 0};
@@ -11244,13 +11564,13 @@ static uint32_t get_max_cpb_bitrate( ni_codec_format_t codecFormat , int32_t lev
       level   = MIN( level, (H264_LEVEL_NUM - 1));
       float h264_high10_factor = 1;
       if(profile == 4) /* High Profile */
-        h264_high10_factor = 1.25;
+        h264_high10_factor = (float)1.25;
       else if(profile == 5) /* High 10 Profile */
-        h264_high10_factor = 3.0;
+        h264_high10_factor = (float)3.0;
       if(type == 0)
-        maxBR   = (uint32_t)(max_bitrate_h264[ level ] * h264_high10_factor);
+        maxBR   = (uint32_t)((float)max_bitrate_h264[ level ] * h264_high10_factor);
       else
-        maxBR   = (uint32_t)(max_cpb_second_h264[ level ] * h264_high10_factor);
+        maxBR   = (uint32_t)((float)max_cpb_second_h264[ level ] * h264_high10_factor);
       break;
 
     case NI_CODEC_FORMAT_AV1:
@@ -11285,10 +11605,10 @@ static ni_retcode_t ni_check_level_tier_compliance(int level,
     // level and tier check
     uint32_t sample_per_picture = p_src->source_width * p_src->source_height;
     uint64_t sample_per_second = sample_per_picture * p_cfg->i32frameRateInfo / p_cfg->i32frameRateDenominator;
-    uint32_t max_pic_size = get_max_pic_size(p_ctx->codec_format, level_index);
-    uint64_t max_sample_rate_second = get_max_sample_rate_second(p_ctx->codec_format, level_index);
-    uint32_t max_bitrate = get_max_cpb_bitrate(p_ctx->codec_format, level_index, p_cfg->niParamT408.profile, p_cfg->niParamT408.tier, 0);
-    uint32_t max_vbv = get_max_cpb_bitrate(p_ctx->codec_format, level_index, p_cfg->niParamT408.profile, p_cfg->niParamT408.tier, 1);
+    uint32_t max_pic_size = get_max_pic_size((ni_codec_format_t)p_ctx->codec_format, level_index);
+    uint64_t max_sample_rate_second = get_max_sample_rate_second((ni_codec_format_t)p_ctx->codec_format, level_index);
+    uint32_t max_bitrate = get_max_cpb_bitrate((ni_codec_format_t)p_ctx->codec_format, level_index, p_cfg->niParamT408.profile, p_cfg->niParamT408.tier, 0);
+    uint32_t max_vbv = get_max_cpb_bitrate((ni_codec_format_t)p_ctx->codec_format, level_index, p_cfg->niParamT408.profile, p_cfg->niParamT408.tier, 1);
 
     ni_log2(p_ctx, NI_LOG_DEBUG, "%s(): sample_per_picture %u sample_per_second %" PRIu64 " fr num %d den %d level_index %d\n",
              __func__, sample_per_picture, sample_per_second, p_cfg->i32frameRateInfo, p_cfg->i32frameRateDenominator,
@@ -11303,10 +11623,10 @@ static ni_retcode_t ni_check_level_tier_compliance(int level,
     {
         if(p_cfg->i32vbvBufferSize == 0)
         {
-            snprintf(p_param_warn, max_err_len, "Level (%.1f): Switched crf to capped crf to be compliant with the level",
+            (void)snprintf(p_param_warn, max_err_len, "Level (%.1f): Switched crf to capped crf to be compliant with the level",
                 (float) level/10);
             *warning = NI_RETCODE_PARAM_WARN;
-            p_cfg->ui32vbvMaxRate = p_cfg->i32bitRate = max_bitrate;
+            p_cfg->ui32vbvMaxRate = p_cfg->i32bitRate = (int32_t)max_bitrate;
             p_cfg->i32vbvBufferSize = 1000;
         }
     }
@@ -11320,21 +11640,21 @@ static ni_retcode_t ni_check_level_tier_compliance(int level,
 
     if(sample_per_picture > max_pic_size)
     {
-        snprintf(p_param_err, max_err_len, "Invalid Encoder Level (%.1f): picture size %u exceeds supported limits %u",
+        (void)snprintf(p_param_err, max_err_len, "Invalid Encoder Level (%.1f): picture size %u exceeds supported limits %u",
             (float) level/10, sample_per_picture, max_pic_size);
         return NI_RETCODE_INVALID_PARAM;
     }
 
     if(sample_per_second > max_sample_rate_second)
     {
-        snprintf(p_param_err, max_err_len, "Invalid Encoder Level (%.1f): picture sample rate %" PRIu64 " exceeds supported limits %" PRIu64 "",
+        (void)snprintf(p_param_err, max_err_len, "Invalid Encoder Level (%.1f): picture sample rate %" PRIu64 " exceeds supported limits %" PRIu64 "",
             (float) level/10, sample_per_second, max_sample_rate_second);
         return NI_RETCODE_INVALID_PARAM;
     }
 
     if(p_cfg->i32bitRate > (int32_t)max_bitrate)
     {
-        snprintf(p_param_warn, max_err_len, "Level (%.1f): bitrate %d exceeds supported limit. Changed it to maximum %u",
+        (void)snprintf(p_param_warn, max_err_len, "Level (%.1f): bitrate %d exceeds supported limit. Changed it to maximum %u",
             (float) level/10, p_cfg->i32bitRate, max_bitrate);
         *warning = NI_RETCODE_PARAM_WARN;
         p_cfg->i32bitRate = (int32_t)max_bitrate;
@@ -11342,7 +11662,7 @@ static ni_retcode_t ni_check_level_tier_compliance(int level,
 
     if(p_cfg->ui32vbvMaxRate > (int32_t)max_vbv)
     {
-        snprintf(p_param_warn, max_err_len, "Level (%.1f): vbvMaxRate %u exceeds supported limit. Changed it to maximum %u",
+        (void)snprintf(p_param_warn, max_err_len, "Level (%.1f): vbvMaxRate %u exceeds supported limit. Changed it to maximum %u",
             (float) level/10, p_cfg->ui32vbvMaxRate, max_vbv);
         *warning = NI_RETCODE_PARAM_WARN;
         p_cfg->ui32vbvMaxRate = (int32_t)max_vbv;
@@ -11454,7 +11774,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       // check cropping width & height are both non-zero
       if (!p_cfg->ui32cropWidth || !p_cfg->ui32cropHeight)
       {
-        snprintf(p_param_err, max_err_len, "Invalid Crop Width x Height (%u x %u): both need to be specified",
+        (void)snprintf(p_param_err, max_err_len, "Invalid Crop Width x Height (%u x %u): both need to be specified",
                          p_cfg->ui32cropWidth, p_cfg->ui32cropHeight);
         param_ret = NI_RETCODE_INVALID_PARAM;
         LRETURN;
@@ -11462,7 +11782,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       // check cropping width & height are even
       if ((p_cfg->ui32cropWidth % 2) || (p_cfg->ui32cropHeight % 2))
       {
-        snprintf(p_param_err, max_err_len, "Invalid Crop Width x Height (%u x %uu): must be even",
+        (void)snprintf(p_param_err, max_err_len, "Invalid Crop Width x Height (%u x %uu): must be even",
                          p_cfg->ui32cropWidth, p_cfg->ui32cropHeight);
         param_ret = NI_RETCODE_INVALID_PARAM;
         LRETURN;
@@ -11470,35 +11790,35 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       // check cropping width & height meet resoultion constraint (including AV1 max resoultion)
       if (p_cfg->ui32cropWidth < NI_MIN_WIDTH)
       {
-        snprintf(p_param_err, max_err_len, "Invalid Crop Width: less than %d",
+        (void)snprintf(p_param_err, max_err_len, "Invalid Crop Width: less than %d",
                          NI_MIN_WIDTH);
         param_ret = NI_RETCODE_PARAM_ERROR_WIDTH_TOO_SMALL;
         LRETURN;
       }
       if (p_cfg->ui32cropHeight < NI_MIN_HEIGHT)
       {
-        snprintf(p_param_err, max_err_len, "Invalid Crop Height: less than %d",
+        (void)snprintf(p_param_err, max_err_len, "Invalid Crop Height: less than %d",
                          NI_MIN_HEIGHT);
         param_ret = NI_RETCODE_PARAM_ERROR_HEIGHT_TOO_SMALL;
         LRETURN;
       }
       if (p_cfg->ui32cropWidth > NI_PARAM_MAX_WIDTH)
       {
-        snprintf(p_param_err, max_err_len, "Invalid Crop Width: exceeds %d",
+        (void)snprintf(p_param_err, max_err_len, "Invalid Crop Width: exceeds %d",
                          NI_PARAM_MAX_WIDTH);
         param_ret = NI_RETCODE_PARAM_ERROR_WIDTH_TOO_BIG;
         LRETURN;
       }
       if (p_cfg->ui32cropHeight > NI_PARAM_MAX_HEIGHT)
       {
-        snprintf(p_param_err, max_err_len, "Invalid Crop Height: exceeds %d",
+        (void)snprintf(p_param_err, max_err_len, "Invalid Crop Height: exceeds %d",
                          NI_PARAM_MAX_HEIGHT);
         param_ret = NI_RETCODE_PARAM_ERROR_HEIGHT_TOO_BIG;
         LRETURN;
       }
       if (p_cfg->ui32cropWidth * p_cfg->ui32cropHeight > NI_MAX_RESOLUTION_AREA)
       {
-        snprintf(p_param_err, max_err_len, "Invalid Crop Width x Height: exceeds %d",
+        (void)snprintf(p_param_err, max_err_len, "Invalid Crop Width x Height: exceeds %d",
                          NI_MAX_RESOLUTION_AREA);
         param_ret = NI_RETCODE_PARAM_ERROR_AREA_TOO_BIG;
         LRETURN;
@@ -11508,21 +11828,21 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       {
         if (p_cfg->ui32cropWidth > NI_PARAM_AV1_MAX_WIDTH)
         {
-          snprintf(p_param_err, max_err_len, "Invalid Crop Width: exceeds %d",
+          (void)snprintf(p_param_err, max_err_len, "Invalid Crop Width: exceeds %d",
                            NI_PARAM_AV1_MAX_WIDTH);
           param_ret = NI_RETCODE_PARAM_ERROR_WIDTH_TOO_BIG;
           LRETURN;
         }
         if (p_cfg->ui32cropHeight > NI_PARAM_AV1_MAX_HEIGHT)
         {
-          snprintf(p_param_err, max_err_len, "Invalid Crop Height: exceeds %d",
+          (void)snprintf(p_param_err, max_err_len, "Invalid Crop Height: exceeds %d",
                            NI_PARAM_AV1_MAX_HEIGHT);
           param_ret = NI_RETCODE_PARAM_ERROR_HEIGHT_TOO_BIG;
           LRETURN;
         }
         if (p_cfg->ui32cropWidth * p_cfg->ui32cropHeight > NI_PARAM_AV1_MAX_AREA)
         {
-          snprintf(p_param_err, max_err_len, "Invalid Crop Width x Height: exceeds %d",
+          (void)snprintf(p_param_err, max_err_len, "Invalid Crop Width x Height: exceeds %d",
                            NI_PARAM_AV1_MAX_AREA);
           param_ret = NI_RETCODE_PARAM_ERROR_AREA_TOO_BIG;
           LRETURN;
@@ -11532,7 +11852,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       // check cropping horOffset & verOffset are even
       if ((p_cfg->ui32horOffset % 2) || (p_cfg->ui32verOffset % 2))
       {
-        snprintf(p_param_err, max_err_len, "Invalid Crop horOffset %u and/or verOffset %u: must be even",
+        (void)snprintf(p_param_err, max_err_len, "Invalid Crop horOffset %u and/or verOffset %u: must be even",
                          p_cfg->ui32horOffset, p_cfg->ui32verOffset);
         param_ret = NI_RETCODE_INVALID_PARAM;
         LRETURN;
@@ -11540,21 +11860,21 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
 
       if (p_src->source_width < (int)(p_cfg->ui32horOffset + p_cfg->ui32cropWidth))
       {
-        snprintf(p_param_err, max_err_len, "Invalid Crop Width: offset %u + crop width %u too big > %d",
+        (void)snprintf(p_param_err, max_err_len, "Invalid Crop Width: offset %u + crop width %u too big > %d",
                          p_cfg->ui32horOffset, p_cfg->ui32cropWidth, p_src->source_width);
         param_ret = NI_RETCODE_PARAM_ERROR_PIC_WIDTH;
         LRETURN;
       }
       if (p_src->source_height < (int)(p_cfg->ui32verOffset + p_cfg->ui32cropHeight))
       {
-        snprintf(p_param_err, max_err_len, "Invalid Crop Height: offset %u + crop height %u too big > %d",
+        (void)snprintf(p_param_err, max_err_len, "Invalid Crop Height: offset %u + crop height %u too big > %d",
                          p_cfg->ui32verOffset, p_cfg->ui32cropHeight, p_src->source_height);
         param_ret = NI_RETCODE_PARAM_ERROR_PIC_HEIGHT;
         LRETURN;
       }
       if (p_enc->roi_enable)
       {
-        snprintf(p_param_err, max_err_len, "roiEnable must disabled when Crop Width > 0 || Crop Height > 0");
+        (void)snprintf(p_param_err, max_err_len, "roiEnable must disabled when Crop Width > 0 || Crop Height > 0");
         param_ret = NI_RETCODE_INVALID_PARAM;
         LRETURN;
       }
@@ -11565,21 +11885,21 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       {
         if (p_src->source_width > NI_PARAM_AV1_MAX_WIDTH)
         {
-          snprintf(p_param_err, max_err_len, "Invalid Picture Width: exceeds %d",
+          (void)snprintf(p_param_err, max_err_len, "Invalid Picture Width: exceeds %d",
                            NI_PARAM_AV1_MAX_WIDTH);
           param_ret = NI_RETCODE_PARAM_ERROR_WIDTH_TOO_BIG;
           LRETURN;
         }
         if (p_src->source_height > NI_PARAM_AV1_MAX_HEIGHT)
         {
-          snprintf(p_param_err, max_err_len, "Invalid Picture Height: exceeds %d",
+          (void)snprintf(p_param_err, max_err_len, "Invalid Picture Height: exceeds %d",
                            NI_PARAM_AV1_MAX_HEIGHT);
           param_ret = NI_RETCODE_PARAM_ERROR_HEIGHT_TOO_BIG;
           LRETURN;
         }
         if (p_src->source_width * p_src->source_height > NI_PARAM_AV1_MAX_AREA)
         {
-          snprintf(p_param_err, max_err_len, "Invalid Picture Width x Height: exceeds %d",
+          (void)snprintf(p_param_err, max_err_len, "Invalid Picture Width x Height: exceeds %d",
                            NI_PARAM_AV1_MAX_AREA);
           param_ret = NI_RETCODE_PARAM_ERROR_AREA_TOO_BIG;
           LRETURN;
@@ -11661,7 +11981,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
            p_cfg->ui8PixelFormat != NI_PIX_FMT_8_TILED4X4 &&
            p_cfg->ui8PixelFormat != NI_PIX_FMT_10_TILED4X4)
   {
-      snprintf(p_param_err, max_err_len, "Unsupported pixel format %d in encoder", p_cfg->ui8PixelFormat);
+      (void)snprintf(p_param_err, max_err_len, "Unsupported pixel format %d in encoder", p_cfg->ui8PixelFormat);
       param_ret = NI_RETCODE_INVALID_PARAM;
       LRETURN;
   }
@@ -11681,7 +12001,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
   if (p_src->cfg_enc_params.level_idc)
   {
       if (NI_RETCODE_SUCCESS !=
-          ni_check_level(p_src->cfg_enc_params.level_idc, p_ctx->codec_format, &level_index))
+          ni_check_level((int)p_src->cfg_enc_params.level_idc, (int)p_ctx->codec_format, &level_index))
       {
           ni_strncpy(p_param_err, max_err_len, "Invalid Encoder Level: out of range", max_err_len - 1);
           param_ret = NI_RETCODE_PARAM_ERROR_OOR;
@@ -11813,7 +12133,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     {
         if (NI_CODEC_FORMAT_JPEG == p_ctx->codec_format)
         {
-          snprintf(p_param_err, max_err_len, "%s is not supported for JPEG.",
+          (void)snprintf(p_param_err, max_err_len, "%s is not supported for JPEG.",
                   ((p_src->enable_ai_enhance == 2) ? "enableHVSPlus" : "enableAIEnhance"));
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
@@ -11859,7 +12179,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
             if (p_cfg->niParamT408.slice_arg < 1 || p_cfg->niParamT408.slice_arg > max_num_ctu_mb_row ||
                 p_cfg->niParamT408.slice_arg > NI_MAX_SLICE_SIZE)
             {
-                snprintf(p_param_err, max_err_len, "Invalid number of rows per slice: should be between 1 and %d",
+                (void)snprintf(p_param_err, max_err_len, "Invalid number of rows per slice: should be between 1 and %d",
                          max_num_ctu_mb_row < NI_MAX_SLICE_SIZE ? max_num_ctu_mb_row : NI_MAX_SLICE_SIZE);
                 param_ret = NI_RETCODE_PARAM_INVALID_VALUE;
                 LRETURN;
@@ -11992,6 +12312,15 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
                   LRETURN;
               }
           }
+
+          if (p_cfg->ui8spatialLayersMinusOne > 0 && p_cfg->ui8totalCuTreeDepth)
+          {
+              ni_strncpy(p_param_err, max_err_len,
+                      "totalCuTreeDepth does not support multi spatial layers",
+                      max_err_len - 1);
+              param_ret = NI_RETCODE_INVALID_PARAM;
+              LRETURN;
+          }
       }
 
       if (p_cfg->ui8qpScaleEnable != 0)
@@ -12018,6 +12347,15 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
           {
               ni_strncpy(p_param_err, max_err_len,
                       "adaptiveCrfMode is invalid when qpScaleEnable",
+                      max_err_len - 1);
+              param_ret = NI_RETCODE_INVALID_PARAM;
+              LRETURN;
+          }
+
+          if (p_cfg->ui8spatialLayersMinusOne > 0)
+          {
+              ni_strncpy(p_param_err, max_err_len,
+                      "qpScaleEnable does not supported multi spatial layers",
                       max_err_len - 1);
               param_ret = NI_RETCODE_INVALID_PARAM;
               LRETURN;
@@ -12196,7 +12534,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         else
         {
             if (NI_RETCODE_SUCCESS !=
-              ni_check_level((int)p_cfg->ui8av1OpLevel[i], p_ctx->codec_format, &level_index))
+              ni_check_level((int)p_cfg->ui8av1OpLevel[i], (int)p_ctx->codec_format, &level_index))
             {
                 ni_strncpy(p_param_err, max_err_len, "Invalid av1OpLevel: out of range", max_err_len - 1);
                 param_ret = NI_RETCODE_PARAM_ERROR_OOR;
@@ -12504,13 +12842,6 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
                   max_err_len - 1);
           warning = NI_RETCODE_PARAM_WARN;
       }
-      if (p_cfg->ui8hdr10_enable)
-      {
-          ni_strncpy(p_param_err, max_err_len,
-                  "masterDisplay not supported for AV1",
-                  max_err_len - 1);
-          warning = NI_RETCODE_PARAM_WARN;
-      }
       if (p_cfg->ui8hrdEnable)
       {
           ni_strncpy(p_param_err, max_err_len, "hrdEnable is not supported on av1 encoder",
@@ -12521,13 +12852,6 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       if (p_cfg->ui8EnableAUD)
       {
           ni_strncpy(p_param_err, max_err_len, "enableAUD is not supported on av1 encoder",
-                  max_err_len - 1);
-          param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
-          LRETURN;
-      }
-      if (p_cfg->ui8HDR10CLLEnable)
-      {
-          ni_strncpy(p_param_err, max_err_len, "maxCLL is not supported on av1 encoder",
                   max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
@@ -13141,9 +13465,13 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       }
       if (p_cfg->ui8spatialLayersMinusOne > 0)
       {
-        ni_strncpy(p_param_err, max_err_len, "currently do not support lookahead encode with multi spatial layers", max_err_len - 1);
-        param_ret = NI_RETCODE_PARAM_ERROR_LOOK_AHEAD_DEPTH;
-        LRETURN;
+          if (ni_cmp_fw_api_ver((char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+                                "6t8") < 0)
+          {
+              ni_strncpy(p_param_err, max_err_len, "lookahead encode with multi spatial layers is not supported on device with FW API version < 6t8", max_err_len - 1);
+              param_ret = NI_RETCODE_PARAM_ERROR_LOOK_AHEAD_DEPTH;
+              LRETURN;
+          }
       }
     }
 
@@ -13368,13 +13696,42 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     {
         if (p_cfg->ui8hrdEnable)
         {
-            snprintf(p_param_err, max_err_len, "HRD conformance with multiple temporal layers is currently not supported");
+            (void)snprintf(p_param_err, max_err_len, "HRD conformance with multiple temporal layers is currently not supported");
             param_ret = NI_RETCODE_PARAM_INVALID_VALUE;
             LRETURN;
         }
     }
 
-    if ((p_cfg->ui8hrdEnable) || (p_cfg->ui8fillerEnable))
+    // Capped CRF with filler enabled
+    // keep rcEnable 0 when vbvBufferSize and vbvMinRate are both set
+    int capped_crf_filler = 0;
+    if (p_cfg->ui8fillerEnable &&
+        p_cfg->i8crf >= 0 && p_cfg->i8crf <= 51)
+    {
+      if (ni_cmp_fw_api_ver(
+        (char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+        "6t7") < 0)
+      {
+        ni_strncpy(p_param_err, max_err_len, "fillerEnable with crf is not supported on device with FW API version < 6t7", max_err_len - 1);
+        param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
+        LRETURN;
+      }
+
+      if (p_cfg->i32vbvBufferSize != 0 && p_cfg->ui32vbvMinRate != 0)
+      {
+        capped_crf_filler = 1;
+      }
+      else
+      {
+        ni_strncpy(p_param_err, max_err_len,
+                   "fillerEnable with crf requires vbvBufferSize and vbvMinRate",
+                   max_err_len - 1);
+        param_ret = NI_RETCODE_PARAM_INVALID_VALUE;
+        LRETURN;
+      }
+    }
+
+    if ((p_cfg->ui8hrdEnable) || (p_cfg->ui8fillerEnable && !capped_crf_filler))
     {
      // enable rate control
      if (p_cfg->ui8rcEnable == 0)
@@ -13394,7 +13751,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     {
         if ((int)p_cfg->ui32vbvMaxRate < p_cfg->i32bitRate)
         {
-            snprintf(p_param_err, max_err_len, "vbvMaxRate %u cannot be smaller than bitrate %d",
+            (void)snprintf(p_param_err, max_err_len, "vbvMaxRate %u cannot be smaller than bitrate %d",
                      p_cfg->ui32vbvMaxRate, p_cfg->i32bitRate);
             param_ret = NI_RETCODE_PARAM_INVALID_VALUE;
             LRETURN;
@@ -13406,7 +13763,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
     {
         if ((int)p_cfg->ui32vbvMinRate > p_cfg->i32bitRate)
         {
-            snprintf(p_param_err, max_err_len, "vbvMinRate %u cannot be larger than bitrate %d",
+            (void)snprintf(p_param_err, max_err_len, "vbvMinRate %u cannot be larger than bitrate %d",
                      p_cfg->ui32vbvMinRate, p_cfg->i32bitRate);
             param_ret = NI_RETCODE_PARAM_INVALID_VALUE;
             LRETURN;
@@ -13421,7 +13778,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         int32_t minVbvBufferSize = p_cfg->i32frameRateDenominator * 1000 / p_cfg->i32frameRateInfo;
         if (p_cfg->i32vbvBufferSize < minVbvBufferSize)
         {
-            snprintf(p_param_err, max_err_len, "vbvBufferSize must be greater than the average frame size. Minimum is %d msec for framerate %d fps",
+            (void)snprintf(p_param_err, max_err_len, "vbvBufferSize must be greater than the average frame size. Minimum is %d msec for framerate %d fps",
                      minVbvBufferSize, (p_cfg->i32frameRateInfo / p_cfg->i32frameRateDenominator));
             param_ret = NI_RETCODE_PARAM_INVALID_VALUE;
             LRETURN;
@@ -13430,10 +13787,10 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         // check buffer size compatible to maxrate
         if (p_cfg->ui32vbvMaxRate != 0)
         {
-            int32_t maxRateMinVbvBufferSize = ((int64_t)p_cfg->i32frameRateDenominator * 1000 / p_cfg->i32frameRateInfo) * p_cfg->ui32vbvMaxRate / p_cfg->i32bitRate;
+            int32_t maxRateMinVbvBufferSize = (int32_t)(((int64_t)p_cfg->i32frameRateDenominator * 1000 / p_cfg->i32frameRateInfo) * p_cfg->ui32vbvMaxRate / p_cfg->i32bitRate);
             if (p_cfg->i32vbvBufferSize < maxRateMinVbvBufferSize)
             {
-                snprintf(p_param_warn, max_err_len, "vbvBufferSize cannot be smaller than one frame size based on vbvMaxRate, force vbvBufferSize to %d msec for bitrate %d vbvMaxRate %u and framerate %d fps",
+                (void)snprintf(p_param_warn, max_err_len, "vbvBufferSize cannot be smaller than one frame size based on vbvMaxRate, force vbvBufferSize to %d msec for bitrate %d vbvMaxRate %u and framerate %d fps",
                          maxRateMinVbvBufferSize, p_cfg->i32bitRate, p_cfg->ui32vbvMaxRate, (p_cfg->i32frameRateInfo / p_cfg->i32frameRateDenominator));
                 warning = NI_RETCODE_PARAM_WARN;
                 p_cfg->i32vbvBufferSize = maxRateMinVbvBufferSize;
@@ -13442,10 +13799,10 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         // check buffer size compatible to minrate (capped CRF may set minrate without maxrate)
         else if (p_cfg->ui32vbvMinRate != 0)
         {
-            int32_t minRateMinVbvBufferSize = ((int64_t)p_cfg->i32frameRateDenominator * 1000 / p_cfg->i32frameRateInfo) * p_cfg->ui32vbvMinRate / p_cfg->i32bitRate;
+            int32_t minRateMinVbvBufferSize = (int32_t)(((int64_t)p_cfg->i32frameRateDenominator * 1000 / p_cfg->i32frameRateInfo) * p_cfg->ui32vbvMinRate / p_cfg->i32bitRate);
             if (p_cfg->i32vbvBufferSize < minRateMinVbvBufferSize)
             {
-                snprintf(p_param_warn, max_err_len, "vbvBufferSize cannot be smaller than one frame size based on vbvMinRate, force vbvBufferSize to %d msec for bitrate %d vbvMinRate %u and framerate %d fps",
+                (void)snprintf(p_param_warn, max_err_len, "vbvBufferSize cannot be smaller than one frame size based on vbvMinRate, force vbvBufferSize to %d msec for bitrate %d vbvMinRate %u and framerate %d fps",
                          minRateMinVbvBufferSize, p_cfg->i32bitRate, p_cfg->ui32vbvMinRate, (p_cfg->i32frameRateInfo / p_cfg->i32frameRateDenominator));
                 warning = NI_RETCODE_PARAM_WARN;
                 p_cfg->i32vbvBufferSize = minRateMinVbvBufferSize;
@@ -13457,7 +13814,7 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
         // check buffer size compatible to maxrate and/or minrate
         if ( p_cfg->ui32vbvMaxRate != 0 || p_cfg->ui32vbvMinRate != 0 )
         {
-            snprintf(p_param_warn, max_err_len, "vbvMaxRate %u vbvMinRate %u does not take effect when vbvBufferSize is 0, force vbvMaxRate vbvMinRate to 0",
+            (void)snprintf(p_param_warn, max_err_len, "vbvMaxRate %u vbvMinRate %u does not take effect when vbvBufferSize is 0, force vbvMaxRate vbvMinRate to 0",
                      p_cfg->ui32vbvMaxRate, p_cfg->ui32vbvMinRate);
             warning = NI_RETCODE_PARAM_WARN;
             p_cfg->ui32vbvMaxRate = 0;
@@ -13545,23 +13902,38 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       }
       else
       {
+        if (p_cfg->ui8motionConstrainedMode >=
+            MOTION_CONSTRAINED_QUALITY_MODE_ADVANCED)
+        {
+          if (ni_cmp_fw_api_ver(
+                  (char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+                  "6t3") < 0)
+          {
+            (void)snprintf(
+                p_param_err, max_err_len,
+                "motionConstrainedMode 3 is not supported on device with FW API version < 6t3");
+            param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION;
+            LRETURN;
+          }
+        }
+
         if (p_cfg->ui8rdoLevel != 1)
         {
           ni_strncpy(
               p_param_err, max_err_len,
-              "rdoLevel must be 1 for Motion Constrained mode 1 or 2",
+              "rdoLevel must be 1 for Motion Constrained mode 1, 2, or 3",
               max_err_len - 1);
           param_ret = NI_RETCODE_INVALID_PARAM;
           LRETURN;
         }
 
-        if (p_cfg->ui8motionConstrainedMode == MOTION_CONSTRAINED_QUALITY_MODE)
+        if (p_cfg->ui8motionConstrainedMode >= MOTION_CONSTRAINED_QUALITY_MODE)
         {
           if (p_cfg->ui8multicoreJointMode)
           {
             ni_strncpy(
                 p_param_err, max_err_len,
-                "multicoreJointMode must be 0 for Motion Constrained mode 2",
+                "multicoreJointMode must be 0 for Motion Constrained mode 2 or 3",
                 max_err_len - 1);
             param_ret = NI_RETCODE_INVALID_PARAM;
             LRETURN;
@@ -13573,7 +13945,8 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
             {
               ni_strncpy(
                   p_param_err, max_err_len,
-                  "input resolution (or cropping window) must be 64x64 aligned for Motion Constrained mode 2",
+                  "input resolution (or cropping window) must be 64x64 aligned "
+                  "for Motion Constrained mode 2 or 3",
                   max_err_len - 1);
               param_ret = NI_RETCODE_INVALID_PARAM;
               LRETURN;
@@ -13878,7 +14251,7 @@ ni_retcode_t ni_check_common_params(ni_t408_config_t *p_param,
       }
       else
       {
-        intra_period_gop_step_size = presetGopSize[p_param->gop_preset_index];
+        intra_period_gop_step_size = (int32_t)presetGopSize[p_param->gop_preset_index];
       }
     }
 
@@ -14308,9 +14681,9 @@ void *ni_session_keep_alive_thread(void *arguments)
      *       without root so the priority for this thread might just end up
      *       being default.
      */
-    if (((sched_param.sched_priority = sched_get_priority_max(SCHED_RR)) ==
-         -1) ||
-        sched_setscheduler(syscall(SYS_gettid), SCHED_RR, &sched_param) < 0)
+    sched_param.sched_priority = sched_get_priority_max(SCHED_RR);
+    if ((sched_param.sched_priority == -1) ||
+        sched_setscheduler((int)syscall(SYS_gettid), SCHED_RR, &sched_param) < 0)
     {
         char errmsg[NI_ERRNO_LEN] = {0};
         ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
@@ -14341,7 +14714,7 @@ void *ni_session_keep_alive_thread(void *arguments)
     // Set thread name, name is KAT + hw_id + session_id
     // hw_id need at most 2 bytes, session_id at most 4 bytes.
     char name[16] = {0};
-    snprintf(name, sizeof(name), "%s%.2x%.4x", "KAT", args->hw_id, args->session_id);
+    (void)snprintf(name, sizeof(name), "%s%.2x%.4x", "KAT", args->hw_id, args->session_id);
 #if __linux__
     prctl(PR_SET_NAME, name);
 #elif __APPLE__
@@ -14397,7 +14770,7 @@ void *ni_session_keep_alive_thread(void *arguments)
 
         if (NI_RETCODE_SUCCESS == retval)
         {
-            retval = ni_nvme_check_error_code(inst_info.ui32LastTransactionCompletionStatus,
+            retval = ni_nvme_check_error_code((int)inst_info.ui32LastTransactionCompletionStatus,
                                             nvme_admin_cmd_xcoder_config,
                                             session_ctx->device_type,
                                             session_ctx->hw_id,
@@ -14416,7 +14789,7 @@ void *ni_session_keep_alive_thread(void *arguments)
                  incorrect log. In this case, check LastErrorStatus.*/
                 ni_log(NI_LOG_ERROR, "session_no 0x%x inst_err_no may be overwrited!\n",
                                   session_ctx->session_id);
-                ni_nvme_check_error_code(inst_info.ui32LastErrorStatus,
+                ni_nvme_check_error_code((int)inst_info.ui32LastErrorStatus,
                                   nvme_admin_cmd_xcoder_config,
                                   session_ctx->device_type,
                                   session_ctx->hw_id,
@@ -14536,6 +14909,8 @@ ni_retcode_t ni_uploader_session_open(ni_session_context_t* p_ctx)
     p_ctx->frame_num = 0;
     p_ctx->pkt_num = 0;
     p_ctx->pkt_index = 0;
+    if (!p_ctx->max_retry_count)
+        p_ctx->max_retry_count = NI_MAX_DEFAULT_RETRY;
 
     //malloc zero data buffer
     if (ni_posix_memalign(&p_ctx->p_all_zero_buf, sysconf(_SC_PAGESIZE),
@@ -14595,7 +14970,7 @@ ni_retcode_t ni_uploader_session_open(ni_session_context_t* p_ctx)
 
     //Send keep alive timeout Info
     uint64_t keep_alive_timeout =
-        p_ctx->keep_alive_timeout * 1000000;   //send us to FW
+        (uint64_t)p_ctx->keep_alive_timeout * 1000000;   //send us to FW
     memset(p_buffer, 0, NI_DATA_BUFFER_LEN);
     memcpy(p_buffer, &keep_alive_timeout, sizeof(keep_alive_timeout));
     ni_log2(p_ctx, NI_LOG_DEBUG,  "%s keep_alive_timeout %" PRIx64 "\n", __func__,
@@ -14780,9 +15155,9 @@ ni_retcode_t ni_scaler_session_query_buffer_avail(ni_session_context_t *p_ctx)
                &(p_ctx->session_id), OPT_3);
 
     /* A frame index of zero is invalid, the memory acquisition failed */
-    if (NI_RETCODE_SUCCESS != retval || (sInstanceBuf.hw_inst_ind.frame_index == 0 && query_retry >=500))
+    if (NI_RETCODE_SUCCESS != retval || (sInstanceBuf.hw_inst_ind.frame_index == 0 && query_retry >= p_ctx->max_retry_count))
     {
-            if (query_retry >=500)
+            if (query_retry >= p_ctx->max_retry_count)
             {
                 ni_log2(p_ctx, NI_LOG_DEBUG,
                     "scaler write exceeded max query retries. rc=%d try=%d\n",
@@ -14791,7 +15166,7 @@ ni_retcode_t ni_scaler_session_query_buffer_avail(ni_session_context_t *p_ctx)
             retval = NI_RETCODE_ERROR_MEM_ALOC;
             LRETURN;
     }
-    if (sInstanceBuf.hw_inst_ind.frame_index == 0 && query_retry < 500)
+    if (sInstanceBuf.hw_inst_ind.frame_index == 0 && query_retry < p_ctx->max_retry_count)
     {
             query_retry++;
             ni_pthread_mutex_unlock(&p_ctx->mutex);
@@ -14841,7 +15216,7 @@ ni_retcode_t ni_hwupload_session_query_buffer_avail(ni_session_context_t *p_ctx)
   ni_retcode_t retval = NI_RETCODE_SUCCESS;
   //uint32_t metadata_size = NI_APP_ENC_FRAME_META_DATA_SIZE;
   uint32_t frame_size_bytes = 0;
-  uint32_t retry_count = 0;
+  int retry_count = 0;
   ni_instance_buf_info_t buf_info = { 0 };
 
   ni_log2(p_ctx, NI_LOG_TRACE,  "%s(): enter\n", __func__);
@@ -14878,9 +15253,9 @@ ni_retcode_t ni_hwupload_session_query_buffer_avail(ni_session_context_t *p_ctx)
       CHECK_ERR_RC(p_ctx, retval, 0, nvme_admin_cmd_xcoder_query,
                    p_ctx->device_type, p_ctx->hw_id, &(p_ctx->session_id), OPT_1);
       if (NI_RETCODE_SUCCESS != retval ||
-          (buf_info.hw_inst_ind.buffer_avail == 0 && retry_count >= 500))
+          (buf_info.hw_inst_ind.buffer_avail == 0 && retry_count >= p_ctx->max_retry_count))
       {
-          if (retry_count >= 500)
+          if (retry_count >= p_ctx->max_retry_count)
           {
               ni_log2(p_ctx, NI_LOG_DEBUG,
                      "hwupload write exceeded max query retries. rc=%d try=%d"
@@ -14891,7 +15266,7 @@ ni_retcode_t ni_hwupload_session_query_buffer_avail(ni_session_context_t *p_ctx)
           //p_ctx->status = NI_RETCODE_NVME_SC_WRITE_BUFFER_FULL;
           LRETURN;
       }
-      if (buf_info.hw_inst_ind.buffer_avail == 0 && retry_count < 500)
+      if (buf_info.hw_inst_ind.buffer_avail == 0 && retry_count < p_ctx->max_retry_count)
       {
           retry_count++;
           ni_pthread_mutex_unlock(&p_ctx->mutex);
@@ -14950,7 +15325,7 @@ int ni_hwupload_session_write(ni_session_context_t *p_ctx, ni_frame_t *p_frame,
   uint32_t i = 0;
   uint32_t sent_size = 0;
   uint32_t frame_size_bytes = 0;
-  uint32_t retry_count = 0;
+  int retry_count = 0;
   ni_instance_buf_info_t buf_info = { 0 };
 
   ni_log2(p_ctx, NI_LOG_TRACE,  "%s(): enter\n", __func__);
@@ -15014,9 +15389,9 @@ int ni_hwupload_session_write(ni_session_context_t *p_ctx, ni_frame_t *p_frame,
       CHECK_ERR_RC(p_ctx, retval, 0, nvme_admin_cmd_xcoder_query,
                    p_ctx->device_type, p_ctx->hw_id, &(p_ctx->session_id), OPT_1);
       if (NI_RETCODE_SUCCESS != retval ||
-          (buf_info.hw_inst_ind.buffer_avail == 0 && retry_count >= 500))
+          (buf_info.hw_inst_ind.buffer_avail == 0 && retry_count >= p_ctx->max_retry_count))
       {
-          if (retry_count >= 500)
+          if (retry_count >= p_ctx->max_retry_count)
           {
               ni_log2(p_ctx, NI_LOG_DEBUG,
                      "hwupload write exceeded max query retries. rc=%d try=%d"
@@ -15027,7 +15402,7 @@ int ni_hwupload_session_write(ni_session_context_t *p_ctx, ni_frame_t *p_frame,
           p_ctx->status = NI_RETCODE_NVME_SC_WRITE_BUFFER_FULL;
           LRETURN;
       }
-      if (buf_info.hw_inst_ind.buffer_avail == 0 && retry_count < 500)
+      if (buf_info.hw_inst_ind.buffer_avail == 0 && retry_count < p_ctx->max_retry_count)
       {
           retry_count++;
           ni_pthread_mutex_unlock(&p_ctx->mutex);
@@ -15242,25 +15617,25 @@ int ni_hwupload_session_write(ni_session_context_t *p_ctx, ni_frame_t *p_frame,
       hwdesc->ui16session_ID = p_ctx->session_id;
       hwdesc->device_handle =
           (int32_t)((int64_t)p_ctx->blk_io_handle & 0xFFFFFFFF);
-      hwdesc->bit_depth = p_ctx->bit_depth_factor;
+      hwdesc->bit_depth = (int8_t)p_ctx->bit_depth_factor;
       hwdesc->src_cpu = (uint8_t)NI_DEVICE_TYPE_ENCODER;
-      hwdesc->output_idx = hwdesc->ui32nodeAddress = 0;
+      hwdesc->output_idx = (int8_t)(hwdesc->ui32nodeAddress = 0);
 
       p_ctx->frame_num++;
       size = frame_size_bytes;
 
 #ifdef XCODER_DUMP_DATA
       char dump_file[256];
-      snprintf(dump_file, sizeof(dump_file), "%ld-%u-hwup-fme/fme-%04ld.yuv",
+      (void)snprintf(dump_file, sizeof(dump_file), "%ld-%u-hwup-fme/fme-%04ld.yuv",
                (long)getpid(), p_ctx->session_id, (long)p_ctx->frame_num);
 
       FILE *f = NULL;
       ni_fopen(&f, dump_file, "wb");
-      fwrite(p_frame->p_buffer,
+      (void)fwrite(p_frame->p_buffer,
              p_frame->data_len[0] + p_frame->data_len[1] + p_frame->data_len[2],
              1, f);
-      fflush(f);
-      fclose(f);
+      (void)fflush(f);
+      (void)fclose(f);
 #endif
   }
 
@@ -15276,7 +15651,7 @@ int ni_hwupload_session_write(ni_session_context_t *p_ctx, ni_frame_t *p_frame,
   }
 #endif
 
-  retval = size;
+  retval = (int)size;
 
 END:
 
@@ -15360,7 +15735,7 @@ int ni_hwupload_session_read_hwdesc(ni_session_context_t *p_ctx,
       hwdesc->ui16session_ID = p_ctx->session_id;
       hwdesc->device_handle =
           (int32_t)((int64_t)p_ctx->blk_io_handle & 0xFFFFFFFF);
-      hwdesc->bit_depth = p_ctx->bit_depth_factor;
+      hwdesc->bit_depth = (int8_t)p_ctx->bit_depth_factor;
       hwdesc->src_cpu = (uint8_t)NI_DEVICE_TYPE_ENCODER;
       hwdesc->output_idx = 0;
       LRETURN;
@@ -15745,7 +16120,7 @@ start:
           p_ctx->active_video_width, p_ctx->active_video_height);
 
         retval = ni_frame_buffer_alloc(
-            p_frame, p_ctx->actual_video_width, p_ctx->active_video_height,
+            p_frame, (int)p_ctx->actual_video_width, (int)p_ctx->active_video_height,
             p_ctx->codec_format == NI_CODEC_FORMAT_H264, 1,
             p_ctx->bit_depth_factor,
             3,   // Alloc space for write to data[3] and metadata
@@ -16888,13 +17263,13 @@ ni_retcode_t ni_config_instance_set_decoder_params(ni_session_context_t* p_ctx, 
   if (NI_RETCODE_PARAM_WARN == retval)
   {
       ni_log2(p_ctx, NI_LOG_INFO, "WARNING: %s . %s\n", __func__, p_ctx->param_err_msg);
-      fflush(stdout);
+      (void)fflush(stdout);
   }
   else if (NI_RETCODE_SUCCESS != retval)
   {
       ni_log2(p_ctx, NI_LOG_ERROR, "ERROR: %s failed. %s\n", __func__,
              p_ctx->param_err_msg);
-      fflush(stdout);
+      (void)fflush(stdout);
       retval = NI_RETCODE_INVALID_PARAM;
       LRETURN;
   }
@@ -17902,7 +18277,7 @@ ni_retcode_t ni_ai_session_write(ni_session_context_t *p_ctx,
         memset(buffer_info, 0x00, dataLen);
 
         //2, write iovec
-        iovec_left = p_frame->iovec_num;
+        iovec_left = (int32_t)p_frame->iovec_num;
         do {
             int iovec_batch = iovec_left < NI_MAX_SEGMENT_NUM ? iovec_left : NI_MAX_SEGMENT_NUM;
             uint32_t rel_lba = 0;
@@ -18015,7 +18390,7 @@ ni_retcode_t ni_ai_session_write(ni_session_context_t *p_ctx,
 
     p_ctx->frame_num++;
 
-    retval = frame_size_bytes;
+    retval = (int)frame_size_bytes; // NOLINT(clang-analyzer-optin.core.EnumCastOutOfRange) - returns byte count on success
 
 END:
 
@@ -18144,7 +18519,7 @@ ni_retcode_t ni_ai_session_read(ni_session_context_t *p_ctx,
         }
     }
 
-    retval = p_packet->data_len;
+    retval = (int)p_packet->data_len;
 
 END:
 
@@ -18392,7 +18767,7 @@ ni_retcode_t ni_config_read_inout_layers(ni_session_context_t *p_ctx,
         this_size = ni_ai_network_layer_size(layer_param);
         this_size =
             (this_size + NI_AI_HW_ALIGN_SIZE - 1) & ~(NI_AI_HW_ALIGN_SIZE - 1);
-        network_data->inset[l].offset = buffer_size;
+        network_data->inset[l].offset = (int32_t)buffer_size;
         buffer_size += this_size;
 
         ni_log2(p_ctx,
@@ -18409,7 +18784,7 @@ ni_retcode_t ni_config_read_inout_layers(ni_session_context_t *p_ctx,
         this_size = ni_ai_network_layer_size(layer_param);
         this_size =
             (this_size + NI_AI_HW_ALIGN_SIZE - 1) & ~(NI_AI_HW_ALIGN_SIZE - 1);
-        network_data->outset[l].offset = buffer_size;
+        network_data->outset[l].offset = (int32_t)buffer_size;
         buffer_size += this_size;
 
         ni_log2(p_ctx,
@@ -18546,7 +18921,7 @@ ni_retcode_t ni_ai_session_open(ni_session_context_t *p_ctx)
 
         //Send keep alive timeout Info
         uint64_t keep_alive_timeout =
-            p_ctx->keep_alive_timeout * 1000000;   //send us to FW
+            (uint64_t)p_ctx->keep_alive_timeout * 1000000;   //send us to FW
         memset(p_buffer, 0, NI_DATA_BUFFER_LEN);
         memcpy(p_buffer, &keep_alive_timeout, sizeof(keep_alive_timeout));
         ni_log2(p_ctx, NI_LOG_DEBUG,  "%s keep_alive_timeout %" PRIx64 "\n", __func__,
@@ -18630,6 +19005,7 @@ END:
 
 ni_retcode_t ni_ai_session_close(ni_session_context_t *p_ctx, int eos_recieved)
 {
+    (void)eos_recieved;
     ni_retcode_t retval = NI_RETCODE_SUCCESS;
     void *p_buffer = NULL;
     uint32_t ui32LBA = 0;
@@ -18718,7 +19094,8 @@ END:
         for (int i = 0; i < NI_MAX_SEGMENT_NUM; i++) {
             ni_memfree(p_ctx->iocbs[i]);
         }
-        ni_memfree(p_ctx->iocbs);
+        free((void *)p_ctx->iocbs);
+        p_ctx->iocbs = NULL;
     }
     ni_memfree(p_ctx->io_event);
 #endif
@@ -18751,6 +19128,7 @@ ni_retcode_t ni_ai_multi_config_frame(ni_session_context_t *p_ctx,
                                       int numInCfgs,
                                       ni_frame_config_t *p_cfg_out)
 {
+    (void)p_cfg_out;
     ni_retcode_t retval = NI_RETCODE_SUCCESS;
     ni_network_buffer_info_t *p_data = NULL;
     void *p_read_data = NULL;
@@ -18942,7 +19320,7 @@ ni_retcode_t ni_ai_alloc_dst_frame(ni_session_context_t *p_ctx,
             p_out_surface->ui16session_ID = p_ctx->session_id;
             p_out_surface->device_handle =
               (int32_t)((int64_t)p_ctx->blk_io_handle & 0xFFFFFFFF);
-            p_out_surface->bit_depth = p_ctx->bit_depth_factor;
+            p_out_surface->bit_depth = (int8_t)p_ctx->bit_depth_factor;
             p_out_surface->src_cpu = (uint8_t)NI_DEVICE_TYPE_AI;
             p_out_surface->output_idx = 0;
             break;
@@ -19516,7 +19894,7 @@ ni_retcode_t ni_encoder_start_buffer_alloc(ni_frame_t *p_frame)
     if (!p_frame->start_buffer_size)
     {
         if (ni_posix_memalign(&start_buffer, sysconf(_SC_PAGESIZE),
-                              NI_MEM_PAGE_ALIGNMENT*NI_MAX_NUM_SW_FRAME_DATA_POINTERS))
+                              (size_t)NI_MEM_PAGE_ALIGNMENT*NI_MAX_NUM_SW_FRAME_DATA_POINTERS))
         {
             ni_log(NI_LOG_ERROR,
                    "ERROR %d: %s() Cannot allocate start buffer.\n",
@@ -19526,7 +19904,7 @@ ni_retcode_t ni_encoder_start_buffer_alloc(ni_frame_t *p_frame)
         }
 
         // init once after allocation
-        memset(start_buffer, 0, NI_MEM_PAGE_ALIGNMENT*NI_MAX_NUM_SW_FRAME_DATA_POINTERS);
+        memset(start_buffer, 0, (size_t)NI_MEM_PAGE_ALIGNMENT*NI_MAX_NUM_SW_FRAME_DATA_POINTERS);
         p_frame->start_buffer_size = NI_MEM_PAGE_ALIGNMENT*NI_MAX_NUM_SW_FRAME_DATA_POINTERS;
         p_frame->p_start_buffer = start_buffer;
 
@@ -19793,10 +20171,10 @@ ni_retcode_t  ni_dump_log_single_core(ni_session_context_t *p_ctx, void* p_data,
     }
     else if (gen_log_file)
     {
-        //generate log file e.g. raw_dp_slot_0_0000.bin
-        char filename[32] = "raw_";
-        ni_strcat(filename, 32, core_name);
-        ni_strcat(filename, 32, "_slot_");
+        //generate log file e.g. raw_np_0000_02_00_0_Q1A10BA11FC060-0050_20260703-120340.bin
+        char filename[80] = "raw_";
+        ni_strcat(filename, sizeof(filename), core_name);
+        ni_strcat(filename, sizeof(filename), "_");
 #ifdef __linux__
         bool pcie_id_name = false;
         char devFilePath[1024] = {0};
@@ -19804,7 +20182,7 @@ ni_retcode_t  ni_dump_log_single_core(ni_session_context_t *p_ctx, void* p_data,
         char pcie[64] = {0};
         char domain[5] = {0}, slot[3] = {0}, dev[3] = {0}, func[2] = {0};
         //p_ctx->blk_dev_name might be empty so look up the file name
-        snprintf(devFDPath, sizeof(devFDPath), "/proc/self/fd/%d", p_ctx->blk_io_handle);
+        (void)snprintf(devFDPath, sizeof(devFDPath), "/proc/self/fd/%d", p_ctx->blk_io_handle);
         ssize_t len = readlink(devFDPath, devFilePath, sizeof(devFilePath)-1);
         if (len != -1) {
             devFilePath[len] = '\0';
@@ -19814,30 +20192,85 @@ ni_retcode_t  ni_dump_log_single_core(ni_session_context_t *p_ctx, void* p_data,
             get_dev_pcie_addr(devFilePath, pcie, domain, slot, dev, func);
             if (strlen(pcie) > 0 && strlen(slot) > 0 && strlen(domain) > 0)
             {
-                ni_strcat(filename, 32, slot);
-                ni_strcat(filename, 32, "_");
-                ni_strcat(filename, 32, domain);
+                char bdf[16] = {0};
+                (void)snprintf(bdf, sizeof(bdf), "%s_%s_%s_%s",
+                               domain, slot, dev, func);
+                ni_strcat(filename, sizeof(filename), bdf);
                 pcie_id_name = true;
             }
         }
         if (!pcie_id_name)
         {
-            ni_log2(p_ctx, NI_LOG_INFO, "%s:():%d: For dev %d can't look up PCI domain and slot info. Defaulting to slot=hw_id and domain=0000\n",
+            ni_log2(p_ctx, NI_LOG_INFO, "%s:():%d: For dev %d can't look up PCI slot info, defaulting to hw_id\n",
                     __func__, __LINE__, p_ctx->blk_io_handle);
             char num[4] = {0};
-            snprintf(num, 4, "%d", p_ctx->hw_id);
-            ni_strcat(filename, 32, num);
-            ni_strcat(filename, 32, "_0000");
+            (void)snprintf(num, 4, "%d", p_ctx->hw_id);
+            ni_strcat(filename, sizeof(filename), num);
         }
-        ni_strcat(filename, 32, ".bin");
+        // Append full NVMe serial number from sysfs (up to 20 chars)
+        char sn[21] = {0};
+        int ctrl_idx;
+        if (sscanf(devFilePath, "/dev/nvme%dn", &ctrl_idx) == 1) // NOLINT(cert-err34-c) - return value checked
+        {
+            char sysfs_serial[64] = {0};
+            (void)snprintf(sysfs_serial, sizeof(sysfs_serial),
+                           "/sys/class/nvme/nvme%d/serial", ctrl_idx);
+            FILE *sn_f = fopen(sysfs_serial, "r");
+            if (sn_f)
+            {
+                char raw_sn[21] = {0};
+                if (fgets(raw_sn, sizeof(raw_sn), sn_f))
+                {
+                    raw_sn[strcspn(raw_sn, " \t\r\n")] = '\0';
+                    (void)snprintf(sn, sizeof(sn), "%s", raw_sn);
+                }
+                (void)fclose(sn_f);
+            }
+        }
+        if (sn[0])
+        {
+            ni_strcat(filename, sizeof(filename), "_");
+            ni_strcat(filename, sizeof(filename), sn);
+        }
+        else
+        {
+            ni_log2(p_ctx, NI_LOG_INFO, "%s:():%d: For dev %d could not read NVMe serial from sysfs, omitting SN from log filename\n",
+                    __func__, __LINE__, p_ctx->blk_io_handle);
+        }
+        char ts[16] = {0};
+        time_t now = time(NULL);
+        struct tm tm_buf;
+        struct tm *tm_info = localtime_r(&now, &tm_buf);
+        if (tm_info)
+            (void)strftime(ts, sizeof(ts), "%Y%m%d-%H%M%S", tm_info);
+        if (ts[0])
+        {
+            ni_strcat(filename, sizeof(filename), "_");
+            ni_strcat(filename, sizeof(filename), ts);
+        }
+        ni_strcat(filename, sizeof(filename), ".bin");
         ni_log2(p_ctx, NI_LOG_INFO, "For dev %d %s core %s creating file %s\n",
                 p_ctx->blk_io_handle, devFilePath, core_name, filename);
 #else
         char num[4] = {0};
-        snprintf(num, 4, "%02x", p_ctx->hw_id);
-        ni_strcat(filename, 32, num);
-        ni_strcat(filename, 32, "_0000");
-        ni_strcat(filename, 32, ".bin");
+        (void)snprintf(num, 4, "%02x", p_ctx->hw_id);
+        ni_strcat(filename, sizeof(filename), num);
+        char ts[16] = {0};
+        time_t now = time(NULL);
+        struct tm tm_buf;
+#if defined(_WIN32)
+        struct tm *tm_info = (localtime_s(&tm_buf, &now) == 0) ? &tm_buf : NULL;
+#else
+        struct tm *tm_info = localtime_r(&now, &tm_buf);
+#endif
+        if (tm_info)
+            (void)strftime(ts, sizeof(ts), "%Y%m%d-%H%M%S", tm_info);
+        if (ts[0])
+        {
+            ni_strcat(filename, sizeof(filename), "_");
+            ni_strcat(filename, sizeof(filename), ts);
+        }
+        ni_strcat(filename, sizeof(filename), ".bin");
         ni_log2(p_ctx, NI_LOG_INFO, "For dev %d core %s creating file %s\n",
                 p_ctx->blk_io_handle, core_name, filename);
 #endif
@@ -19888,7 +20321,7 @@ ni_retcode_t  ni_dump_log_single_core(ni_session_context_t *p_ctx, void* p_data,
                         ferror(p_file));
                 retval = NI_RETCODE_FAILURE;
             }
-            fclose(p_file);
+            (void)fclose(p_file);
         }
         else
         {
@@ -19929,6 +20362,159 @@ ni_retcode_t ni_dump_log_all_cores(ni_session_context_t *p_ctx, void* p_data, bo
     }
 
     return NI_RETCODE_SUCCESS;
+}
+
+/*!*****************************************************************************
+ *  \brief  Read log artifacts (tar.gz) from the device via NVMe and write them
+ *          to "artifacts_slot_s_dddd.tar.gz". (d - slot num, dddd - domain)
+ *
+ *          Buffer layout at ARTIFACTS_OFFSET_IN_4K:
+ *            [0..3]        uint32_t  artifacts size in bytes
+ *            [4. onwards]   tar.gz data
+ *
+ *  \param[in]  p_ctx               Pointer to an open session context
+ *  \param[in]  gen_artifacts_file  Write tar.gz to disk when true
+ *
+ *  \return NI_RETCODE_SUCCESS or an error code
+*******************************************************************************/
+ni_retcode_t ni_dump_log_artifacts(ni_session_context_t *p_ctx,
+                                   bool gen_artifacts_file)
+{
+    int32_t rc;
+    uint32_t lba = ARTIFACTS_OFFSET_IN_4K;
+    uint32_t artifacts_size;
+    uint32_t max_data_size = LOG_ARTIFACTS_MAX_SIZE - CPU_LOG_ARTIFACTS_HEADER_SIZE;
+    void *p_buf = NULL;
+    FILE *p_file = NULL;
+    ni_retcode_t retval = NI_RETCODE_SUCCESS;
+    /* artifacts compressed with gzip, the gzip file header is used for validation */
+    static const uint8_t GZIP_MAGIC[2] = {0x1f, 0x8b};
+
+    if (!p_ctx)
+    {
+        ni_log(NI_LOG_ERROR, "%s: ERROR invalid pointer p_ctx\n", __func__);
+        return NI_RETCODE_INVALID_PARAM;
+    }
+
+    if (ni_posix_memalign(&p_buf, sysconf(_SC_PAGESIZE), LOG_ARTIFACTS_MAX_SIZE))
+    {
+        ni_log2(p_ctx, NI_LOG_ERROR, "ERROR %d: %s() Cannot allocate artifacts buffer\n",
+                NI_ERRNO, __func__);
+        return NI_RETCODE_ERROR_MEM_ALOC;
+    }
+    memset(p_buf, 0, LOG_ARTIFACTS_MAX_SIZE);
+
+    rc = ni_nvme_send_read_cmd(p_ctx->blk_io_handle, p_ctx->event_handle,
+                               p_buf, LOG_ARTIFACTS_MAX_SIZE, lba);
+    if (rc != NI_RETCODE_SUCCESS)
+    {
+        ni_log2(p_ctx, NI_LOG_ERROR, "%s: ERROR %d: nvme read artifacts failed\n",
+                __func__, rc);
+        retval = rc;
+        goto cleanup;
+    }
+
+    /* parse the 4-byte - this value indicates the artifacts.tar.gz file size */
+    memcpy(&artifacts_size, p_buf, CPU_LOG_ARTIFACTS_HEADER_SIZE);
+
+    if (artifacts_size == 0)
+    {
+        ni_log2(p_ctx, NI_LOG_INFO,
+            "%s: artifacts size is 0 — firmware has not loaded artifacts\n",
+            __func__);
+
+        retval = NI_RETCODE_SUCCESS;
+        goto cleanup;
+    }
+
+    /* size > max is unexpected — DDR data is corrupt or from a stale run */
+    if (artifacts_size > max_data_size)
+    {
+        ni_log2(p_ctx, NI_LOG_ERROR,
+                "%s: artifacts size %u exceeds maximum %u — corrupt or stale DDR data\n",
+                __func__, artifacts_size, max_data_size);
+        retval = NI_RETCODE_FAILURE;
+        goto cleanup;
+    }
+
+    /* check gzip magic header bytes */
+    if (memcmp((uint8_t *)p_buf + CPU_LOG_ARTIFACTS_HEADER_SIZE, GZIP_MAGIC, 2) != 0)
+    {
+        ni_log2(p_ctx, NI_LOG_ERROR, "%s: invalid gzip magic — stale data or firmware too old\n", __func__);
+        retval = NI_RETCODE_FAILURE;
+        goto cleanup;
+    }
+
+    ni_log2(p_ctx, NI_LOG_TRACE, "%s: artifacts size %u bytes\n", __func__, artifacts_size);
+
+    if (gen_artifacts_file)
+    {
+        char filename[64] = "artifacts_slot_";
+#ifdef __linux__
+        bool pcie_id_name = false;
+        char devFilePath[1024] = {0};
+        char devFDPath[1024] = {0};
+        char pcie[64] = {0};
+        char domain[5] = {0}, slot[3] = {0}, dev[3] = {0}, func[2] = {0};
+        (void)snprintf(devFDPath, sizeof(devFDPath), "/proc/self/fd/%d", p_ctx->blk_io_handle);
+        ssize_t len = readlink(devFDPath, devFilePath, sizeof(devFilePath) - 1);
+        if (len != -1)
+            devFilePath[len] = '\0';
+        if (strstr(devFilePath, "/dev/nvme") != NULL)
+        {
+            get_dev_pcie_addr(devFilePath, pcie, domain, slot, dev, func);
+            if (strlen(pcie) > 0 && strlen(slot) > 0 && strlen(domain) > 0)
+            {
+                ni_strcat(filename, sizeof(filename), slot);
+                ni_strcat(filename, sizeof(filename), "_");
+                ni_strcat(filename, sizeof(filename), domain);
+                pcie_id_name = true;
+            }
+        }
+        if (!pcie_id_name)
+        {
+            char num[4] = {0};
+            (void)snprintf(num, sizeof(num), "%d", p_ctx->hw_id);
+            ni_strcat(filename, sizeof(filename), num);
+            ni_strcat(filename, sizeof(filename), "_0000");
+        }
+#else
+        char num[4] = {0};
+        (void)snprintf(num, sizeof(num), "%02x", p_ctx->hw_id);
+        ni_strcat(filename, sizeof(filename), num);
+        ni_strcat(filename, sizeof(filename), "_0000");
+#endif
+        ni_strcat(filename, sizeof(filename), ".tar.gz");
+        ni_log2(p_ctx, NI_LOG_INFO, "%s: writing artifacts to %s\n", __func__, filename);
+
+        ni_fopen(&p_file, filename, "wb");
+        if (p_file)
+        {
+            uint8_t *p_data = (uint8_t *)p_buf + CPU_LOG_ARTIFACTS_HEADER_SIZE;
+            if (fwrite(p_data, artifacts_size, 1, p_file) != 1)
+            {
+                ni_log2(p_ctx, NI_LOG_ERROR, "%s: fwrite error %d\n",
+                        __func__, ferror(p_file));
+                retval = NI_RETCODE_FAILURE;
+            }
+            if (fflush(p_file))
+            {
+                ni_log2(p_ctx, NI_LOG_ERROR, "%s: fflush error %d\n",
+                        __func__, ferror(p_file));
+                retval = NI_RETCODE_FAILURE;
+            }
+            (void)fclose(p_file);
+        }
+        else
+        {
+            ni_log2(p_ctx, NI_LOG_ERROR, "%s: cannot open %s\n", __func__, filename);
+            retval = NI_RETCODE_FAILURE;
+        }
+    }
+
+cleanup:
+    ni_aligned_free(p_buf);
+    return retval;
 }
 
 /*!*****************************************************************************
@@ -20062,11 +20648,11 @@ ni_retcode_t ni_send_to_target_v2(ni_session_context_t *p_ctx,
             memcpy(p_data + 20, &sSplitSgl.ui32NumEntries, 4);
             for (i = 0; i < sSplitSgl.ui32NumEntries; i++)
             {
-                memcpy(&p_data[24] + (i * 8), &sSplitSgl.ui64DMAAddr[i], 8);
+                memcpy(&p_data[24] + ((size_t)i * 8), &sSplitSgl.ui64DMAAddr[i], 8);
             }
             for (i = 0; i < sSplitSgl.ui32NumEntries; i++)
             {
-                memcpy(&p_data[24] + (sSplitSgl.ui32NumEntries * 8) + (i * 4),
+                memcpy(&p_data[24] + ((size_t)sSplitSgl.ui32NumEntries * 8) + ((size_t)i * 4),
                        &sSplitSgl.ui32DMALen[i], 4);
             }
         }
@@ -20075,11 +20661,11 @@ ni_retcode_t ni_send_to_target_v2(ni_session_context_t *p_ctx,
             memcpy(p_data + 20, &dmaAddrs->ui32NumEntries, 4);
             for (i = 0; i < dmaAddrs->ui32NumEntries; i++)
             {
-                memcpy(&p_data[24] + (i * 8), &dmaAddrs->ui64DMAAddr[i], 8);
+                memcpy(&p_data[24] + ((size_t)i * 8), &dmaAddrs->ui64DMAAddr[i], 8);
             }
             for (i = 0; i < dmaAddrs->ui32NumEntries; i++)
             {
-                memcpy(&p_data[24] + (dmaAddrs->ui32NumEntries * 8) + (i * 4),
+                memcpy(&p_data[24] + ((size_t)dmaAddrs->ui32NumEntries * 8) + ((size_t)i * 4),
                        &dmaAddrs->ui32DMALen[i], 4);
             }
         }
@@ -20149,12 +20735,12 @@ ni_retcode_t ni_recv_from_target(
 
     for (i = 0; i < dmaAddrs->ui32NumEntries; i++)
     {
-        memcpy(&p_data[24] + (i*8), &dmaAddrs->ui64DMAAddr[i], 8);
+        memcpy(&p_data[24] + ((size_t)i*8), &dmaAddrs->ui64DMAAddr[i], 8);
     }
 
     for (i = 0; i < dmaAddrs->ui32NumEntries; i++)
     {
-        memcpy(&p_data[24] + (dmaAddrs->ui32NumEntries * 8) + (i * 4), &dmaAddrs->ui32DMALen[i], 4);
+        memcpy(&p_data[24] + ((size_t)dmaAddrs->ui32NumEntries * 8) + ((size_t)i * 4), &dmaAddrs->ui32DMALen[i], 4);
     }
 
     ui32LBA = CONFIG_INSTANCE_SetP2P_W(p_ctx->session_id, NI_DEVICE_TYPE_ENCODER);
@@ -20191,6 +20777,7 @@ int lower_pixel_rate(const ni_load_query_t *pQuery, uint32_t ui32CurrentLowest)
  *******************************************************************************/
 ni_retcode_t ni_set_cpu_affinity(ni_session_context_t *p_ctx)
 {
+    (void)p_ctx;
 #if defined(__linux__) && defined(XCODER_ENABLE_CPU_AFFINITY)
     int numa_node;
     if (numa_available() == -1) {

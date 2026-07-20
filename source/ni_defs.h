@@ -91,7 +91,7 @@ extern "C"
 // NI_XCODER_REVISION[6:7] = optional
 // You must change the name in the comment of REVISION line to your name when
 // you change the version number. If a merge conflict arises on a REVISION line,
-#define NI_XCODER_REVISION "5706t1r2"
+#define NI_XCODER_REVISION "5806tCr2"
 #define NI_XCODER_REVISION_API_MAJOR_VER_IDX 3
 #define NI_XCODER_REVISION_API_MINOR_VER_IDX 4
 
@@ -104,7 +104,7 @@ extern "C"
 #define MACRO_TO_STR(s) #s
 #define MACROS_TO_VER_STR(a, b) MACRO_TO_STR(a.b)
 #define LIBXCODER_API_VERSION_MAJOR 2
-#define LIBXCODER_API_VERSION_MINOR 87
+#define LIBXCODER_API_VERSION_MINOR 92
 #define LIBXCODER_API_VERSION MACROS_TO_VER_STR(LIBXCODER_API_VERSION_MAJOR, \
                                                 LIBXCODER_API_VERSION_MINOR)
 
@@ -363,10 +363,12 @@ static inline int is_supported_xcoder(int x)
   } ni_device_type_t;
 
 // CPU Log definitions
-#define CPU_LOG_BUFFER_SIZE                     (1 * 1024 * 1024)
-#define CPU_FL_LOG_BUFFER_SIZE (256)
-#define CPU_FL_LOG_BUFFER_LEN (128)
+#define CPU_LOG_BUFFER_SIZE                     (1UL * 1024 * 1024)
+#define CPU_FL_LOG_BUFFER_SIZE (256UL)
+#define CPU_FL_LOG_BUFFER_LEN (128UL)
 #define TOTAL_CPU_LOG_BUFFER_SIZE   ((CPU_LOG_BUFFER_SIZE * 5) + (CPU_FL_LOG_BUFFER_SIZE * CPU_FL_LOG_BUFFER_LEN))   // g_np/tp/fp/ep/dp/fl_cpu_log_buffer
+#define CPU_LOG_ARTIFACTS_HEADER_SIZE           (4)       // uint32_t artifacts size as header
+#define LOG_ARTIFACTS_MAX_SIZE                  (512UL * 1024)
 #define CPU_LOG_CYCLES_PER_CHECK    (10000)
 #define PRINT_FW_LOG_SIZE           (64 * 1024)
 #define FL_SIGNATURE  (0x464C324C)

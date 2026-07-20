@@ -1,4 +1,74 @@
 ================================================================================
+Release version: 5.8.0_RC2
+Date: 2026-07-14            SW version: 5.8.0_RC2           FW version: 5.8.0_RC2
+Compat FW API ver: 6tC      Libxcoder API ver: 2.92
+--------------------------------------------------------------------------------
+[LIBXCODER] Update ni_rsrc_mon -C 1 log filename
+[LIBXCODER] Update resource monitor logfile name to include bdf,sn and ts
+[LIBXCODER] Support set kernel size for all filterblit > 1 mode
+[LIBXCODER] Added decoder mode parameter support
+            Change API version to 6tC
+[LIBXCODER] Timestamp C file
+              Set timestamp request sent only for Linux kernel < 4.14
+              Remove host_ts.sh  script
+              Send timestamp using xcoder_config_session_host_time
+              Change API version to 6tB
+[LIBXCODER] Automate FW log extraction with artifacts from device
+[LIBXCODER] Support inserting custom timecode in pic timing SEI when hrdEnable=1
+[LIBXCODER] Support lookahead in mulit spatial layer encode
+            1. Support lookahead in mulit spatial layer encode
+            Change API version to 6t8
+[LIBXCODER] Configurable scalar retry
+            Changing Libxcoder API version to 2.92
+[LIBXCODER] Integrate persistent log dumps into ni_rsrc_mon
+[LIBXCODER] Added Device context NULL pointer checks
+[LIBXCODER] Fix Capped CRF mode with vbvMinRate producing bad quality
+            1. Support filler in Capped CRF mode with vbvMinRate to prevent buffer underflow at minrate
+            Change API version to 6t7
+[LIBXCODER] Resource monitor json format updated to give more detailed information
+[LIBXCODER] Enable PF ni_rsrc_mon to read all VF load
+[LIBXCODER] Add scaler user mode support
+            	- Change API version to 6t6
+            	- Changing Libxcoder API version to 2.91
+[LIBXCODER] Added the support of AV1 enc metadata insertion of HDR/HDR+/Closed Caption metadata by commandline and pass-through
+            - Enabled masterDisplay and maxCLL for AV1
+            - Added passthrough masterDisplay and MaxCLL
+            - Added passthrough of masterDisplay, maxCLL, closed caption, and HDR+ for AV1
+            - Added the support of any size of metadata for AV1. The max size of H.264/H.265 is 255 currently.
+            - Changing Libxcoder API version to 2.90
+            - Change FW API version to 6t5
+[LIBXCODER] Added the support of H.264 level 1b and fixed the index problem accordingly
+[LIBXCODER] Support encoder flush and resume
+            1. Support encoder .flush function, which is invokded in avcodec_flush_buffers to flush encoder. Caller must read out remaining packets from the encoder before resume encoding
+            2. Support resume encode by sending frame(s) after after flush and packets draining has completed
+            3. Advertise AV_CODEC_CAP_ENCODER_FLUSH for h.264, h.265, and AV1 encoders
+            4. Modify libavcodec API example ni_encode_video, add option -f or --flush_on_loop as reference for encoder flush implementation
+            Change API version to 6t4
+[LIBXCODER] Motion constrained mode visual quality improvement
+            1. Add motionConstrainedMode 3 (Quality Mode Advanced), which improves visual quality by adjusting delta QP of frame boundary forced intra CUs.
+            Supports both 1-pass and 2-pass encode. Change API version from to 6t3
+[LIBXCODER] Remove use of bt2020 in_color_matrix
+            Return error if in_color_matrix is set to bt2020. The Quadra
+            2D engine does not support this. The in_color_matrix is
+            fixed in hardware to bt709.
+[LIBXCODER] Decoder extend membins setting
+            Change API version from to 6t2
+[LIBXCODER] Display FW flavor info in ni_rsrc_list
+            Changing Libxcoder API version to 2.89
+[LIBXCODER] Add mctf support
+            1. Add MCTF filtering with SIMD optimizations, and organized as a standalone library.
+               The source code is placed under tools/ni_mctf; the built artifacts (static lib & headers)
+               are placed under libxcoder/nimctf and can be shipped together with libxcoder.
+            2. Introduce ni_mctf filter into FFmpeg (versions 4.3.1, 5.1.2, 6.1, 7.1) by calling
+               the above MCTF library, providing MCTF filtering via FFmpeg filter interface.
+            3. Add libxcoder encoding parameter 'useMCTF' to enable MCTF filtering before encoding.
+               This feature is available only on Linux and when explicitly enabled at build time
+               (./build.sh --enable-mctf).
+[LIBXCODER] Fix uninitialized memory in scale filter in libxcoder demo
+[LIBXCODER] Add support for passing flags in ni_scaler_input/dest_frame_alloc
+            Changing Libxcoder API version to 2.88
+[LIBXCODER] Add support for 4:2:2 formats in ni_uploader_set_frame_format
+================================================================================
 Release version: 5.7.0_RC2
 Date: 2026-04-20            SW version: 5.7.0_RC2           FW version: 5.7.0_RC2
 Compat FW API ver: 6t1      Libxcoder API ver: 2.87

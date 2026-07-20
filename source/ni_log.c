@@ -141,7 +141,7 @@ void ni_log_default_callback(int level, const char* fmt, va_list vl)
         {
             struct timeval tv;
             ni_log_gettimeofday(&tv, NULL);
-            fprintf(stderr, "[%" PRIu64 "] ", (uint64_t) (tv.tv_sec * 1000000LL + tv.tv_usec));
+            (void)fprintf(stderr, "[%" PRIu64 "] ", (uint64_t) (tv.tv_sec * 1000000LL + tv.tv_usec));
         }
 #endif
 #endif
@@ -154,7 +154,7 @@ void ni_log_default_callback(int level, const char* fmt, va_list vl)
         else
             ALOGE(fmt, vl);
 #else
-        vfprintf(stderr, fmt, vl);
+        (void)vfprintf(stderr, fmt, vl);
 #endif
     }
 }

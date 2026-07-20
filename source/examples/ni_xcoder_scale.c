@@ -202,7 +202,12 @@ int main(int argc, char *argv[])
                 break;
             case 's':
                 input_width = (int)strtol(optarg, &n, 10);
-                input_height = atoi(n + 1);
+                {
+                    int32_t tmp_height;
+                    if (ni_strtoi(n + 1, &tmp_height) != NI_RETCODE_SUCCESS)
+                        tmp_height = 0;
+                    input_height = tmp_height;
+                }
                 if ((*n != 'x') || (input_width <= 0 || input_height <= 0))
                 {
                     ni_log(NI_LOG_ERROR, "Error: Invalid value \"%s\" for -s | --size option\n"

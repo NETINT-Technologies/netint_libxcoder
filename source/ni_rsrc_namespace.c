@@ -86,9 +86,9 @@ int send_config_ns_command(char* dev, int ns, int sr)
     if (handle == NI_INVALID_DEVICE_HANDLE)
     {
         ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
-        fprintf(stderr, "ERROR: open %s failure for %s\n", dev,
+        (void)fprintf(stderr, "ERROR: open %s failure for %s\n", dev,
                 errmsg);
-        exit(-1);
+        exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
     } else
     {
         printf("Succeed to open block namespace %s\n", dev);
@@ -98,7 +98,7 @@ int send_config_ns_command(char* dev, int ns, int sr)
     if (retval != NI_RETCODE_SUCCESS)
     {
         ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
-        fprintf(stderr, "ERROR: Config setting failure for %s\n",
+        (void)fprintf(stderr, "ERROR: Config setting failure for %s\n",
                 errmsg);
     }
     ni_device_close(handle);
@@ -113,9 +113,9 @@ int send_config_qos_mode(char *dev, int value)
     if (handle == NI_INVALID_DEVICE_HANDLE)
     {
         ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
-        fprintf(stderr, "ERROR: open %s failure for %s\n", dev,
+        (void)fprintf(stderr, "ERROR: open %s failure for %s\n", dev,
                 errmsg);
-        exit(-1);
+        exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
     } else
     {
         printf("Succeed to open block namespace %s\n", dev);
@@ -125,7 +125,7 @@ int send_config_qos_mode(char *dev, int value)
     if (retval != NI_RETCODE_SUCCESS)
     {
         ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
-        fprintf(stderr, "ERROR: Config setting failure for %s\n",
+        (void)fprintf(stderr, "ERROR: Config setting failure for %s\n",
                 errmsg);
     }
     ni_device_close(handle);
@@ -140,9 +140,9 @@ int send_config_qos_op(char *dev, char *devt, int op)
     if (handle == NI_INVALID_DEVICE_HANDLE)
     {
         ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
-        fprintf(stderr, "ERROR: open %s failure for %s\n", dev,
+        (void)fprintf(stderr, "ERROR: open %s failure for %s\n", dev,
                 errmsg);
-        exit(-1);
+        exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
     } else
     {
         printf("Succeed to open block namespace %s\n", dev);
@@ -151,10 +151,10 @@ int send_config_qos_op(char *dev, char *devt, int op)
     if (handle_t == NI_INVALID_DEVICE_HANDLE)
     {
         ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
-        fprintf(stderr, "ERROR: open %s failure for %s\n", devt,
+        (void)fprintf(stderr, "ERROR: open %s failure for %s\n", devt,
                 errmsg);
         ni_device_close(handle);
-        exit(-1);
+        exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
     } else
     {
         printf("Succeed to open block namespace %s\n", devt);
@@ -164,7 +164,7 @@ int send_config_qos_op(char *dev, char *devt, int op)
     if (retval != NI_RETCODE_SUCCESS)
     {
         ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
-        fprintf(stderr, "ERROR: Config setting failure for %s\n",
+        (void)fprintf(stderr, "ERROR: Config setting failure for %s\n",
                 errmsg);
     }
     ni_device_close(handle);
@@ -179,9 +179,9 @@ int send_config_qos_allowance(char *dev, char *devt, int allowance)
     if (handle == NI_INVALID_DEVICE_HANDLE)
     {
         ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
-        fprintf(stderr, "ERROR: open %s failure for %s\n", dev,
+        (void)fprintf(stderr, "ERROR: open %s failure for %s\n", dev,
                 errmsg);
-        exit(-1);
+        exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
     } else
     {
         printf("Succeed to open block namespace %s\n", dev);
@@ -190,10 +190,10 @@ int send_config_qos_allowance(char *dev, char *devt, int allowance)
     if (handle_t == NI_INVALID_DEVICE_HANDLE)
     {
         ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
-        fprintf(stderr, "ERROR: open %s failure for %s\n", devt,
+        (void)fprintf(stderr, "ERROR: open %s failure for %s\n", devt,
                 errmsg);
         ni_device_close(handle);
-        exit(-1);
+        exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
     } else
     {
         printf("Succeed to open block namespace %s\n", devt);
@@ -203,7 +203,7 @@ int send_config_qos_allowance(char *dev, char *devt, int allowance)
     if (retval != NI_RETCODE_SUCCESS)
     {
         ni_strerror(errmsg, NI_ERRNO_LEN, NI_ERRNO);
-        fprintf(stderr, "ERROR: Config setting failure for %s\n",
+        (void)fprintf(stderr, "ERROR: Config setting failure for %s\n",
                 errmsg);
     }
     ni_device_close(handle);
@@ -216,7 +216,13 @@ static int get_ns_id_from_path(const char *path)
     const char *n_pos = strrchr(path, 'n');
     if (!n_pos || n_pos[1] == '\0')
         return -1;
-    int id = atoi(n_pos + 1);
+    int32_t id;
+    if (ni_strtoi(n_pos + 1, &id) != NI_RETCODE_SUCCESS)
+    {
+        ni_log(NI_LOG_ERROR, "ERROR: %s(): invalid value '%s'\n",
+               __func__, n_pos + 1);
+        return -1;
+    }
     return (id >= 1 && id <= NI_NAMESPACE_MAX_NUM) ? id : -1;
 }
 
@@ -243,16 +249,17 @@ int main(int argc, char *argv[])
     int ns_id;
     int current_qos_mode = -1;
     bool has_zero_allowance = false;
+    int32_t tmp_val;
     float total_all_namespaces = 0.0f;
     ni_qos_header_info_log_page_t qos_header = {0};
 
-    while ((opt = getopt(argc, argv, "d:D:n:p:q:s:a:chv")) != EOF)
+    while ((opt = getopt(argc, argv, "d:D:n:p:q:s:a:chv")) != EOF) // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
     {
         switch (opt)
         {
             case 'h':
                 usage();
-                exit(0);
+                exit(0); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
             case 'v':
                 printf("Release ver: %s\n"
                        "API ver:     %s\n"
@@ -260,16 +267,16 @@ int main(int argc, char *argv[])
                        "ID:          %s\n",
                        NI_XCODER_REVISION, LIBXCODER_API_VERSION,
                        NI_SW_RELEASE_TIME, NI_SW_RELEASE_ID);
-                exit(0);
+                exit(0); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
             case 'd':
                 ni_strcpy(device_namespace, NI_NAMESPACE_SZ, optarg);
 #ifdef __linux__
                 if (lstat(device_namespace, &sb) != 0 ||
                     (sb.st_mode & S_IFMT) != S_IFBLK)
                 {
-                    fprintf(stderr, "ERROR: Only block device is supported! "
+                    (void)fprintf(stderr, "ERROR: Only block device is supported! "
                             "%s is not block device!\n", device_namespace);
-                    exit(-1);
+                    exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
                 }
 #endif
                 break;
@@ -280,8 +287,8 @@ int main(int argc, char *argv[])
                     ns_id = get_ns_id_from_path(device_namespace_OP);
                     if (ns_id < 1)
                     {
-                        fprintf(stderr, "ERROR: Cannot get namespace ID from -D path %s\n", device_namespace_OP);
-                        exit(-1);
+                        (void)fprintf(stderr, "ERROR: Cannot get namespace ID from -D path %s\n", device_namespace_OP);
+                        exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
                     }
                     allowances.namespace_id = ns_id;
                     allowances.allowance = pending_allowance;
@@ -291,62 +298,100 @@ int main(int argc, char *argv[])
                 break;
             case 'n':
                 // A maximum of 64 namespaces are supported for firmware
-                namespace_num = atoi(optarg);
+                if (ni_strtoi(optarg, &tmp_val) != NI_RETCODE_SUCCESS)
+                {
+                    ni_log(NI_LOG_ERROR,
+                           "ERROR: %s(): invalid value '%s' for -n\n",
+                           __func__, optarg);
+                    return -1;
+                }
+                namespace_num = (int)tmp_val;
                 if (namespace_num < 0 || namespace_num > NI_NAMESPACE_MAX_NUM)
                 {
-                    fprintf(stderr, "ERROR: The number of namespace cannot "
+                    (void)fprintf(stderr, "ERROR: The number of namespace cannot "
                             "exceed %d\n", NI_NAMESPACE_MAX_NUM);
-                    exit(-1);
+                    exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
                 }
                 break;
             case 'p':
+            {
                 // set overprovision %
-                over_provision_percent = (float)atof(optarg);
+                double tmp_overprov;
+                if (ni_strtod_val(optarg, &tmp_overprov) != NI_RETCODE_SUCCESS)
+                {
+                    ni_log(NI_LOG_ERROR, "%s: invalid overprovision value '%s'\n",
+                           __func__, optarg);
+                    return -1;
+                }
+                over_provision_percent = (float)tmp_overprov;
                 if (over_provision_percent > 100 || over_provision_percent < 0)
                 {
-                    fprintf(stderr, "ERROR: Overprovision percent cannot "
+                    (void)fprintf(stderr, "ERROR: Overprovision percent cannot "
                                     "exceed 100%% or become negative\n");
-                    exit(-1);
+                    exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
                 }
                 break;
+            }
             case 'q':
                 // 0 disabled, 1 enabled - no idle sharing
-                qos_mode = atoi(optarg);
+                if (ni_strtoi(optarg, &tmp_val) != NI_RETCODE_SUCCESS)
+                {
+                    ni_log(NI_LOG_ERROR,
+                           "ERROR: %s(): invalid value '%s' for -q\n",
+                           __func__, optarg);
+                    return -1;
+                }
+                qos_mode = (int)tmp_val;
                 if (qos_mode < QOS_MODE_DISABLED ||
                     qos_mode > QOS_MODE_ENABLED_SHARE)
                 {
-                    fprintf(stderr,
+                    (void)fprintf(stderr,
                             "ERROR: QoS mode %d not supported\n",
                             qos_mode);
-                    exit(-1);
+                    exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
                 }
                 break;
             case 's':
-                sriov_index = atoi(optarg);
+                if (ni_strtoi(optarg, &tmp_val) != NI_RETCODE_SUCCESS)
+                {
+                    ni_log(NI_LOG_ERROR,
+                           "ERROR: %s(): invalid value '%s' for -s\n",
+                           __func__, optarg);
+                    return -1;
+                }
+                sriov_index = (int)tmp_val;
                 if (sriov_index < 0)
                 {
-                    fprintf(stderr, "ERROR: Invalid SR-IOV device index: %d\n",
+                    (void)fprintf(stderr, "ERROR: Invalid SR-IOV device index: %d\n",
                             sriov_index);
-                    exit(-1);
+                    exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
                 }
                 break;
             case 'c':
                 persistence = 1;
                 break;
             case 'a':
-                allowance = (float)atof(optarg);
+            {
+                double tmp_allowance;
+                if (ni_strtod_val(optarg, &tmp_allowance) != NI_RETCODE_SUCCESS)
+                {
+                    ni_log(NI_LOG_ERROR, "%s: invalid allowance value '%s'\n",
+                           __func__, optarg);
+                    return -1;
+                }
+                allowance = (float)tmp_allowance;
                 if (allowance < 0.0f || allowance > 100.0f)
                 {
-                    fprintf(stderr, "ERROR: Allowance %.2f out of range [0-100]\n", allowance);
-                    exit(-1);
+                    (void)fprintf(stderr, "ERROR: Allowance %.2f out of range [0-100]\n", allowance);
+                    exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
                 }
                 if (device_namespace_OP[0] != '\0')
                 {
                     ns_id = get_ns_id_from_path(device_namespace_OP);
                     if (ns_id < 1)
                     {
-                        fprintf(stderr, "ERROR: Cannot get namespace ID from -D path %s\n", device_namespace_OP);
-                        exit(-1);
+                        (void)fprintf(stderr, "ERROR: Cannot get namespace ID from -D path %s\n", device_namespace_OP);
+                        exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
                     }
                     allowances.namespace_id = ns_id;
                     allowances.allowance = allowance;
@@ -354,17 +399,18 @@ int main(int argc, char *argv[])
                 }
                 else
                     pending_allowance = allowance;
-            break;
+                break;
+            }
         default:
-                fprintf(stderr, "ERROR: Invalid option: %c\n", opt);
-                exit(-1);
+                (void)fprintf(stderr, "ERROR: Invalid option: %c\n", opt);
+                exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
         }
     }
 
     if (pending_allowance >= 0.0f)
     {
-        fprintf(stderr, "ERROR: -a requires -D (e.g. -d /dev/nvme0n1 -a 80 -D /dev/nvme0n2)\n");
-        exit(-1);
+        (void)fprintf(stderr, "ERROR: -a requires -D (e.g. -d /dev/nvme0n1 -a 80 -D /dev/nvme0n2)\n");
+        exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
     }
 
     if (allowance_count > 0)
@@ -375,7 +421,7 @@ int main(int argc, char *argv[])
         ni_device_handle_t ns_handle = ni_device_open2(device_namespace_OP, NI_DEVICE_READ_ONLY);
         if (ns_handle == NI_INVALID_DEVICE_HANDLE)
         {
-            fprintf(stderr, "ERROR: Failed to open device %s\n", device_namespace_OP);
+            (void)fprintf(stderr, "ERROR: Failed to open device %s\n", device_namespace_OP);
             return NI_RETCODE_FAILURE;
         }
 
@@ -383,14 +429,14 @@ int main(int argc, char *argv[])
         if (ni_device_capability_query2(ns_handle, &device_capability, false) != NI_RETCODE_SUCCESS)
         {
             ni_device_close(ns_handle);
-            fprintf(stderr, "ERROR: Failed to query device capability for %s\n", device_namespace_OP);
+            (void)fprintf(stderr, "ERROR: Failed to query device capability for %s\n", device_namespace_OP);
             return NI_RETCODE_FAILURE;
         }
 
         if (ni_query_qos_info(ns_handle, &qos_header, device_capability.fw_rev) != NI_RETCODE_SUCCESS)
         {
             ni_device_close(ns_handle);
-            fprintf(stderr, "ERROR: Failed to query QoS info for %s\n", device_namespace_OP);
+            (void)fprintf(stderr, "ERROR: Failed to query QoS info for %s\n", device_namespace_OP);
             return NI_RETCODE_FAILURE;
         }
 
@@ -400,7 +446,7 @@ int main(int argc, char *argv[])
             if (current_qos_mode != QOS_MODE_ENABLED_SHARE)
             {
                 ni_device_close(ns_handle);
-                fprintf(stderr, "ERROR: 0%% allowance only allowed with QoS mode 2 (current mode: %d)\n",
+                (void)fprintf(stderr, "ERROR: 0%% allowance only allowed with QoS mode 2 (current mode: %d)\n",
                         current_qos_mode);
                 return NI_RETCODE_FAILURE;
             }
@@ -412,7 +458,7 @@ int main(int argc, char *argv[])
         if (ni_query_qos_namespace_info(ns_handle, &qos_ns_info, device_capability.fw_rev) != NI_RETCODE_SUCCESS)
         {
             ni_device_close(ns_handle);
-            fprintf(stderr, "ERROR: Failed to query QoS namespace info for %s\n", device_namespace_OP);
+            (void)fprintf(stderr, "ERROR: Failed to query QoS namespace info for %s\n", device_namespace_OP);
             return NI_RETCODE_FAILURE;
         }
         ni_device_close(ns_handle);
@@ -421,17 +467,17 @@ int main(int argc, char *argv[])
 
         if (total_all_namespaces > 100.0f)
         {
-            fprintf(stderr, "ERROR: Total allowance will be %.2f%% (exceeds 100%%)\n", total_all_namespaces);
+            (void)fprintf(stderr, "ERROR: Total allowance will be %.2f%% (exceeds 100%%)\n", total_all_namespaces);
             return NI_RETCODE_FAILURE;
         }
         if (total_all_namespaces < 100.0f)
-            fprintf(stderr, "INFO: Total allowance will be %.2f%% (under 100%%)\n", total_all_namespaces);
+            (void)fprintf(stderr, "INFO: Total allowance will be %.2f%% (under 100%%)\n", total_all_namespaces);
 
         memcpy(&i32_allowance, &allowances.allowance, sizeof(int32_t));
         retval = send_config_qos_allowance(device_namespace, device_namespace_OP, i32_allowance);
         if (retval != NI_RETCODE_SUCCESS)
         {
-            fprintf(stderr, "ERROR: Failed to set allowance for namespace %d\n", allowances.namespace_id);
+            (void)fprintf(stderr, "ERROR: Failed to set allowance for namespace %d\n", allowances.namespace_id);
             return NI_RETCODE_FAILURE;
         }
         printf("Set namespace %d allowance to %.2f%%\n",
@@ -442,24 +488,24 @@ int main(int argc, char *argv[])
 
     if (device_namespace[0] == '\0')
     {
-        fprintf(stderr, "ERROR: missing argument for -d\n");
-        exit(-1);
+        (void)fprintf(stderr, "ERROR: missing argument for -d\n");
+        exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
     }
     if (strlen(device_namespace) < 3 ||
         strcmp(device_namespace + strlen(device_namespace) - 2, "n1") != 0)
     {
-        fprintf(stderr, "ERROR: Invalid device name %s, need n1, no vf\n", device_namespace);
-        exit(-1);
+        (void)fprintf(stderr, "ERROR: Invalid device name %s, need n1, no vf\n", device_namespace);
+        exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
     }
 
     if (qos_mode != -1)
     {
         if (namespace_num != 1 || sriov_index || over_provision_percent != -1)
         {
-            fprintf(stderr,
+            (void)fprintf(stderr,
                     "ERROR: QoS mode -q mutually exclusive of namespace and "
                     "SR-IOV\n");
-            exit(-1);
+            exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
         }
         retval = send_config_qos_mode(device_namespace, qos_mode);
         if (retval == NI_RETCODE_SUCCESS)
@@ -473,15 +519,15 @@ int main(int argc, char *argv[])
     {
         if (device_namespace_OP[0] == '\0')
         {
-            fprintf(stderr, "ERROR: missing argument for -D\n");
-            exit(-1);
+            (void)fprintf(stderr, "ERROR: missing argument for -D\n");
+            exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
         }
         if (namespace_num != 1 || sriov_index || qos_mode != -1)
         {
-            fprintf(stderr,
+            (void)fprintf(stderr,
                             "ERROR: Overprovision percent -p mutually exclusive of "
                             "namespace and SR-IOV and QOS mode\n");
-            exit(-1);
+            exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
         }
         memcpy(&i32_over_provision_percent, &over_provision_percent, sizeof(int32_t));
         retval = send_config_qos_op(device_namespace, device_namespace_OP,

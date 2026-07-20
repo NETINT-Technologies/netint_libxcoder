@@ -89,6 +89,8 @@ typedef ni_retcode_t (LIB_API* PNISTRNCPY) (char *dest, size_t dmax, const char 
 typedef ni_retcode_t (LIB_API* PNISTRERROR) (char *dest, size_t dmax, int errnum);
 typedef ni_retcode_t (LIB_API* PNISTRCAT) (char *dest, size_t dmax, const char *src);
 typedef ni_retcode_t (LIB_API* PNISTRNCAT) (char *dest, size_t dmax, const char *src, size_t slen);
+typedef ni_retcode_t (LIB_API* PNISTRTOI) (const char *str, int32_t *out_val);
+typedef ni_retcode_t (LIB_API* PNISTRTODVAL) (const char *str, double *out_val);
 typedef ni_retcode_t (LIB_API* PNIFOPEN) (FILE **fp, const char *filename, const char *mode);
 typedef struct tm * (LIB_API* PNILOCALTIME) (struct tm *dest, const time_t *src);
 typedef int (LIB_API* PNIFSCANF) (FILE *stream, const char *fmt, ...);
@@ -250,6 +252,7 @@ typedef ni_retcode_t (LIB_API* PNIUPLOADERFRAMEZEROCOPYCHECK) (ni_session_contex
 typedef ni_retcode_t (LIB_API* PNIRECONFIGCRF) (ni_session_context_t *p_ctx, int32_t crf);
 typedef ni_retcode_t (LIB_API* PNIRECONFIGCRF2) (ni_session_context_t *p_ctx, float crf);
 typedef ni_retcode_t (LIB_API* PNIDEVICEALLOCANDGETFIRMWARELOGS) (ni_session_context_t *p_ctx, void** p_log_buffer, bool gen_log_file);
+typedef ni_retcode_t (LIB_API* PNIDEVICEALLOCANDGETFWLOGARTIFACTS) (ni_session_context_t *p_ctx, bool gen_artifacts_file);
 typedef ni_retcode_t (LIB_API* PNIRECONFIGVBVVALUE) (ni_session_context_t *p_ctx, int32_t vbvMaxRate, int32_t vbvBufferSize);
 typedef ni_retcode_t (LIB_API* PNIDEVICESESSIONUPDATEFRAMEPOOL) (ni_session_context_t *p_ctx, uint32_t pool_size);
 typedef ni_retcode_t (LIB_API* PNISETDEMOROIMAP) (ni_session_context_t *p_enc_ctx);
@@ -268,10 +271,13 @@ typedef ni_retcode_t (LIB_API* PNIRECONFIGSLICEARG) (ni_session_context_t *p_ctx
 typedef ni_retcode_t (LIB_API* PNIP2PRECV) (ni_session_context_t *pSession, const ni_p2p_sgl_t *dmaAddrs, ni_frame_t *pDstFrame);
 typedef ni_retcode_t (LIB_API* PNIDEVICESESSIONRESTART) (ni_session_context_t *p_ctx, int video_width, int video_height, ni_device_type_t device_type);
 typedef ni_retcode_t (LIB_API* PNIDECRECONFIGPPUPARAMS) (ni_session_context_t *p_session_ctx, ni_xcoder_params_t *p_param, ni_ppu_config_t *p_ppu_config);
+typedef ni_retcode_t (LIB_API* PNIKERNELSETCALLBACK) (ni_session_context_t *p_session_ctx, ni_kernel_coeff_fn fn);
+typedef ni_retcode_t (LIB_API* PNISCALERBUILDKERNEL) (ni_session_context_t *p_session_ctx, uint16_t kernel_array[], int kernel_taps, double param_b, double param_c, int SrcSize, int DstSize);
 //
 // Function pointers for ni_quadraprobe.h
 //
 typedef int (LIB_API* PNIRSRCLOGDUMP) (const char *outdir, bool core_reset_log);
+typedef int (LIB_API* PNIRSRCNORLOGCOMMAND) (const char *nor_cmd, const char *outdir);
 
 /* End API function pointers */
 
@@ -312,6 +318,8 @@ typedef struct _NETINT_LIBXCODER_API_FUNCTION_LIST
     PNISTRERROR                          niStrerror;                           /** Client should access ::ni_strerror API through this pointer */
     PNISTRCAT                            niStrcat;                             /** Client should access ::ni_strcat API through this pointer */
     PNISTRNCAT                           niStrncat;                            /** Client should access ::ni_strncat API through this pointer */
+    PNISTRTOI                            niStrtoi;                             /** Client should access ::ni_strtoi API through this pointer */
+    PNISTRTODVAL                         niStrtodVal;                          /** Client should access ::ni_strtod_val API through this pointer */
     PNIFOPEN                             niFopen;                              /** Client should access ::ni_fopen API through this pointer */
     PNILOCALTIME                         niLocaltime;                          /** Client should access ::ni_localtime API through this pointer */
     PNIFSCANF                            niFscanf;                             /** Client should access ::ni_fscanf API through this pointer */
@@ -469,6 +477,7 @@ typedef struct _NETINT_LIBXCODER_API_FUNCTION_LIST
     PNIRECONFIGCRF                       niReconfigCrf;                        /** Client should access ::ni_reconfig_crf API through this pointer */
     PNIRECONFIGCRF2                      niReconfigCrf2;                       /** Client should access ::ni_reconfig_crf2 API through this pointer */
     PNIDEVICEALLOCANDGETFIRMWARELOGS     niDeviceAllocAndGetFirmwareLogs;      /** Client should access ::ni_device_alloc_and_get_firmware_logs API through this pointer */
+    PNIDEVICEALLOCANDGETFWLOGARTIFACTS   niDeviceAllocAndGetFwLogArtifacts;    /** Client should access ::ni_device_alloc_and_get_fw_log_artifacts API through this pointer */
     PNIRECONFIGVBVVALUE                  niReconfigVbvValue;                   /** Client should access ::ni_reconfig_vbv_value API through this pointer */
     PNIDEVICESESSIONUPDATEFRAMEPOOL      niDeviceSessionUpdateFramepool;       /** Client should access ::ni_device_session_update_framepool API through this pointer */
     PNIGETFRAMEDIM                       niGetFrameDim;                        /** Client should access ::ni_get_frame_dim API through this pointer */
@@ -494,10 +503,13 @@ typedef struct _NETINT_LIBXCODER_API_FUNCTION_LIST
     PNIDEVICESESSIONRESTART              niDeviceSessionRestart;               /** Client should access ::ni_device_session_restart API through this pointer */
     PNIDEVICESESSIONQUERYBUFFERAVAIL     niDeviceSessionQueryBufferAvail;      /** Client should access ::ni_device_session_query_buffer_avail API through this pointer */
     PNIDECRECONFIGPPUPARAMS              niDecReconfigPpuParams;               /** Client should access ::ni_dec_reconfig_ppu_params API through this pointer */
+    PNIKERNELSETCALLBACK                 niKernelSetCallback;                  /** Client should access ::ni_kernel_set_callback API through this pointer */
+    PNISCALERBUILDKERNEL                 niScalerBuildKernel;                  /** Client should access ::ni_scaler_build_kernel API through this pointer */
 //
 // Function pointers for ni_quadraprobe.h
 //
     PNIRSRCLOGDUMP                       niRsrcLogDump;                        /** Client should access ::ni_rsrc_log_dump API through this pointer */
+    PNIRSRCNORLOGCOMMAND                 niRsrcNorLogCommand;                  /** Client should access ::ni_rsrc_nor_log_command API through this pointer */
 } NETINT_LIBXCODER_API_FUNCTION_LIST;
 
 class NETINTLibxcoderAPI {
@@ -540,6 +552,8 @@ public:
         functionList->niStrerror = reinterpret_cast<decltype(ni_strerror)*>(dlsym(lib,"ni_strerror"));
         functionList->niStrcat = reinterpret_cast<decltype(ni_strcat)*>(dlsym(lib,"ni_strcat"));
         functionList->niStrncat = reinterpret_cast<decltype(ni_strncat)*>(dlsym(lib,"ni_strncat"));
+        functionList->niStrtoi = reinterpret_cast<decltype(ni_strtoi)*>(dlsym(lib,"ni_strtoi"));
+        functionList->niStrtodVal = reinterpret_cast<decltype(ni_strtod_val)*>(dlsym(lib,"ni_strtod_val"));
         functionList->niFopen = reinterpret_cast<decltype(ni_fopen)*>(dlsym(lib,"ni_fopen"));
         functionList->niLocaltime = reinterpret_cast<decltype(ni_localtime)*>(dlsym(lib,"ni_localtime"));
         functionList->niFscanf = reinterpret_cast<decltype(ni_fscanf)*>(dlsym(lib,"ni_fscanf"));
@@ -698,6 +712,7 @@ public:
         functionList->niReconfigCrf = reinterpret_cast<decltype(ni_reconfig_crf)*>(dlsym(lib,"ni_reconfig_crf"));
         functionList->niReconfigCrf2 = reinterpret_cast<decltype(ni_reconfig_crf2)*>(dlsym(lib,"ni_reconfig_crf2"));
         functionList->niDeviceAllocAndGetFirmwareLogs = reinterpret_cast<decltype(ni_device_alloc_and_get_firmware_logs)*>(dlsym(lib,"ni_device_alloc_and_get_firmware_logs"));
+        functionList->niDeviceAllocAndGetFwLogArtifacts = reinterpret_cast<decltype(ni_device_alloc_and_get_fw_log_artifacts)*>(dlsym(lib,"ni_device_alloc_and_get_fw_log_artifacts"));
         functionList->niReconfigVbvValue = reinterpret_cast<decltype(ni_reconfig_vbv_value)*>(dlsym(lib,"ni_reconfig_vbv_value"));
         functionList->niDeviceSessionUpdateFramepool = reinterpret_cast<decltype(ni_device_session_update_framepool)*>(dlsym(lib,"ni_device_session_update_framepool"));
         functionList->niGetFrameDim = reinterpret_cast<decltype(ni_get_frame_dim)*>(dlsym(lib,"ni_get_frame_dim"));
@@ -722,10 +737,13 @@ public:
         functionList->niP2PRecv = reinterpret_cast<decltype(ni_p2p_recv)*>(dlsym(lib,"ni_p2p_recv"));
         functionList->niDeviceSessionRestart = reinterpret_cast<decltype(ni_device_session_restart)*>(dlsym(lib,"ni_device_session_restart"));
         functionList->niDecReconfigPpuParams = reinterpret_cast<decltype(ni_dec_reconfig_ppu_params)*>(dlsym(lib,"ni_dec_reconfig_ppu_params"));
+        functionList->niKernelSetCallback = reinterpret_cast<decltype(ni_kernel_set_callback)*>(dlsym(lib,"ni_kernel_set_callback"));
+        functionList->niScalerBuildKernel = reinterpret_cast<decltype(ni_scaler_build_kernel)*>(dlsym(lib,"ni_scaler_build_kernel"));
         //
         // Function pointers for ni_quadraprobe.h
         //
         functionList->niRsrcLogDump = reinterpret_cast<decltype(ni_rsrc_log_dump)*>(dlsym(lib,"ni_rsrc_log_dump"));
+        functionList->niRsrcNorLogCommand = reinterpret_cast<decltype(ni_rsrc_nor_log_command)*>(dlsym(lib,"ni_rsrc_nor_log_command"));
 
     }
 };

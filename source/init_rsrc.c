@@ -39,6 +39,10 @@
 #include "ni_log.h"
 #include "ni_rsrc_api.h"
 #include "ni_rsrc_priv.h"
+#include "ni_util.h"
+#if __linux__
+#include "ni_host_ts.h"
+#endif
 
 int main(int argc, char *argv[])
 {
@@ -48,7 +52,7 @@ int main(int argc, char *argv[])
     ni_log_level_t log_level = NI_LOG_INFO;
 
     // arg handling
-    while ((opt = getopt(argc, argv, "hrt:l:v")) != -1)
+    while ((opt = getopt(argc, argv, "hrt:l:v")) != -1) // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
     {
         switch (opt)
         {
@@ -73,16 +77,24 @@ int main(int argc, char *argv[])
                 should_match_rev = 0;
                 break;
             case 't':
-                timeout_seconds = atoi(optarg);
+            {
+                int32_t tmp_val;
+                if (ni_strtoi(optarg, &tmp_val) != NI_RETCODE_SUCCESS)
+                {
+                    ni_log(NI_LOG_ERROR, "ERROR: %s invalid value for -%c: %s\n", __func__, opt, optarg);
+                    return 1;
+                }
+                timeout_seconds = (int)tmp_val;
                 printf("Timeout will be set %d\n", timeout_seconds);
                 break;
+            }
             case 'l':
                 log_level = arg_to_ni_log_level(optarg);
                 if (log_level != NI_LOG_INVALID)
                 {
                     ni_log_set_level(log_level);
                 } else {
-                    fprintf(stderr, "FATAL: invalid log level selected: %s\n",
+                    (void)fprintf(stderr, "FATAL: invalid log level selected: %s\n",
                             optarg);
                     return 1;
                 }
@@ -96,18 +108,14 @@ int main(int argc, char *argv[])
                        NI_SW_RELEASE_TIME, NI_SW_RELEASE_ID);
                 return 0;
             default:
-                fprintf(stderr, "FATAL: invalid arg '%c'\n", opt);
+                (void)fprintf(stderr, "FATAL: invalid arg '%c'\n", opt);
                 return 1;
         }
   }
 
 #if __linux__
   ni_retcode_t retval = ni_rsrc_init(should_match_rev, timeout_seconds);
-  int ret_ts = system("host_ts.sh");
-  if (ret_ts != 0)
-  {
-    printf("Unable to send Host time\n");
-  }
+  ni_host_ts_set();
   return retval;
 #elif __APPLE__
   return ni_rsrc_init(should_match_rev, timeout_seconds);

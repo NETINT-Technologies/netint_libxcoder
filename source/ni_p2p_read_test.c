@@ -32,12 +32,13 @@
  *          encodes the frame.
  ******************************************************************************/
 
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
 
-#define _POSIX_C_SOURCE 200809L
+#define _POSIX_C_SOURCE 200809L // NOLINT(bugprone-reserved-identifier,cert-dcl37-c,cert-dcl51-cpp)
 #include <getopt.h>
 #include <unistd.h>
 #include <sys/types.h>
@@ -106,9 +107,9 @@ typedef struct {
  ******************************************************************************/
 void arg_error_exit(char *arg_name, char *param)
 {
-    fprintf(stderr, "Error: unrecognized argument for %s, \"%s\"\n", arg_name,
+    (void)fprintf(stderr, "Error: unrecognized argument for %s, \"%s\"\n", arg_name,
             param);
-    exit(-1);
+    exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
 }
 
 /*!****************************************************************************
@@ -126,7 +127,7 @@ int read_next_chunk_from_file(int fd, uint8_t *p_dst, uint32_t to_read)
     ni_log(NI_LOG_DEBUG,
         "read_next_chunk_from_file:p_dst %p len %u totalSize %llu left %llu\n",
         tmp_dst, to_read, (unsigned long long)total_file_size, (unsigned long long)data_left_size);
-    int to_copy = to_read;
+    int to_copy = (int)to_read;
     unsigned long tmpFileSize = to_read;
     if (data_left_size == 0)
     {
@@ -143,15 +144,15 @@ int read_next_chunk_from_file(int fd, uint8_t *p_dst, uint32_t to_read)
     } else if (data_left_size < to_read)
     {
         tmpFileSize = data_left_size;
-        to_copy = data_left_size;
+        to_copy = (int)data_left_size;
     }
 
-    int one_read_size = read(fd, tmp_dst, to_copy);
+    int one_read_size = (int)read(fd, tmp_dst, to_copy);
     if (one_read_size == -1)
     {
-        fprintf(stderr, "Error: reading file, quit! left-to-read %lu\n",
+        (void)fprintf(stderr, "Error: reading file, quit! left-to-read %lu\n",
                 tmpFileSize);
-        fprintf(stderr, "Error: input file read error\n");
+        (void)fprintf(stderr, "Error: input file read error\n");
         return -1;
     }
     data_left_size -= one_read_size;
@@ -175,14 +176,14 @@ int get_file_size(const char *filename, unsigned long *bytes_read)
     /* Get information on the file */
     if (stat(filename, &info) < 0)
     {
-        fprintf(stderr, "Can't stat %s\n", filename);
+        (void)fprintf(stderr, "Can't stat %s\n", filename);
         return -1;
     }
 
     /* Check the file size */
     if (info.st_size <= 0)
     {
-        fprintf(stderr, "File %s is empty\n", filename);
+        (void)fprintf(stderr, "File %s is empty\n", filename);
         return -1;
     }
 
@@ -206,7 +207,7 @@ int recycle_frame(ni_frame_t *p2p_frame)
 
     if (rc != NI_RETCODE_SUCCESS)
     {
-        fprintf(stderr, "Recycle failed\n");
+        (void)fprintf(stderr, "Recycle failed\n");
     }
 
     return rc;
@@ -384,7 +385,7 @@ int gpu_render_frame(
         {
             if (ni_posix_memalign(&p_buffer, sysconf(_SC_PAGESIZE), total_size))
             {
-                fprintf(stderr, "Can't alloc memory\n");
+                (void)fprintf(stderr, "Can't alloc memory\n");
                 return -1;
             }
 
@@ -411,8 +412,8 @@ int gpu_render_frame(
         src_height[2] = src_height[1];
 
         p_src[0] = tmp_buf;
-        p_src[1] = tmp_buf + src_stride[0] * src_height[0];
-        p_src[2] = p_src[1] + src_stride[1] * src_height[1];
+        p_src[1] = tmp_buf + (ptrdiff_t)src_stride[0] * src_height[0];
+        p_src[2] = p_src[1] + (ptrdiff_t)src_stride[1] * src_height[1];
 
         alignedh = (input_video_height + 1) & ~1;
 
@@ -427,7 +428,7 @@ int gpu_render_frame(
         {
             if (ni_posix_memalign(&p_buffer, sysconf(_SC_PAGESIZE), total_size))
             {
-                fprintf(stderr, "Can't alloc memory\n");
+                (void)fprintf(stderr, "Can't alloc memory\n");
                 return -1;
             }
 
@@ -480,7 +481,7 @@ int gpu_prepare_frame(ni_session_context_t *p_gpu_ctx, int input_video_width,
            gpu_frame, input_video_width, input_video_height,
            (int)gpu_frame->extra_data_len) != NI_RETCODE_SUCCESS)
     {
-        fprintf(stderr, "Error: could not allocate hw frame buffer!");
+        (void)fprintf(stderr, "Error: could not allocate hw frame buffer!");
         ret = -1;
         goto fail_out;
     }
@@ -490,7 +491,7 @@ int gpu_prepare_frame(ni_session_context_t *p_gpu_ctx, int input_video_width,
     // to Quadra memory from the previously created frame pool.
     if (ni_device_session_acquire(p_gpu_ctx, gpu_frame))
     {
-        fprintf(stderr, "Error: failed ni_device_session_acquire()\n");
+        (void)fprintf(stderr, "Error: failed ni_device_session_acquire()\n");
         ret = -1;
         goto fail_out;
     }
@@ -530,7 +531,7 @@ int enc_prepare_frame(ni_session_context_t *p_upl_ctx, int input_video_width,
         p2p_frame, input_video_width, input_video_height,
         (int)p2p_frame->extra_data_len) != NI_RETCODE_SUCCESS)
     {
-        fprintf(stderr, "Error: could not allocate hw frame buffer!\n");
+        (void)fprintf(stderr, "Error: could not allocate hw frame buffer!\n");
         ret = -1;
         goto fail_out;
     }
@@ -538,7 +539,7 @@ int enc_prepare_frame(ni_session_context_t *p_upl_ctx, int input_video_width,
 #ifndef _WIN32
     if (ni_device_session_acquire_for_read(p_upl_ctx, p2p_frame))
     {
-        fprintf(stderr, "Error: failed ni_device_session_acquire()\n");
+        (void)fprintf(stderr, "Error: failed ni_device_session_acquire()\n");
         ret = -1;
         goto fail_out;
     }
@@ -607,7 +608,7 @@ send_frame:
 
     if (oneSent < 0)
     {
-        fprintf(stderr,
+        (void)fprintf(stderr,
                 "Error: failed ni_device_session_write() for encoder\n");
         *need_to_resend = 1;
         return -1;
@@ -656,7 +657,7 @@ int encoder_receive_data(ni_session_context_t *p_enc_ctx,
     int rc = 0;
     int end_flag = 0;
     int rx_size = 0;
-    int meta_size = p_enc_ctx->meta_size;
+    int meta_size = (int)p_enc_ctx->meta_size;
     ni_packet_t *p_out_pkt = &(p_out_data->data.packet);
     static int received_stream_header = 0;
 
@@ -678,7 +679,7 @@ int encoder_receive_data(ni_session_context_t *p_enc_ctx,
     rc = ni_packet_buffer_alloc(p_out_pkt, packet_size);
     if (rc != NI_RETCODE_SUCCESS)
     {
-        fprintf(stderr, "Error: malloc packet failed, ret = %d!\n", rc);
+        (void)fprintf(stderr, "Error: malloc packet failed, ret = %d!\n", rc);
         return -1;
     }
 
@@ -697,9 +698,9 @@ int encoder_receive_data(ni_session_context_t *p_enc_ctx,
             if (fwrite((uint8_t *)p_out_pkt->p_data + meta_size,
                        p_out_pkt->data_len - meta_size, 1, p_file) != 1)
             {
-                fprintf(stderr, "Error: writing data %u bytes error!\n",
+                (void)fprintf(stderr, "Error: writing data %u bytes error!\n",
                         p_out_pkt->data_len - meta_size);
-                fprintf(stderr, "Error: ferror rc = %d\n", ferror(p_file));
+                (void)fprintf(stderr, "Error: ferror rc = %d\n", ferror(p_file));
             }
 
             *total_bytes_received += (rx_size - meta_size);
@@ -707,7 +708,7 @@ int encoder_receive_data(ni_session_context_t *p_enc_ctx,
             received_stream_header = 1;
         } else if (rc != 0)
         {
-            fprintf(stderr, "Error: reading header %d\n", rc);
+            (void)fprintf(stderr, "Error: reading header %d\n", rc);
             return -1;
         }
 
@@ -736,7 +737,7 @@ int encoder_receive_data(ni_session_context_t *p_enc_ctx,
 receive_data:
     rc = ni_device_session_read(p_enc_ctx, p_out_data, NI_DEVICE_TYPE_ENCODER);
 
-    end_flag = p_out_pkt->end_of_stream;
+    end_flag = (int)p_out_pkt->end_of_stream;
     rx_size = rc;
 
     ni_log2(p_enc_ctx, NI_LOG_DEBUG,  "encoder_receive_data: received data size=%d\n", rx_size);
@@ -746,9 +747,9 @@ receive_data:
         if (fwrite((uint8_t *)p_out_pkt->p_data + meta_size,
                    p_out_pkt->data_len - meta_size, 1, p_file) != 1)
         {
-            fprintf(stderr, "Error: writing data %u bytes error!\n",
+            (void)fprintf(stderr, "Error: writing data %u bytes error!\n",
                     p_out_pkt->data_len - meta_size);
-            fprintf(stderr, "Error: ferror rc = %d\n", ferror(p_file));
+            (void)fprintf(stderr, "Error: ferror rc = %d\n", ferror(p_file));
         }
 
         *total_bytes_received += rx_size - meta_size;
@@ -757,7 +758,7 @@ receive_data:
         ni_log2(p_enc_ctx, NI_LOG_DEBUG,  "Got:   Packets= %u\n", number_of_packets);
     } else if (rx_size != 0)
     {
-        fprintf(stderr, "Error: received %d bytes, <= metadata size %d!\n",
+        (void)fprintf(stderr, "Error: received %d bytes, <= metadata size %d!\n",
                 rx_size, meta_size);
         return -1;
     } else if (!end_flag &&
@@ -841,7 +842,7 @@ int encoder_open_session(ni_session_context_t *p_enc_ctx, int dst_codec_format,
     ret = ni_device_session_open(p_enc_ctx, NI_DEVICE_TYPE_ENCODER);
     if (ret != NI_RETCODE_SUCCESS)
     {
-        fprintf(stderr, "Error: encoder open session failure\n");
+        (void)fprintf(stderr, "Error: encoder open session failure\n");
     } else
     {
         printf("Encoder device %d session open successful\n", iXcoderGUID);
@@ -886,7 +887,7 @@ int uploader_open_session(ni_session_context_t *p_upl_ctx, int *iXcoderGUID,
     ret = ni_device_session_open(p_upl_ctx, NI_DEVICE_TYPE_UPLOAD);
     if (ret != NI_RETCODE_SUCCESS)
     {
-        fprintf(stderr, "Error: uploader_open_session failure!\n");
+        (void)fprintf(stderr, "Error: uploader_open_session failure!\n");
         return ret;
     }
     else
@@ -900,7 +901,7 @@ int uploader_open_session(ni_session_context_t *p_upl_ctx, int *iXcoderGUID,
     ret = ni_device_session_init_framepool(p_upl_ctx, poolsize, p2p);
     if (ret < 0)
     {
-        fprintf(stderr, "Error: Can't create frame pool\n");
+        (void)fprintf(stderr, "Error: Can't create frame pool\n");
         ni_device_session_close(p_upl_ctx, 1, NI_DEVICE_TYPE_UPLOAD);
     } else
     {
@@ -996,14 +997,14 @@ void parse_arguments(int argc, char *argv[], char *input_filename,
         {NULL, 0, NULL, 0},
     };
 
-    while ((opt = getopt_long(argc, argv, opt_string, long_options,
+    while ((opt = getopt_long(argc, argv, opt_string, long_options, // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
                               &opt_index)) != -1)
     {
         switch (opt)
         {
             case 'h':
                 print_usage();
-                exit(0);
+                exit(0); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
             case 'v':
                 printf("Release ver: %s\n"
                        "API ver:     %s\n"
@@ -1011,7 +1012,7 @@ void parse_arguments(int argc, char *argv[], char *input_filename,
                        "ID:          %s\n",
                        NI_XCODER_REVISION, LIBXCODER_API_VERSION,
                        NI_SW_RELEASE_TIME, NI_SW_RELEASE_ID);
-                exit(0);
+                exit(0); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
             case 'l':
                 log_level = arg_to_ni_log_level(optarg);
                 if (log_level != NI_LOG_INVALID)
@@ -1039,7 +1040,12 @@ void parse_arguments(int argc, char *argv[], char *input_filename,
                 break;
             case 's':
                 *arg_width = (int)strtol(optarg, &n, 10);
-                *arg_height = atoi(n + 1);
+                {
+                    int32_t tmp_height;
+                    if (ni_strtoi(n + 1, &tmp_height) != NI_RETCODE_SUCCESS)
+                        arg_error_exit("-s | --size", optarg);
+                    *arg_height = (int)tmp_height;
+                }
                 if ((*n != 'x') || (!*arg_width || !*arg_height))
                     arg_error_exit("-s | --size", optarg);
                 break;
@@ -1078,18 +1084,28 @@ void parse_arguments(int argc, char *argv[], char *input_filename,
                 ni_strcpy(output_filename, FILE_NAME_LEN, optarg);
                 break;
             case 'r':
-                if (!(atoi(optarg) >= 1))
+            {
+                int32_t tmp_repeat;
+                if (ni_strtoi(optarg, &tmp_repeat) != NI_RETCODE_SUCCESS)
                     arg_error_exit("-r | --repeat", optarg);
-                g_repeat = atoi(optarg);
+                if (!(tmp_repeat >= 1))
+                    arg_error_exit("-r | --repeat", optarg);
+                g_repeat = (int)tmp_repeat;
                 break;
+            }
             case 'w':
-                if (!(atoi(optarg) >= 1))
+            {
+                int32_t tmp_swapchain;
+                if (ni_strtoi(optarg, &tmp_swapchain) != NI_RETCODE_SUCCESS)
                     arg_error_exit("-w | --swapchain", optarg);
-                g_swapchain_size = atoi(optarg);
+                if (!(tmp_swapchain >= 1))
+                    arg_error_exit("-w | --swapchain", optarg);
+                g_swapchain_size = (int)tmp_swapchain;
                 break;
+            }
             default:
                 print_usage();
-                exit(1);
+                exit(1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
         }
     }
 
@@ -1097,13 +1113,13 @@ void parse_arguments(int argc, char *argv[], char *input_filename,
     if (!input_filename[0])
     {
         printf("Error: missing argument for -i | --input\n");
-        exit(-1);
+        exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
     }
 
     if (!output_filename[0])
     {
         printf("Error: missing argument for -o | --output\n");
-        exit(-1);
+        exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
     }
 
     // Check that the GPU card and Xcoder card numbers are different.
@@ -1111,13 +1127,13 @@ void parse_arguments(int argc, char *argv[], char *input_filename,
     if (*iXcoderGUID == *iGpuGUID)
     {
         printf("Error: card and gpucard arguments cannot be the same\n");
-        exit(-1);
+        exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
     }
 
     if (!(g_swapchain_size > 0 && g_swapchain_size <= MAX_SWAP_SIZE))
     {
         printf("Error: swapchain cannot be more than %d\n", MAX_SWAP_SIZE);
-        exit(-1);
+        exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
     }
 }
 
@@ -1157,7 +1173,7 @@ int main(int argc, char *argv[])
     // Get size of input file
     if (get_file_size(input_filename, &total_file_size) < 0)
     {
-        exit(-1);
+        exit(-1); // NOLINT(concurrency-mt-unsafe) - single-threaded CLI tool
     }
 
     data_left_size = total_file_size;
@@ -1168,7 +1184,7 @@ int main(int argc, char *argv[])
         ni_fopen(&p_file, output_filename, "wb");
         if (p_file == NULL)
         {
-            fprintf(stderr, "Error: cannot open %s\n", output_filename);
+            (void)fprintf(stderr, "Error: cannot open %s\n", output_filename);
             goto end;
         }
     }
@@ -1177,19 +1193,19 @@ int main(int argc, char *argv[])
 
     if (ni_device_session_context_init(&enc_ctx) < 0)
     {
-        fprintf(stderr, "Error: init encoder context error\n");
+        (void)fprintf(stderr, "Error: init encoder context error\n");
         return -1;
     }
 
     if (ni_device_session_context_init(&upl_ctx) < 0)
     {
-        fprintf(stderr, "Error: init uploader context error\n");
+        (void)fprintf(stderr, "Error: init uploader context error\n");
         return -1;
     }
 
     if (ni_device_session_context_init(&gpu_ctx) < 0)
     {
-        fprintf(stderr, "Error: init gpu uploader context error\n");
+        (void)fprintf(stderr, "Error: init gpu uploader context error\n");
         return -1;
     }
 
@@ -1254,7 +1270,7 @@ int main(int argc, char *argv[])
 
     if (input_file_fd < 0)
     {
-        fprintf(stderr, "Error: cannot open input file %s\n", input_filename);
+        (void)fprintf(stderr, "Error: cannot open input file %s\n", input_filename);
         goto end;
     }
 
@@ -1263,7 +1279,7 @@ int main(int argc, char *argv[])
                          &swapchain.gpu_frame[0], input_video_width,
                          input_video_height, &frame_size, &input_exhausted))
     {
-        fprintf(stderr, "Cannot render frame on source Quadra device\n");
+        (void)fprintf(stderr, "Cannot render frame on source Quadra device\n");
         goto end;
     }
 
@@ -1274,7 +1290,7 @@ int main(int argc, char *argv[])
 
         if (ret < 0)
         {
-            fprintf(stderr, "Cannot import dma buffer %d\n",ret);
+            (void)fprintf(stderr, "Cannot import dma buffer %d\n",ret);
             goto end;
         }
     }
@@ -1292,25 +1308,25 @@ int main(int argc, char *argv[])
     if (ni_encoder_init_default_params(&api_param, 30, 1, 200000, arg_width,
                                        arg_height, enc_ctx.codec_format) < 0)
     {
-        fprintf(stderr, "Error: encoder init default set up error\n");
+        (void)fprintf(stderr, "Error: encoder init default set up error\n");
         goto end;
     }
 
     // For P2P demo, change some of the encoding parameters from
     // the default. Enable low delay encoding.
-    if ((ret = ni_encoder_params_set_value(&api_param, "lowDelay", "1")) !=
-        NI_RETCODE_SUCCESS)
+    ret = ni_encoder_params_set_value(&api_param, "lowDelay", "1");
+    if (ret != NI_RETCODE_SUCCESS)
     {
-        fprintf(stderr, "Error: can't set low delay mode %d\n", ret);
+        (void)fprintf(stderr, "Error: can't set low delay mode %d\n", ret);
         goto end;
     }
 
     // Use a GOP preset of 9 which represents a GOP pattern of
     // IPPPPPPP....This will be low latency encoding.
-    if ((ret = ni_encoder_params_set_value(&api_param, "gopPresetIdx", "9")) !=
-        NI_RETCODE_SUCCESS)
+    ret = ni_encoder_params_set_value(&api_param, "gopPresetIdx", "9");
+    if (ret != NI_RETCODE_SUCCESS)
     {
-        fprintf(stderr, "Error: can't set gop preset %d\n", ret);
+        (void)fprintf(stderr, "Error: can't set gop preset %d\n", ret);
         goto end;
     }
 
@@ -1320,7 +1336,7 @@ int main(int argc, char *argv[])
         if (ni_encoder_params_set_value(&api_param, "videoFullRangeFlag", "1") !=
             NI_RETCODE_SUCCESS)
         {
-            fprintf(stderr, "Error: can't set video full range\n");
+            (void)fprintf(stderr, "Error: can't set video full range\n");
             goto end;
         }
 
@@ -1328,7 +1344,7 @@ int main(int argc, char *argv[])
         if (ni_encoder_params_set_value(&api_param, "colorPri", "1") !=
             NI_RETCODE_SUCCESS)
         {
-            fprintf(stderr, "Error: can't set color primaries\n");
+            (void)fprintf(stderr, "Error: can't set color primaries\n");
             goto end;
         }
 
@@ -1336,7 +1352,7 @@ int main(int argc, char *argv[])
         if (ni_encoder_params_set_value(&api_param, "colorSpc", "1") !=
             NI_RETCODE_SUCCESS)
         {
-            fprintf(stderr, "Error: can't set color space\n");
+            (void)fprintf(stderr, "Error: can't set color space\n");
             goto end;
         }
 
@@ -1344,7 +1360,7 @@ int main(int argc, char *argv[])
         if (ni_encoder_params_set_value(&api_param, "colorTrc", "13") !=
             NI_RETCODE_SUCCESS)
         {
-            fprintf(stderr, "Error: can't set color transfer characteristics\n");
+            (void)fprintf(stderr, "Error: can't set color transfer characteristics\n");
             goto end;
         }
     }
@@ -1355,7 +1371,7 @@ int main(int argc, char *argv[])
 
     if (ret < 0)
     {
-        fprintf(stderr, "Could not open encoder session\n");
+        (void)fprintf(stderr, "Could not open encoder session\n");
         goto end;
     }
 
@@ -1369,7 +1385,7 @@ int main(int argc, char *argv[])
         // Execute a P2P read into the frame
         if (ni_p2p_recv(&upl_ctx, &dma_addrs[swap_index], &p2p_frame) != NI_RETCODE_SUCCESS)
         {
-            fprintf(stderr, "Error: can't read frame\n");
+            (void)fprintf(stderr, "Error: can't read frame\n");
             break;
         }
 
@@ -1465,7 +1481,7 @@ end:
 
     if (p_file)
     {
-        fclose(p_file);
+        (void)fclose(p_file);
     }
 
     printf("All done\n");

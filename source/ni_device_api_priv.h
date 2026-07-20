@@ -259,7 +259,8 @@ typedef struct _ni_metadata_enc_frame
   uint8_t                inconsecutive_transfer;
   uint8_t                get_recon_frame_mode;
   uint16_t               hor_adjust_offset;
-  uint16_t               ui16Reserved[3];
+  uint8_t               timecode_present;
+  uint8_t               ui8Reserved[5];
 } ni_metadata_enc_frame_t;
 
 typedef struct _ni_metadata_enc_bstream_rev61
@@ -315,6 +316,31 @@ typedef struct _ni_metadata_enc_bstream
     uint16_t      cuInfoTableSize;
     uint16_t      aqInfoSize;
 } ni_metadata_enc_bstream_t;
+
+/**
+ * Raw timecode struct passed from host to FW when hrdEnable=1.
+ * All fields are uint32_t to guarantee identical layout on both the host
+ * and FW without platform-specific padding differences. Must match
+ * ni_timecode_raw_t in FW (hevcencapi.h) exactly.
+ * Size: 14 * 4 = 56 bytes.
+ */
+typedef struct _ni_enc_timecode_raw
+{
+  uint32_t nuit_field_based_flag;
+  uint32_t counting_type;
+  uint32_t full_timestamp_flag;
+  uint32_t discontinuity_flag;
+  uint32_t cnt_dropped_flag;
+  uint32_t n_frames;
+  uint32_t seconds_flag;
+  uint32_t seconds_value;
+  uint32_t minutes_flag;
+  uint32_t minutes_value;
+  uint32_t hours_flag;
+  uint32_t hours_value;
+  uint32_t time_offset_length;
+  uint32_t time_offset_value;
+} ni_timecode_raw_t;
 
 /*!****** encoder paramters *********************************************/
 
@@ -976,6 +1002,8 @@ typedef struct _ni_decoder_config_t
   uint32_t ui32SourceHeight;
   uint32_t ui32ErrRatioThreshold;
   uint8_t ui8SurviveStreamErr;
+  uint8_t ui8ExtendPoolSize;
+  uint8_t ui8DecoderMode;
 } ni_decoder_config_t;
 
 typedef struct _ni_ai_config_t
@@ -1010,14 +1038,30 @@ typedef struct _ni_network_buffer_info
     };
 } ni_network_buffer_info_t;
 
+/*
+ * ni_scaler_config_t — firmware wire format.
+ *
+ * DMA'd directly to the firmware and read as InstScalerParams
+ * (firmware/fp/inc/scaler_manager.h).  Binary layout MUST be identical:
+ *
+ *   offset  0  filterblit       (ui8FilterBlitType)
+ *   offset  1  numInputs        (ui8NumberOfInputs)
+ *   offset  2  scaler_param_b   (ui16ScaleParamB)
+ *   offset  4  scaler_param_c   (ui16ScaleParamC)
+ *   offset  6  kernel_taps      (ui8KernelTaps)
+ *   offset  7  ui8Reserved
+ *   offset  8  kernel_array[]   (ui16KernelArray, 306 bytes)
+ */
 typedef struct _ni_scaler_config
 {
-    uint8_t filterblit;
-    uint8_t numInputs;
+    uint8_t  filterblit;
+    uint8_t  numInputs;
     uint16_t scaler_param_b;
     uint16_t scaler_param_c;
-    uint8_t ui8Reserved[2];
-    uint32_t ui32Reserved[2];
+    uint8_t  kernel_taps;                              /* USER_KERNEL: active taps (1..5) */
+    uint8_t  ui8Reserved;
+    uint16_t kernel_array[2][NI_SCALER_KERNEL_POSITIONS * NI_SCALER_KERNEL_SLOTS]; /* 306 B */
+    uint16_t ui16Reserved[2];
 } ni_scaler_config_t;
 
 typedef struct _ni_ddr_priority_config
@@ -1587,6 +1631,7 @@ ni_retcode_t ni_device_config_ns_qos(ni_device_handle_t device_handle,
 
 ni_retcode_t ni_dump_log_single_core(ni_session_context_t *p_ctx, void* p_data, uint32_t core_id, bool gen_log_file);
 ni_retcode_t ni_dump_log_all_cores(ni_session_context_t *p_ctx, void* p_data, bool gen_log_file);
+ni_retcode_t ni_dump_log_artifacts(ni_session_context_t *p_ctx, bool gen_artifacts_file);
 ni_retcode_t ni_send_to_target_v2(ni_session_context_t *pSession, ni_frame_t *pSrcFrame, const ni_p2p_sgl_t *dmaAddrs);
 ni_retcode_t ni_recv_from_target(ni_session_context_t *pSession, const ni_p2p_sgl_t *dmaAddrs, ni_frame_t *pDstFrame);
 int lower_pixel_rate(const ni_load_query_t *pQuery, uint32_t ui32CurrentLowest);

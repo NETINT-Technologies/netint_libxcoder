@@ -1,6 +1,6 @@
 # NETINT Quadra Libxcoder README
 
-Libxcoder is the software driver for [NETINT Quadra Video Processing Units (VPU)](https://netint.com/products/)  
+Libxcoder is the software driver for [NETINT Quadra Video Processing Units (VPU)](https://netint.com/technology/codensity-g5/)  
 It contains APIs and tools for video processing and Quadra device management.
 
 The Libxcoder API can be interfaced with directly, or accesed via higher-level APIs/aplications such as [NETINT's FFmpeg fork](https://github.com/NETINT-Technologies/netint_ffmpeg).

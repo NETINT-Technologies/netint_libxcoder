@@ -63,6 +63,9 @@
 #include "ni_nvme.h"
 #include "ni_log.h"
 #include "ni_util.h"
+#if __linux__
+#include "ni_host_ts.h"
+#endif
 
 #if __linux__ || __APPLE__
 #ifndef _ANDROID
@@ -78,25 +81,26 @@ uint32_t g_xcoder_stop_process = 0;
 #define PCIE_GEN4_LINK_SPEED  16
 
 #if __linux__
-static int read_file_content(const char *path, char *buf, size_t bufsz)
+namespace {
+int read_file_content(const char *path, char *buf, size_t bufsz)
 {
     FILE *fp = fopen(path, "r");
-    int n = (bufsz > (size_t)INT_MAX) ? INT_MAX : (int)bufsz;
+    const int n = (bufsz > (size_t)INT_MAX) ? INT_MAX : (int)bufsz;
     if (!fp)
         return -1;
     if (!fgets(buf, n, fp))
     {
-        fclose(fp);
+        (void)fclose(fp);
         return -1;
     }
-    fclose(fp);
+    (void)fclose(fp);
     char *nl = strchr(buf, '\n');
     if (nl)
         *nl = '\0';
     return 0;
 }
 
-static int find_root_port_from_device(const char *device_bdf, char *root_port_bdf)
+int find_root_port_from_device(const char *device_bdf, char *root_port_bdf)
 {
     char block_path[PATH_MAX];
     char abs_path[PATH_MAX];
@@ -113,13 +117,13 @@ static int find_root_port_from_device(const char *device_bdf, char *root_port_bd
     if (!dir)
         return -1;
 
-    while ((entry = readdir(dir)))
+    while ((entry = readdir(dir))) // NOLINT(concurrency-mt-unsafe) - thread-local dir, no shared DIR*
     {
         addr_count = 0;
         if (strncmp(entry->d_name, "nvme", 4) != 0)
             continue;
 
-        snprintf(block_path, sizeof(block_path), "/sys/block/%s", entry->d_name);
+        (void)snprintf(block_path, sizeof(block_path), "/sys/block/%s", entry->d_name);
 
         if (realpath(block_path, abs_path) == NULL)
             continue;
@@ -133,7 +137,7 @@ static int find_root_port_from_device(const char *device_bdf, char *root_port_bd
             if (strlen(ptr) == PCI_BDF_STR_LEN)
             {
                 unsigned int d, b, dev, f;
-                if (sscanf(ptr, "%x:%x:%x.%x", &d, &b, &dev, &f) == 4)
+                if (sscanf(ptr, "%x:%x:%x.%x", &d, &b, &dev, &f) == 4) // NOLINT(cert-err34-c) - return value checked
                 {
                     if (addr_count < PCIE_ADDRS_MAX)
                     {
@@ -158,7 +162,7 @@ static int find_root_port_from_device(const char *device_bdf, char *root_port_bd
             if (!pcie_addrs[i])
                 continue;
 
-            snprintf(class_path, sizeof(class_path), "/sys/bus/pci/devices/%s/class", pcie_addrs[i]);
+            (void)snprintf(class_path, sizeof(class_path), "/sys/bus/pci/devices/%s/class", pcie_addrs[i]);
             if (read_file_content(class_path, class_buf, sizeof(class_buf)) != 0)
                 continue;
 
@@ -188,7 +192,7 @@ static int find_root_port_from_device(const char *device_bdf, char *root_port_bd
     return -1;
 }
 
-static int read_pcie_capability_sysfs(const char *bdf)
+int read_pcie_capability_sysfs(const char *bdf)
 {
     char path[PATH_MAX];
     char raw_buf[64] = {0};
@@ -196,7 +200,7 @@ static int read_pcie_capability_sysfs(const char *bdf)
     if (!bdf)
         return -1;
 
-    snprintf(path, sizeof(path), "/sys/bus/pci/devices/%s/max_link_speed", bdf);
+    (void)snprintf(path, sizeof(path), "/sys/bus/pci/devices/%s/max_link_speed", bdf);
     if (read_file_content(path, raw_buf, sizeof(raw_buf)) != 0)
         return -1;
 
@@ -204,12 +208,12 @@ static int read_pcie_capability_sysfs(const char *bdf)
         return -1;
 
     unsigned int speed_num = 0;
-    if (sscanf(raw_buf, "%u", &speed_num) != 1)
+    if (sscanf(raw_buf, "%u", &speed_num) != 1) // NOLINT(cert-err34-c) - return value checked
         return -1;
     return (int)speed_num;
 }
 
-static int get_pcie_gen3_on_gen4_status(const char *device_name, uint8_t fw_flavour)
+int get_pcie_gen3_on_gen4_status(const char *device_name, uint8_t fw_flavour)
 {
     char pcie[64] = {0};
     char host_port[64] = {0};
@@ -229,6 +233,7 @@ static int get_pcie_gen3_on_gen4_status(const char *device_name, uint8_t fw_flav
         return 1;
     return 0;
 }
+} // namespace
 #endif
 
 /*!******************************************************************************
@@ -367,28 +372,40 @@ int ni_rsrc_strcmp(const void * p_str, const void* p_str1)
     const char *r = (const char *)p_str1;
     int vl, vr;
 
+    if (!l || !r)
+    {
+        return (!l && !r) ? 0 : (!l ? -1 : 1);
+    }
+
     while (!isdigit(*l) && (*l) != '\0')
     {
         l++;
     }
-  while (!isdigit(*r) && (*r) != '\0')
-  {
-    r++;
-  }
-  vl = atoi(l);
-  vr = atoi(r);
-  if (vl == vr)
-  {
-    return 0;
-  }
-  else if (vl < vr)
-  {
-    return -1;
-  }
-  else
-  {
-    return 1;
-  }
+    while (!isdigit(*r) && (*r) != '\0')
+    {
+        r++;
+    }
+    {
+        char *end_l, *end_r;
+        vl = (int)strtol(l, &end_l, 10); // NOLINT(cert-err34-c)
+        vr = (int)strtol(r, &end_r, 10); // NOLINT(cert-err34-c)
+        if (end_l == l || end_r == r)
+        {
+            return strcmp((const char *)p_str, (const char *)p_str1);
+        }
+    }
+    if (vl == vr)
+    {
+        return 0;
+    }
+    else if (vl < vr)
+    {
+        return -1;
+    }
+    else
+    {
+        return 1;
+    }
 }
 
 /*!******************************************************************************
@@ -400,16 +417,16 @@ int ni_rsrc_strcmp(const void * p_str, const void* p_str1)
  *******************************************************************************/
 void ni_rsrc_get_lock_name(ni_device_type_t device_type, int32_t guid, char* p_name, size_t max_name_len)
 {
-    char type = g_device_type_chr[GET_XCODER_DEVICE_TYPE(device_type)];
+    const char type = g_device_type_chr[GET_XCODER_DEVICE_TYPE(device_type)];
     if (NULL != p_name)
     {
         if (strcmp(CODERS_SHM_NAME, "NI_QUADRA_SHM_CODERS") == 0)
         {
-          snprintf(p_name, max_name_len, "%s/NI_QUADRA_lck_%c%d", LOCK_DIR, type, guid);
+          (void)snprintf(p_name, max_name_len, "%s/NI_QUADRA_lck_%c%d", LOCK_DIR, type, guid);
         }
         else
         {
-          snprintf(p_name, max_name_len, "%s/NI_lck_%c%d", LOCK_DIR, type, guid);
+          (void)snprintf(p_name, max_name_len, "%s/NI_lck_%c%d", LOCK_DIR, type, guid);
         }
     }
 }
@@ -423,22 +440,23 @@ void ni_rsrc_get_lock_name(ni_device_type_t device_type, int32_t guid, char* p_n
  *******************************************************************************/
 void ni_rsrc_get_shm_name(ni_device_type_t device_type, int32_t guid, char* p_name, size_t max_name_len)
 {
-    char type = g_device_type_chr[GET_XCODER_DEVICE_TYPE(device_type)];
+    const char type = g_device_type_chr[GET_XCODER_DEVICE_TYPE(device_type)];
     /*! assume there is enough space allocated in name */
     if (NULL != p_name)
     {
         if (strcmp(CODERS_SHM_NAME, "NI_QUADRA_SHM_CODERS") == 0)
         {
-          snprintf(p_name, max_name_len, "NI_QUADRA_shm_%c%d", type, guid);
+          (void)snprintf(p_name, max_name_len, "NI_QUADRA_shm_%c%d", type, guid);
         }
         else
         {
-          snprintf(p_name, max_name_len, "NI_shm_%c%d", type, guid);
+          (void)snprintf(p_name, max_name_len, "NI_shm_%c%d", type, guid);
         }
     }
 }
 
-static void fill_device_info(ni_device_info_t *device_info,
+namespace {
+void fill_device_info(ni_device_info_t *device_info,
                              const int module_id,
                              const ni_device_handle_t device_handle,
                              const char device_name[NI_MAX_DEVICE_NAME_LEN],
@@ -492,25 +510,36 @@ static void fill_device_info(ni_device_info_t *device_info,
                              (ni_codec_t)hw_capability->codec_format,
                              device_type,
                              hw_capability);
-#if __linux__
     {
         ni_device_extra_info_t extra_info = {0};
         if (ni_query_extra_info(device_handle, &extra_info, device_capability->fw_rev) == NI_RETCODE_SUCCESS)
+        {
+            device_info->fw_flavour = extra_info.fw_flavour;
+#if __linux__
             gen3_on_gen4 = get_pcie_gen3_on_gen4_status(device_name, extra_info.fw_flavour);
+#endif
+        }
+#if __linux__
         if (gen3_on_gen4 < 0)
             gen3_on_gen4 = 0;
-    }
 #endif
+    }
     device_info->pcie_gen3_on_gen4_host = gen3_on_gen4;
 
 }
 
-static void fill_shared_memory(ni_device_queue_t *device_queue,
+void fill_shared_memory(ni_device_queue_t *device_queue,
                                const int should_match_rev,
                                const int existing_number_of_devices,
                                const char device_names[NI_MAX_DEVICE_CNT][NI_MAX_DEVICE_NAME_LEN])
 {
     int i, j, compatible_device_counter;
+
+    if (!device_queue)
+    {
+        ni_log(NI_LOG_ERROR, "ERROR: %s() device_queue is NULL\n", __func__);
+        return;
+    }
 
     memset(device_queue->xcoder_cnt, 0, sizeof(device_queue->xcoder_cnt));
     for (i = NI_DEVICE_TYPE_DECODER; i < NI_DEVICE_TYPE_XCODER_MAX; i++)
@@ -575,6 +604,7 @@ bool find_available_guid(ni_device_queue_t *device_queue, int device_type, int *
 
     return false;
 }
+} // namespace
 
 bool add_to_shared_memory(const char device_name[NI_MAX_DEVICE_NAME_LEN],
                           const bool device_open_should_succeed,
@@ -589,10 +619,6 @@ bool add_to_shared_memory(const char device_name[NI_MAX_DEVICE_NAME_LEN],
     ni_device_handle_t device_handle;
     ni_device_info_t device_info = {0};
     bool success = true;
-
-#if __linux__
-    int ret_ts;
-#endif
 
     device_handle = ni_device_open2(device_name, NI_DEVICE_READ_ONLY);
     if (device_handle == NI_INVALID_DEVICE_HANDLE)
@@ -646,7 +672,7 @@ bool add_to_shared_memory(const char device_name[NI_MAX_DEVICE_NAME_LEN],
             continue;
         }
 
-        j = device_queue->xcoder_cnt[i];
+        j = (int)device_queue->xcoder_cnt[i];
         guid = j ? device_queue->xcoders[i][j-1] + 1 : 0;
         if (guid >= NI_MAX_DEVICE_CNT && !find_available_guid(device_queue, i, &guid))
         {
@@ -679,14 +705,10 @@ bool add_to_shared_memory(const char device_name[NI_MAX_DEVICE_NAME_LEN],
                "Libxcoder supported FW API version\n", device_name,
                fw_api_ver_str);
     } else {
-        ni_log(NI_LOG_INFO, "Initialized %s\n", device_name, fw_api_ver_str);
+        ni_log(NI_LOG_INFO, "Initialized %s with FW API v%s\n", device_name, fw_api_ver_str);
     }
 #if __linux__
-  ret_ts = system("host_ts.sh");
-  if (ret_ts != 0)
-  {
-        ni_log(NI_LOG_ERROR,"Unable to send Host time\n");
-  }
+  ni_host_ts_set();
 #endif
 
 END:
@@ -775,7 +797,7 @@ void ni_rsrc_get_one_device_info(ni_device_info_t* p_device_info)
   ni_log(NI_LOG_DEBUG, "%s(): shm_name %s, lck_name %s\n", __func__, shm_name, lck_name);
 
   //Create a mutex for protecting the memory area
-  mutex_handle = CreateMutex(NULL,        // default security attributes
+  mutex_handle = CreateMutexA(NULL,        // default security attributes
                              FALSE,       // initially owned
                              lck_name);   // unnamed mutex
   if (NULL == mutex_handle)
@@ -794,13 +816,13 @@ void ni_rsrc_get_one_device_info(ni_device_info_t* p_device_info)
   InitializeSecurityDescriptor(&security_descriptor, SECURITY_DESCRIPTOR_REVISION);
   //security_descriptor.Control
 
-  map_file_handle = CreateFileMapping(
+  map_file_handle = CreateFileMappingA(
                       INVALID_HANDLE_VALUE,    // use paging file
                       NULL,                    // default security
                       PAGE_READWRITE,          // read/write access
                       0,                       // maximum object size (high-order DWORD)
                       sizeof(ni_device_info_t),// maximum object size (low-order DWORD)
-                      (LPCSTR)shm_name         // name of mapping object
+                      shm_name                 // name of mapping object
                     );
 
   if (NULL == map_file_handle)
@@ -925,7 +947,7 @@ int ni_rsrc_init_priv(const int should_match_rev,
     HANDLE lock = NULL;
     HANDLE map_file_handle = NULL;
     ni_device_queue_t* p_device_queue = NULL;
-    map_file_handle = CreateFileMapping(
+    map_file_handle = CreateFileMappingA(
         INVALID_HANDLE_VALUE,     // use paging file
         NULL,                     // default security
         PAGE_READWRITE,           // read/write access
@@ -971,7 +993,7 @@ int ni_rsrc_init_priv(const int should_match_rev,
         return NI_RETCODE_FAILURE;
     }
 
-    lock = CreateMutex(NULL, FALSE, CODERS_LCK_NAME);
+    lock = CreateMutexA(NULL, FALSE, CODERS_LCK_NAME);
     if (NULL == lock)
     {
         ni_log(NI_LOG_ERROR, "Init CreateMutex %s failed: %d\n", CODERS_LCK_NAME,
@@ -1010,10 +1032,12 @@ typedef struct {
 int32_t guid;
 char dev_name[NI_MAX_DEVICE_NAME_LEN];
 } guid_name_map_t;
+
+namespace {
 /**
  * @brief This function is used to check if the existing device queue matches the expectation.
 */
-static bool check_correctness_count(const ni_device_queue_t *existing_device_queue,
+bool check_correctness_count(const ni_device_queue_t *existing_device_queue,
                                     const int should_match_rev,
                                     const int existing_number_of_devices,
                                     const char device_names[NI_MAX_DEVICE_CNT][NI_MAX_DEVICE_NAME_LEN])
@@ -1144,7 +1168,7 @@ static bool check_correctness_count(const ni_device_queue_t *existing_device_que
     return true;
 }
 
-static bool check_device_queue(const ni_device_queue_t *existing_device_queue,
+bool check_device_queue(const ni_device_queue_t *existing_device_queue,
                                const int existing_number_of_devices,
                                const char device_names[NI_MAX_DEVICE_CNT][NI_MAX_DEVICE_NAME_LEN])
 {
@@ -1186,12 +1210,13 @@ static bool check_device_queue(const ni_device_queue_t *existing_device_queue,
 }
 
 #ifndef _ANDROID
-static void sigbus_handler(int signal)
+void sigbus_handler(int signal)
 {
+    (void)signal;
     siglongjmp(env, 1);
 }
 
-static void setup_signal_handler(struct sigaction *p, const int signum)
+void setup_signal_handler(struct sigaction *p, const int signum)
 {
     struct sigaction c;
 
@@ -1202,7 +1227,7 @@ static void setup_signal_handler(struct sigaction *p, const int signum)
                "ERROR: %s(): Could not initialize signal set: %d\n",
                __func__,
                NI_ERRNO);
-        exit(EXIT_FAILURE);
+        _Exit(EXIT_FAILURE);
     }
     c.sa_handler = sigbus_handler;
 
@@ -1212,7 +1237,7 @@ static void setup_signal_handler(struct sigaction *p, const int signum)
                "ERROR: %s(): Could not save previous signal handler: %d\n",
                __func__,
                NI_ERRNO);
-        exit(EXIT_FAILURE);
+        _Exit(EXIT_FAILURE);
     }
 
     if (sigaction(signum, &c, NULL) == -1)
@@ -1221,13 +1246,13 @@ static void setup_signal_handler(struct sigaction *p, const int signum)
                "ERROR: %s(): Could not register signal handler: %d\n",
                __func__,
                NI_ERRNO);
-        exit(EXIT_FAILURE);
+        _Exit(EXIT_FAILURE);
     }
 }
 #endif
 
-static bool check_correctness(const ni_device_queue_t *existing_device_queue,
-                              const int should_match_rev,
+bool check_correctness(const ni_device_queue_t *existing_device_queue,
+                       const int should_match_rev,
                               const int existing_number_of_devices,
                               const char device_names[NI_MAX_DEVICE_CNT][NI_MAX_DEVICE_NAME_LEN])
 {
@@ -1270,13 +1295,14 @@ end:
                "ERROR: %s(): Could not restore previous signal handler: %d\n",
                __func__,
                NI_ERRNO);
-        exit(EXIT_FAILURE);
+        _Exit(EXIT_FAILURE);
     }
 #endif
     return result;
 }
+} // namespace
 
-int ni_rsrc_init_priv(const int should_match_rev,
+int ni_rsrc_init_priv(const int should_match_rev, // NOLINT(misc-no-recursion) - bounded: retries up to limit_depth (default 3) after wiping stale SHM
                       const int existing_number_of_devices,
                       const char existing_device_names[NI_MAX_DEVICE_CNT][NI_MAX_DEVICE_NAME_LEN],
                       int limit_depth)
@@ -1285,8 +1311,8 @@ int ni_rsrc_init_priv(const int should_match_rev,
     int lck_fd = -1;
     int shm_fd = -1;
     ni_rsrc_shm_state state = NI_RSRC_SHM_IS_INVALID;
-    int flags = O_CREAT | O_RDWR | O_CLOEXEC;
-    mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP;
+    const int flags = O_CREAT | O_RDWR | O_CLOEXEC;
+    const mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP;
     ni_device_queue_t *p_device_queue = NULL;
 
     if ((ni_rsrc_try_get_shm_lock(CODERS_LCK_NAME, flags, mode, &lck_fd) < 0) ||
@@ -1379,8 +1405,8 @@ void ni_rsrc_get_one_device_info (ni_device_info_t * p_device_info)
   int32_t shm_fd = -1;
   ni_rsrc_shm_state state = NI_RSRC_SHM_IS_INVALID;
   int32_t lock = -1;
-  int flags = O_CREAT | O_RDWR | O_CLOEXEC;
-  mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP;
+  const int flags = O_CREAT | O_RDWR | O_CLOEXEC;
+  const mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP;
   char shm_name[32] = { 0 };
   char lck_name[32] = { 0 };
   ni_device_info_t * p_coder_info_dst = NULL;
@@ -1441,13 +1467,11 @@ END:
   }
 #endif
 
+  /* lock is always valid here: failure to acquire lock exits via return, not LRETURN */
   if (lockf(lock, F_ULOCK, 0) < 0) {
     ni_log(NI_LOG_ERROR, "Will exit from %s(), but failed to unlock lck_fd for %s\n", __func__, shm_name);
   }
-
-  if (lock >= 0) {
-      close(lock);
-  }
+  close(lock);
 }
 
 /*!******************************************************************************
@@ -1466,10 +1490,10 @@ void ni_rsrc_update_record(ni_device_context_t *p_device_context, ni_session_con
         return;
     }
 
-  p_device_context->p_device_info->load = p_session_context->load_query.current_load;
+  p_device_context->p_device_info->load = (int)p_session_context->load_query.current_load;
   p_device_context->p_device_info->active_num_inst = p_session_context->load_query.total_contexts;
   // Now we get the model load from the FW
-  p_device_context->p_device_info->model_load = p_session_context->load_query.fw_model_load;
+  p_device_context->p_device_info->model_load = (int)p_session_context->load_query.fw_model_load;
   if (0 == p_device_context->p_device_info->active_num_inst)
   {
     p_device_context->p_device_info->load = 0;
@@ -1532,11 +1556,11 @@ void get_dev_pcie_addr(char *device_name,
 
   char *start = device_name + 5;
 
-  snprintf(path, sizeof(path), "/sys/block/%s", start);
+  (void)snprintf(path, sizeof(path), "/sys/block/%s", start);
   ni_log2(NULL, NI_LOG_DEBUG,"path:%s\n", path);
 
   char target[PATH_MAX];
-  ssize_t len = readlink(path, target, sizeof(target) - 1);
+  const ssize_t len = readlink(path, target, sizeof(target) - 1);
   if (len == -1) {
       perror("readlink");
       return;
@@ -1570,7 +1594,7 @@ void get_dev_pcie_addr(char *device_name,
     goto end;
   }
   domain[4] = slot[2] = dev[2] = func[1] = '\0';
-  sscanf(pcie, "%4[^:]:%2[^:]:%2[^.].%1s", domain, slot, dev, func);
+  (void)sscanf(pcie, "%4[^:]:%2[^:]:%2[^.].%1s", domain, slot, dev, func);
   ni_log2(NULL, NI_LOG_DEBUG, "\t%d: Domain: %s, Slot: %s, Device: %s, Function: %s\n", i, domain, slot, dev, func);
 end:
   return;
@@ -1850,7 +1874,8 @@ static ni_retcode_t android_remove_all_shm()
 }
 
 #else
-static ni_retcode_t linux_open_shm(const char *shm_name,
+namespace {
+ni_retcode_t linux_open_shm(const char *shm_name,
                                    int shm_size,
                                    ni_rsrc_shm_state *state,
                                    int *shm_fd)
@@ -1897,6 +1922,7 @@ static ni_retcode_t linux_open_shm(const char *shm_name,
 
   return NI_RETCODE_SUCCESS;
 }
+} // namespace
 #endif
 
 /*!******************************************************************************
@@ -2021,6 +2047,7 @@ ni_retcode_t ni_rsrc_munmap_shm(void *shm_addr,
 ni_retcode_t ni_rsrc_remove_shm(const char *shm_name,
                                 int shm_size)
 {
+  (void)shm_size;
 #ifdef __OPENHARMONY__
   return openharmony_remove_shm(shm_name, shm_size);
 #elif defined(_ANDROID)
@@ -2059,12 +2086,12 @@ ni_retcode_t ni_rsrc_remove_all_shm()
     return NI_RETCODE_FAILURE;
   }
 
-  while ((dirent = readdir(dir)) != NULL) {
+  while ((dirent = readdir(dir)) != NULL) { // NOLINT(concurrency-mt-unsafe) - thread-local dir, no shared DIR*
     if (strncmp(dirent->d_name, "NI_", 3) != 0) {
       continue;
     }
 
-    snprintf(path_to_remove, PATH_MAX, "%s/%s", LOCK_DIR, dirent->d_name);
+    (void)snprintf(path_to_remove, PATH_MAX, "%s/%s", LOCK_DIR, dirent->d_name);
 
 #ifndef _ANDROID
     if (strncasecmp(dirent->d_name, "NI_SHM", 6) == 0) {
@@ -2076,7 +2103,7 @@ ni_retcode_t ni_rsrc_remove_all_shm()
     }
 #endif
 
-    remove(path_to_remove);
+    (void)remove(path_to_remove);
   }
 
 #ifdef _ANDROID

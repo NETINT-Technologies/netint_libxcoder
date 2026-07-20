@@ -50,24 +50,18 @@
 #include "ni_rsrc_priv.h"
 #include "ni_util.h"
 
-static const char *ni_codec_format_str[] = {"H.264", "H.265", "VP9", "JPEG",
-                                            "AV1"};
-static const char *ni_dec_name_str[] = {"h264_ni_quadra_dec", "h265_ni_quadra_dec",
-                                        "vp9_ni_quadra_dec", "jpeg_ni_quadra_dec"};
-static const char *ni_enc_name_str[] = {"h264_ni_quadra_enc", "h265_ni_quadra_enc", "empty",
-                                        "jpeg_ni_quadra_enc", "av1_ni_quadra_enc"};
-
-#ifndef DEPRECATION_AS_ERROR
-NI_DEPRECATED char **g_xcoder_refresh_dev_names = NULL;
-NI_DEPRECATED int g_xcoder_refresh_dev_count = 0;
-NI_DEPRECATED bool g_device_in_ctxt = false;
-NI_DEPRECATED ni_device_handle_t g_dev_handle = NI_INVALID_DEVICE_HANDLE;
-#endif
+namespace {
+const char *ni_codec_format_str[] = {"H.264", "H.265", "VP9", "JPEG",
+                                     "AV1"};
+const char *ni_dec_name_str[] = {"h264_ni_quadra_dec", "h265_ni_quadra_dec",
+                                 "vp9_ni_quadra_dec", "jpeg_ni_quadra_dec"};
+const char *ni_enc_name_str[] = {"h264_ni_quadra_enc", "h265_ni_quadra_enc", "empty",
+                                 "jpeg_ni_quadra_enc", "av1_ni_quadra_enc"};
 
 // return true if string key is found in array of strings, false otherwise
-static bool is_str_in_str_array(const char key[],
-                                char arr[][NI_MAX_DEVICE_NAME_LEN],
-                                int array_size)
+bool is_str_in_str_array(const char key[],
+                         char arr[][NI_MAX_DEVICE_NAME_LEN],
+                         int array_size)
 {
     int i;
 
@@ -80,6 +74,14 @@ static bool is_str_in_str_array(const char key[],
     }
     return false;
 }
+} // namespace
+
+#ifndef DEPRECATION_AS_ERROR
+NI_DEPRECATED char **g_xcoder_refresh_dev_names = NULL;
+NI_DEPRECATED int g_xcoder_refresh_dev_count = 0;
+NI_DEPRECATED bool g_device_in_ctxt = false;
+NI_DEPRECATED ni_device_handle_t g_dev_handle = NI_INVALID_DEVICE_HANDLE;
+#endif
 
 void print_device(ni_device_t *p_device)
 {
@@ -289,7 +291,7 @@ ni_retcode_t ni_rsrc_refresh(int should_match_rev)
     if (xcoder_refresh_dev_names) {
         for (i = 0; i < xcoder_refresh_dev_count; i++)
             free(xcoder_refresh_dev_names[i]);
-        free(xcoder_refresh_dev_names);
+        free(reinterpret_cast<void*>(xcoder_refresh_dev_names));
         xcoder_refresh_dev_names = NULL;
     }
     return NI_RETCODE_SUCCESS;
@@ -403,7 +405,7 @@ ni_device_pool_t* ni_rsrc_get_device_pool(void)
   HANDLE mutex_handle = NULL;
 
   //Create a mutex for protecting the memory area
-  mutex_handle = CreateMutex(NULL,             // default security attributes
+  mutex_handle = CreateMutexA(NULL,             // default security attributes
                              FALSE,            // initially owned
                              CODERS_LCK_NAME   // unnamed mutex
   );
@@ -420,7 +422,7 @@ ni_device_pool_t* ni_rsrc_get_device_pool(void)
       ni_log(NI_LOG_ERROR, "ERROR: Failed to obtain mutex: %p\n", mutex_handle);
   }
 
-  map_file_handle = OpenFileMapping(
+  map_file_handle = OpenFileMappingA(
       FILE_MAP_ALL_ACCESS,   // read/write access
       FALSE,                 // do not inherit the name
       CODERS_SHM_NAME        // name of mapping object
@@ -565,7 +567,7 @@ ni_device_context_t* ni_rsrc_get_device_context(ni_device_type_t device_type, in
   ni_rsrc_get_shm_name(device_type, guid, shm_name, sizeof(shm_name));
   ni_rsrc_get_lock_name(device_type, guid, lck_name, sizeof(lck_name));
   //Create a mutex for protecting the memory area
-  mutex_handle = CreateMutex(NULL,        // default security attributes
+  mutex_handle = CreateMutexA(NULL,        // default security attributes
                              FALSE,       // initially owned
                              lck_name);   // unnamed mutex
 
@@ -582,10 +584,10 @@ ni_device_context_t* ni_rsrc_get_device_context(ni_device_type_t device_type, in
              "obtain mutex: %p\n", mutex_handle);
   }
 
-  map_file_handle = OpenFileMapping(
+  map_file_handle = OpenFileMappingA(
                                       FILE_MAP_ALL_ACCESS,   // read/write access
                                       FALSE,                 // do not inherit the name
-                                      (LPCSTR)shm_name
+                                      shm_name
                                    );               // name of mapping object
 
   if (NULL == map_file_handle)
@@ -745,7 +747,8 @@ NI_DEPRECATED int ni_rsrc_get_local_device_list(char ni_devices[][NI_MAX_DEVICE_
  //}//while brace below will end this
 #endif
 
-  if (NULL == (FD = opendir(dir_name)))
+  FD = opendir(dir_name);
+  if (NULL == FD)
   {
 
 #if defined(_ANDROID) || defined(__OPENHARMONY__)
@@ -764,7 +767,7 @@ NI_DEPRECATED int ni_rsrc_get_local_device_list(char ni_devices[][NI_MAX_DEVICE_
   }
 
   /* collect all the available NVMe devices and sort */
-  while ((in_file = readdir(FD)))
+  while ((in_file = readdir(FD))) // NOLINT(concurrency-mt-unsafe) - thread-local FD, no shared DIR*
   {
       /*! skip current and parent directory */
       if (!strcmp(in_file->d_name, ".") || !strcmp(in_file->d_name, ".."))
@@ -778,7 +781,7 @@ NI_DEPRECATED int ni_rsrc_get_local_device_list(char ni_devices[][NI_MAX_DEVICE_
       {
         if (nvme_dev_cnt < 200)
         {
-            int write_len = snprintf(nvme_devices[nvme_dev_cnt],
+            const int write_len = snprintf(nvme_devices[nvme_dev_cnt],
                                         NI_MAX_DEVICE_NAME_LEN - 6, "%s/%s",
                                         dir_name, in_file->d_name);
             if (write_len < 0 || write_len >= (NI_MAX_DEVICE_NAME_LEN - 6))
@@ -969,7 +972,8 @@ int ni_rsrc_get_local_device_list2(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
  //}//while brace below will end this
 #endif
 
-  if (NULL == (FD = opendir(dir_name)))
+  FD = opendir(dir_name);
+  if (NULL == FD)
   {
 
 #ifdef _ANDROID
@@ -988,7 +992,7 @@ int ni_rsrc_get_local_device_list2(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
   }
 
   /* collect all the available NVMe devices and sort */
-  while ((in_file = readdir(FD)))
+  while ((in_file = readdir(FD))) // NOLINT(concurrency-mt-unsafe) - thread-local FD, no shared DIR*
   {
       /*! skip current and parent directory */
       if (!strcmp(in_file->d_name, ".") || !strcmp(in_file->d_name, ".."))
@@ -1002,7 +1006,7 @@ int ni_rsrc_get_local_device_list2(char ni_devices[][NI_MAX_DEVICE_NAME_LEN],
       {
         if (nvme_dev_cnt < 200)
         {
-            int write_len = snprintf(nvme_devices[nvme_dev_cnt],
+            const int write_len = snprintf(nvme_devices[nvme_dev_cnt],
                                         NI_MAX_DEVICE_NAME_LEN - 6, "%s/%s",
                                         dir_name, in_file->d_name);
             if (write_len < 0 || write_len >= (NI_MAX_DEVICE_NAME_LEN - 6))
@@ -1116,8 +1120,8 @@ ni_device_pool_t* ni_rsrc_get_device_pool(void)
 {
   int shm_fd = -1;
   ni_rsrc_shm_state state = NI_RSRC_SHM_IS_INVALID;
-  int flags = O_RDWR | O_CLOEXEC;
-  mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP;
+  const int flags = O_RDWR | O_CLOEXEC;
+  const mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP;
   ni_device_queue_t* p_device_queue = NULL;
   ni_lock_handle_t lock;
   ni_device_pool_t* p_device_pool = NULL;
@@ -1196,7 +1200,7 @@ int ni_rsrc_init(int should_match_rev, int timeout_seconds)
     char api_version[5];
     int number_of_devices;
     uint32_t runtime;
-    int limit_depth = 3;
+    const int limit_depth = 3;
     int ret;
 
     runtime = 0;
@@ -1222,9 +1226,10 @@ int ni_rsrc_init(int should_match_rev, int timeout_seconds)
                        "and exit without wait\n");
                 return NI_RETCODE_ERROR_RESOURCE_UNAVAILABLE;
             }
-            sleep(1);
+            ni_usleep(1000000);
             runtime += 1;
-            if (runtime >= (uint32_t)timeout_seconds)
+            /* timeout_seconds == -1 means wait indefinitely; skip timeout check */
+            if (timeout_seconds != -1 && runtime >= (uint32_t)timeout_seconds)
             {
                 ni_log(NI_LOG_ERROR,
                        "Timeout exceeded/reached after %u seconds!\n",
@@ -1273,8 +1278,8 @@ ni_device_context_t* ni_rsrc_get_device_context(ni_device_type_t device_type, in
   int shm_fd = -1;
   ni_rsrc_shm_state state = NI_RSRC_SHM_IS_INVALID;
   int lock;
-  int flags = O_RDWR | O_CLOEXEC;
-  mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP;
+  const int flags = O_RDWR | O_CLOEXEC;
+  const mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP;
   char shm_name[32] = { 0 };
   char lck_name[32] = { 0 };
   ni_device_context_t *p_device_context = NULL;
@@ -1406,7 +1411,7 @@ ni_retcode_t ni_rsrc_list_devices(ni_device_type_t device_type,
   b_release_pool_mtx = true;
 
   p_device_queue = p_device_pool->p_device_queue;
-  count = p_device_queue->xcoder_cnt[device_type];
+  count = (int)p_device_queue->xcoder_cnt[device_type];
 
   *p_device_count=0;
   for (i = 0; i < count; i++)
@@ -1526,7 +1531,7 @@ ni_retcode_t ni_rsrc_list_all_devices2(ni_device_t* p_device, bool list_uninitia
 
     /* Grab initialized devices. */
 
-    ni_log_level_t log_level = ni_log_get_level();
+    const ni_log_level_t log_level = ni_log_get_level();
 
     if (list_uninitialized)
     {
@@ -1557,7 +1562,7 @@ ni_retcode_t ni_rsrc_list_all_devices2(ni_device_t* p_device, bool list_uninitia
     /* Retrieve uninitialized devices. */
 
     char dev_names[NI_MAX_DEVICE_CNT][NI_MAX_DEVICE_NAME_LEN] = {0};
-    int dev_count = ni_rsrc_get_local_device_list2(dev_names, NI_MAX_DEVICE_CNT,
+    const int dev_count = ni_rsrc_get_local_device_list2(dev_names, NI_MAX_DEVICE_CNT,
                                                     NULL, 0);
 
     ni_device_capability_t capability;
@@ -1618,6 +1623,11 @@ ni_retcode_t ni_rsrc_list_all_devices2(ni_device_t* p_device, bool list_uninitia
                                            not initialized */
 
             ni_query_fl_fw_versions(fd, p_dev_info);
+            /* load FW flavour for an uninitialized card */
+            ni_device_extra_info_t extra_info = {0};
+            p_dev_info->fw_flavour =
+                (ni_query_extra_info(fd, &extra_info, capability.fw_rev) == NI_RETCODE_SUCCESS)
+                ? extra_info.fw_flavour : (uint8_t)'-';
         }
 
         ni_device_close(fd);
@@ -1865,7 +1875,7 @@ int ni_rsrc_get_device_by_block_name(const char *blk_name,
     lockf(p_device_pool->lock, F_LOCK, 0);
 #endif
 
-    num_coders = p_device_pool->p_device_queue->xcoder_cnt[device_type];
+    num_coders = (int)p_device_pool->p_device_queue->xcoder_cnt[device_type];
 
     for (i = 0; i < num_coders; i++)
     {
@@ -2716,7 +2726,7 @@ int ni_rsrc_lock_and_open(int device_type, ni_lock_handle_t* lock)
   int status = NI_RETCODE_ERROR_LOCK_DOWN_DEVICE;
   char errmsg[NI_ERRNO_LEN] = {0};
 #ifdef _WIN32
-  *lock = CreateMutex(NULL, FALSE, XCODERS_RETRY_LCK_NAME[device_type]);
+  *lock = CreateMutexA(NULL, FALSE, XCODERS_RETRY_LCK_NAME[device_type]);
 
   if (NULL == *lock)
   {
@@ -2796,13 +2806,14 @@ int ni_rsrc_lock_and_open(int device_type, ni_lock_handle_t* lock)
  *******************************************************************************/
 int ni_rsrc_unlock(int device_type, ni_lock_handle_t lock)
 {
+  (void)device_type;
   if (lock == NI_INVALID_LOCK_HANDLE)
   {
       return NI_RETCODE_FAILURE;
   }
 
   int count = 0;
-  ni_lock_handle_t status = NI_INVALID_LOCK_HANDLE;
+  bool unlocked = false;
   do
   {
       if (count >= 1)
@@ -2810,12 +2821,9 @@ int ni_rsrc_unlock(int device_type, ni_lock_handle_t lock)
           ni_usleep(LOCK_WAIT);
       }
 #ifdef _WIN32
-      if (ReleaseMutex(lock))
-      {
-          status = (ni_lock_handle_t)(0);
-      }
+      unlocked = (ReleaseMutex(lock) != 0);
 #else
-      status = lockf(lock, F_ULOCK, 0);
+      unlocked = (lockf(lock, F_ULOCK, 0) == 0);
 #endif
       count++;
       if (count > MAX_LOCK_RETRY)
@@ -2828,7 +2836,7 @@ int ni_rsrc_unlock(int device_type, ni_lock_handle_t lock)
 #endif
           return NI_RETCODE_ERROR_UNLOCK_DEVICE;
       }
-  } while (status != (ni_lock_handle_t)(0));
+  } while (!unlocked);
 
 #ifdef _WIN32
   CloseHandle(lock);
@@ -2880,17 +2888,26 @@ int ni_rsrc_get_numa_node(char *device_name)
     return ret;
   }
   ptr = device_name + 5;
-  snprintf(cmd, sizeof(cmd) - 1, "cat /sys/block/%s/device/*/numa_node",ptr);
-  cmd_fp = popen(cmd, "r");
+  (void)snprintf(cmd, sizeof(cmd) - 1, "cat /sys/block/%s/device/*/numa_node",ptr);
+  cmd_fp = popen(cmd, "r"); // NOLINT(cert-env33-c) - constant command string, required for device detection
   if (!cmd_fp)
   {
     return ret;
   }
-  if (fgets(cmd_ret, sizeof(cmd_ret)/sizeof(cmd_ret[0]), cmd_fp) == 0)
+  if (fgets(cmd_ret, sizeof(cmd_ret)/sizeof(cmd_ret[0]), cmd_fp) == NULL)
   {
     goto get_numa_node_ret;
   }
-  ret = atoi(cmd_ret);
+  {
+    int32_t tmp_numa;
+    if (ni_strtoi(cmd_ret, &tmp_numa) != NI_RETCODE_SUCCESS)
+    {
+      ni_log(NI_LOG_ERROR, "%s: invalid numa node value '%s'\n",
+             __func__, cmd_ret);
+      goto get_numa_node_ret;
+    }
+    ret = (int)tmp_numa;
+  }
 
 get_numa_node_ret:
   pclose(cmd_fp);
@@ -2898,7 +2915,8 @@ get_numa_node_ret:
 #endif
 }
 
-static int int_cmp(const void *a, const void *b)
+namespace {
+int int_cmp(const void *a, const void *b)
 {
   const int *ia = (const int *)a;
   const int *ib = (const int *)b;
@@ -2906,7 +2924,7 @@ static int int_cmp(const void *a, const void *b)
   /* integer comparison: returns negative if b > a , 0 if a == b,and positive if a > b */
 }
 
-static int ni_hw_device_info_quadra_threshold_param_t_compare(const void *pl, const void *pr)
+int ni_hw_device_info_quadra_threshold_param_t_compare(const void *pl, const void *pr)
 {
     const ni_hw_device_info_quadra_threshold_param_t *ll = (const ni_hw_device_info_quadra_threshold_param_t *)pl;
     const ni_hw_device_info_quadra_threshold_param_t *rr = (const ni_hw_device_info_quadra_threshold_param_t *)pr;
@@ -2927,10 +2945,10 @@ static int ni_hw_device_info_quadra_threshold_param_t_compare(const void *pl, co
 *
 *  \return task decoder load
 ***********************************************************************************************/
-static int check_hw_info_decoder_need_load(ni_hw_device_info_quadra_decoder_param_t *decoder_param)
+int check_hw_info_decoder_need_load(ni_hw_device_info_quadra_decoder_param_t *decoder_param)
 {
     int factor_8_10 = 1;
-    uint32_t resolution = decoder_param->h * decoder_param->w;
+    const uint32_t resolution = decoder_param->h * decoder_param->w;
     if(decoder_param->bit_8_10 == 10)
     {
         factor_8_10 = 2;
@@ -2949,7 +2967,7 @@ static int check_hw_info_decoder_need_load(ni_hw_device_info_quadra_decoder_para
 *
 *  \return task encoder load
 ****************************************************************************************/
-static int check_hw_info_encoder_need_load(ni_hw_device_info_quadra_encoder_param_t *encoder_param)
+int check_hw_info_encoder_need_load(ni_hw_device_info_quadra_encoder_param_t *encoder_param)
 {
     double factor = 1.0;
     double factor_codec = 1.0;
@@ -2959,7 +2977,7 @@ static int check_hw_info_encoder_need_load(ni_hw_device_info_quadra_encoder_para
     double factor_8_10_bit = 1.0;
     double factor_720p = 1.0;
 
-    int resolution = (int)(encoder_param->w * encoder_param->h);
+    const int resolution = (int)(encoder_param->w * encoder_param->h);
 
 
     if(encoder_param->code_format == 3)//STD_JPGE
@@ -2997,9 +3015,9 @@ static int check_hw_info_encoder_need_load(ni_hw_device_info_quadra_encoder_para
     //ENC_TOTAL_BIT_VOLUME_1_SEC (3840 * 2160 * 60ULL)
     //PERF_MODEL_LOAD_PERCENT = ((ENC_TOTAL_BIT_VOLUME_1_SEC / 100) * ENCODER_MULTICORE_NUM)
     //encoedr_need_load = sample_model_load/PERF_MODEL_LOAD_PERCENT
-    return uint32_t(
+    return (int)(
                     ((uint32_t)((uint32_t)factor*encoder_param->fps * resolution)) /
-                                ((3840 * 2160 * 60ULL) / 100 * 4));
+                                ((3840ULL * 2160 * 60) / 100 * 4));
 }
 
 /*!*****************************************************************************
@@ -3014,16 +3032,16 @@ static int check_hw_info_encoder_need_load(ni_hw_device_info_quadra_encoder_para
 *
 *  \return task shared memeory uasge buffer scale
 ********************************************************************************/
-static int check_hw_info_shared_mem_calculate_b_scale(int h,int w,int bit_8_10,int rgba)
+int check_hw_info_shared_mem_calculate_b_scale(int h,int w,int bit_8_10,int rgba)
 {
     const int stride = 128;
-    int estimated_yuv_size = rgba ?
+    const int estimated_yuv_size = rgba ?
                                 w * h * 4 :
                                 bit_8_10 == 8 ?
                                     ( ((w + stride - 1)/stride)*stride + ((w/2 + stride - 1)/stride)*stride ) * h:
                                     ( ((w * 2 + stride - 1)/stride)*stride + ((w + stride - 1)/stride)*stride ) * h;
     const int b_unit = 1601536;//Bin_Unit_Size
-    int b_scale = (estimated_yuv_size + b_unit -1) / b_unit;
+    const int b_scale = (estimated_yuv_size + b_unit -1) / b_unit;
     return b_scale;
 }
 
@@ -3036,7 +3054,7 @@ static int check_hw_info_shared_mem_calculate_b_scale(int h,int w,int bit_8_10,i
 *
 *  \return task encoder shared memeory uasge
 ********************************************************************************/
-static int check_hw_info_encoder_shared_mem_usage(const ni_hw_device_info_quadra_encoder_param_t *encoder_param)
+int check_hw_info_encoder_shared_mem_usage(const ni_hw_device_info_quadra_encoder_param_t *encoder_param)
 {
     // const int p_1080 = 2073600;
     // const int p_1440 = 3686400;
@@ -3057,13 +3075,13 @@ static int check_hw_info_encoder_shared_mem_usage(const ni_hw_device_info_quadra
 
     const int v32_ofCores_calculate = 0;
 
-    int b_counts = (int)(v32_ofCores_calculate +
+    const int b_counts = (int)(v32_ofCores_calculate +
                     ((encoder_param->lookaheadDepth > 0) ? encoder_param->lookaheadDepth + 8/2 + v32_ofCores_calculate : 0 )+
                     8 +
                     (encoder_param->uploader ? 1 : 0) * 3 +
                     1) * 1;
-    int b_scale = check_hw_info_shared_mem_calculate_b_scale(encoder_param->h, encoder_param->w,
-                                                             encoder_param->bit_8_10, encoder_param->rgba);
+    const int b_scale = check_hw_info_shared_mem_calculate_b_scale((int)encoder_param->h, (int)encoder_param->w,
+                                                             (int)encoder_param->bit_8_10, (int)encoder_param->rgba);
     return  b_scale * b_counts;
 
 }
@@ -3078,7 +3096,7 @@ static int check_hw_info_encoder_shared_mem_usage(const ni_hw_device_info_quadra
 *
 *  \return task decoder shared memeory uasge
 ********************************************************************************/
-static int check_hw_info_decoder_shared_mem_usage(const ni_hw_device_info_quadra_decoder_param_t *decoder_param,int estimated_max_dpb)
+int check_hw_info_decoder_shared_mem_usage(const ni_hw_device_info_quadra_decoder_param_t *decoder_param,int estimated_max_dpb)
 {
     // const int p_1080 = 2073600;
     // const int p_1440 = 3686400;
@@ -3091,11 +3109,11 @@ static int check_hw_info_decoder_shared_mem_usage(const ni_hw_device_info_quadra
     const int hw_frame = decoder_param->hw_frame;
 
     const int v30_xlsx = 0;
-    int b_counts = 1 * (v30_xlsx +
+    const int b_counts = 1 * (v30_xlsx +
                         (hw_frame ? 0 : 1)*3 +
                         estimated_max_dpb);
-    int b_scale = check_hw_info_shared_mem_calculate_b_scale(decoder_param->h, decoder_param->w,
-                                                             decoder_param->bit_8_10, decoder_param->rgba);
+    const int b_scale = check_hw_info_shared_mem_calculate_b_scale((int)decoder_param->h, (int)decoder_param->w,
+                                                             (int)decoder_param->bit_8_10, (int)decoder_param->rgba);
     return b_scale * b_counts;
 }
 
@@ -3109,7 +3127,7 @@ static int check_hw_info_decoder_shared_mem_usage(const ni_hw_device_info_quadra
 *
 *  \return task scaler shared memeory uasge
 ********************************************************************************/
-static int check_hw_info_scaler_shared_mem_usage(const ni_hw_device_info_quadra_scaler_param_t *scaler_param,int estimated_max_dpb)
+int check_hw_info_scaler_shared_mem_usage(const ni_hw_device_info_quadra_scaler_param_t *scaler_param,int estimated_max_dpb)
 {
     // const int p_1080 = 2073600;
     // const int p_1440 = 3686400;
@@ -3124,11 +3142,11 @@ static int check_hw_info_scaler_shared_mem_usage(const ni_hw_device_info_quadra_
     //cppcheck do not allow this
 
     const int v30_xlsx = 0;
-    int b_counts = 1 * (v30_xlsx +
+    const int b_counts = 1 * (v30_xlsx +
                         0/* (hw_frame ? 0 : 1)*3 */ +
                         estimated_max_dpb);
-    int b_scale = check_hw_info_shared_mem_calculate_b_scale(scaler_param->h, scaler_param->w,
-                                                             scaler_param->bit_8_10, scaler_param->rgba);
+    const int b_scale = check_hw_info_shared_mem_calculate_b_scale((int)scaler_param->h, (int)scaler_param->w,
+                                                             (int)scaler_param->bit_8_10, (int)scaler_param->rgba);
     return b_scale * b_counts;
 }
 
@@ -3145,7 +3163,7 @@ static int check_hw_info_scaler_shared_mem_usage(const ni_hw_device_info_quadra_
 *
 *  \return     NONE
 ****************************************************************************************************/
-static void check_hw_info_remove_card_with_memory(int *card_remove, const ni_hw_device_info_quadra_t *ni_card_info, int card_num, const ni_hw_device_info_quadra_coder_param_t *coder_param,int mode)
+void check_hw_info_remove_card_with_memory(int *card_remove, const ni_hw_device_info_quadra_t *ni_card_info, int card_num, const ni_hw_device_info_quadra_coder_param_t *coder_param,int mode)
 {
     const int total = 2456;//buffer count summary
     int task_mem_usage = 0;
@@ -3176,9 +3194,9 @@ static void check_hw_info_remove_card_with_memory(int *card_remove, const ni_hw_
     }
     else if(mode > 3)
     {
-        int decoder_shared_mem_usage = check_hw_info_decoder_shared_mem_usage(coder_param->decoder_param,16);
-        int encoder_shared_mem_usage = check_hw_info_encoder_shared_mem_usage(coder_param->encoder_param);
-        int scaler_shared_mem_usage = check_hw_info_scaler_shared_mem_usage(coder_param->scaler_param,16);
+        const int decoder_shared_mem_usage = check_hw_info_decoder_shared_mem_usage(coder_param->decoder_param,16);
+        const int encoder_shared_mem_usage = check_hw_info_encoder_shared_mem_usage(coder_param->encoder_param);
+        const int scaler_shared_mem_usage = check_hw_info_scaler_shared_mem_usage(coder_param->scaler_param,16);
         task_mem_usage = decoder_shared_mem_usage + ((encoder_shared_mem_usage > scaler_shared_mem_usage) ?
                                                         encoder_shared_mem_usage : scaler_shared_mem_usage);
     }
@@ -3212,6 +3230,7 @@ static void check_hw_info_remove_card_with_memory(int *card_remove, const ni_hw_
     }
 
 }
+} // namespace
 
 /*!*********************************************************************************************
 *  \brief  Create and alloc a pointer to ni_hw_device_info_quadra_coder_param_t
@@ -3439,7 +3458,7 @@ ni_hw_device_info_quadra_t *ni_hw_device_info_alloc_quadra(int device_type_num,i
         //unlock_and_return
         goto card_info_end;
     }
-    memset(p_hw_device_info->card_info, 0, sizeof(ni_card_info_quadra_t*) * p_hw_device_info->device_type_num);
+    memset(reinterpret_cast<void*>(p_hw_device_info->card_info), 0, sizeof(ni_card_info_quadra_t*) * p_hw_device_info->device_type_num);
 
     p_hw_device_info->available_card_num = avaliable_card_num;
     p_hw_device_info->consider_mem = 0;
@@ -3464,7 +3483,7 @@ card_info_i_end:
             p_hw_device_info->card_info[i] = NULL;
         }
     }
-    free(p_hw_device_info->card_info);
+    free(reinterpret_cast<void*>(p_hw_device_info->card_info));
     p_hw_device_info->card_info = NULL;
 card_info_end:
     free(p_hw_device_info->device_type);
@@ -3498,7 +3517,7 @@ void ni_hw_device_info_free_quadra(ni_hw_device_info_quadra_t *p_hw_device_info)
         free(p_hw_device_info->card_info[i]);
         p_hw_device_info->card_info[i] = NULL;
     }
-    free(p_hw_device_info->card_info);
+    free(reinterpret_cast<void*>(p_hw_device_info->card_info));
     p_hw_device_info->card_info = NULL;
     free(p_hw_device_info);
     return;
@@ -3517,7 +3536,7 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
     //ni_device_type_t preferential_device_type, in the first place
     //other order of device_type ni_device_type_t adjust to the order of all_need_device_type
     //int hw_info_param_num = hw_mode ? 2 : 1;adjust to 3
-    int should_match_rev = 1;
+    const int should_match_rev = 1;
     int module_count = 1;
     ni_device_context_t *dev_ctxt_arr = NULL;
     int32_t *module_id_arr = NULL;
@@ -3533,7 +3552,7 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
     uint64_t encoder_need_load = 0;
     int retval = 0;//1 for success , 0 for failure
     int ret = 0;
-    int hw_info_param_num = hw_mode ? 4 : 1;
+    const int hw_info_param_num = hw_mode ? 4 : 1;
     int device_type_num = 1;
     const int all_device_type_num = 4;
 
@@ -3683,7 +3702,8 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
 
     //ni_rsrc_init() is unsafe in multi process/thread ,do not call ni_rsrc_init() here
 
-    if (NI_RETCODE_SUCCESS != (ret = ni_rsrc_refresh(should_match_rev)))
+    ret = ni_rsrc_refresh(should_match_rev);
+    if (NI_RETCODE_SUCCESS != ret)
     {
       ni_log(NI_LOG_ERROR, "Error: resource pool records might be corrupted!!\n");
       if(b_valid)
@@ -3743,7 +3763,7 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
     {
         if(all_need_device_type[i] == preferential_device_type)
         {
-            ni_device_type_t tmp = all_need_device_type[i];
+            const ni_device_type_t tmp = all_need_device_type[i];
             all_need_device_type[i] = all_need_device_type[0];
             all_need_device_type[0] = tmp;
             break;
@@ -3762,7 +3782,7 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
         {
             if(hw_info_threshold_param[i].device_type == preferential_device_type)
             {
-                ni_hw_device_info_quadra_threshold_param_t tmp = hw_info_threshold_param[i];
+                const ni_hw_device_info_quadra_threshold_param_t tmp = hw_info_threshold_param[i];
                 hw_info_threshold_param[i] = hw_info_threshold_param[0];
                 hw_info_threshold_param[0] = tmp;
                 break;
@@ -3774,7 +3794,7 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
 
     if(!(*pointer_to_p_hw_device_info))
     {
-        p_hw_device_info = ni_hw_device_info_alloc_quadra(device_type_num,coders->xcoder_cnt[preferential_device_type]);
+        p_hw_device_info = ni_hw_device_info_alloc_quadra(device_type_num,(int)coders->xcoder_cnt[preferential_device_type]);
         if(!p_hw_device_info)
         {
             ni_log(NI_LOG_ERROR,"ERROR: Failed to allocate memory for p_hw_device_info\n");
@@ -3814,7 +3834,7 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
     //p_hw_device_info alloc succeed
 
     //coders->decoders_cnt == coder->encoders_cnt has checked in the ni_logan_rsrc_refresh
-    p_hw_device_info->available_card_num = coders->xcoder_cnt[preferential_device_type];
+    p_hw_device_info->available_card_num = (int)coders->xcoder_cnt[preferential_device_type];
     p_hw_device_info->device_type_num = device_type_num;
 
     for(i = 0; i < p_hw_device_info->device_type_num; ++i)
@@ -3867,7 +3887,7 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
     memset(card_remove, 0, sizeof(int32_t) * p_hw_device_info->available_card_num);
 
 
-    module_count = coders->xcoder_cnt[preferential_device_type];
+    module_count = (int)coders->xcoder_cnt[preferential_device_type];
     dev_ctxt_arr = (ni_device_context_t *)malloc(sizeof(ni_device_context_t) * module_count);
     if (!dev_ctxt_arr)
     {
@@ -3965,19 +3985,19 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
 
 #else
                 p_hw_device_info->card_info[j][i].load          =
-                                (p_xCtxt->load_query.total_contexts == 0 || p_xCtxt->load_query.current_load > p_xCtxt->load_query.fw_load) ? p_xCtxt->load_query.current_load : p_xCtxt->load_query.fw_load;
+                                (int)((p_xCtxt->load_query.total_contexts == 0 || p_xCtxt->load_query.current_load > p_xCtxt->load_query.fw_load) ? p_xCtxt->load_query.current_load : p_xCtxt->load_query.fw_load);
 #endif
                 // module_load_user_can_not_see[j][i] = p_xCtxt->load_query.fw_model_load;
-                p_hw_device_info->card_info[j][i].model_load = p_xCtxt->load_query.fw_model_load;
+                p_hw_device_info->card_info[j][i].model_load = (int)p_xCtxt->load_query.fw_model_load;
 
-                p_hw_device_info->card_info[j][i].task_num      = p_xCtxt->load_query.total_contexts;
+                p_hw_device_info->card_info[j][i].task_num      = (int)p_xCtxt->load_query.total_contexts;
                 p_hw_device_info->card_info[j][i].max_task_num  = NI_MAX_CONTEXTS_PER_HW_INSTANCE;
 
-                p_hw_device_info->card_info[j][i].firmware_load = p_xCtxt->load_query.fw_load;
+                p_hw_device_info->card_info[j][i].firmware_load = (int)p_xCtxt->load_query.fw_load;
                 if(consider_mem)
                 {
                     // mem_usage[i] = p_xCtxt->load_query.fw_share_mem_usage;
-                    p_hw_device_info->card_info[j][i].shared_mem_usage = p_xCtxt->load_query.fw_share_mem_usage;
+                    p_hw_device_info->card_info[j][i].shared_mem_usage = (int)p_xCtxt->load_query.fw_share_mem_usage;
                 }
                 ni_rsrc_free_device_context(p_device_context);
                 p_device_context = NULL;
@@ -4147,13 +4167,14 @@ int ni_check_hw_info(ni_hw_device_info_quadra_t **pointer_to_p_hw_device_info,
         }
     }
 
+    // cppcheck-suppress nullPointerRedundantCheck
     if (p_hw_device_info->card_current_card >= 0)
     {
         retval = 1; //has the card to use
     }
 
 END:
-  if (p_device_pool && pool_locked)
+  if (pool_locked)  /* p_device_pool is always valid when pool_locked is true */
   {
 #ifdef _WIN32
     ReleaseMutex((HANDLE)p_device_pool->lock);
@@ -4175,7 +4196,7 @@ END:
     ni_rsrc_free_device_pool(p_device_pool);
     p_device_context = NULL;
   }
-  fflush(stderr);
+  (void)fflush(stderr);
   if (module_id_arr)
   {
     free(module_id_arr);
@@ -4250,6 +4271,7 @@ ni_device_context_t *ni_rsrc_allocate_auto(
     int frame_rate,
     uint64_t *p_load)
 {
+    (void)codec;
     ni_device_pool_t *p_device_pool = NULL;
     ni_device_info_t *p_device_info = NULL;
     ni_device_context_t *p_device_context = NULL;
@@ -4294,7 +4316,7 @@ ni_device_context_t *ni_rsrc_allocate_auto(
 #endif
 
     coders = p_device_pool->p_device_queue->xcoders[device_type];
-    count = p_device_pool->p_device_queue->xcoder_cnt[device_type];
+    count = (int)p_device_pool->p_device_queue->xcoder_cnt[device_type];
 
     for (i = 0; i < count; i++)
     {
@@ -4414,7 +4436,7 @@ ni_device_context_t *ni_rsrc_allocate_auto(
 
         if (NI_DEVICE_TYPE_ENCODER == device_type)
         {
-            job_mload = width * height * frame_rate;
+            job_mload = (uint64_t)width * height * frame_rate;
         }
     }
     else

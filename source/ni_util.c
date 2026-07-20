@@ -30,6 +30,7 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <stddef.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -40,10 +41,13 @@
 #include <linux/fs.h>
 #endif
 
+#include <ctype.h>
+#include <errno.h>
+#include <limits.h>
 #include "ni_nvme.h"
 #include "ni_util.h"
 
-typedef struct _ni_err_rc_txt_entry
+typedef struct ni_err_rc_txt_entry
 {
     ni_retcode_t rc;
     const char *txt;
@@ -275,7 +279,7 @@ uint32_t ni_get_kernel_max_io_size(const char * p_dev)
         LRETURN;
     }
 
-    fclose(p_file);
+    (void)fclose(p_file);
     p_file = NULL;
     // Get Max segment size from /sys
     memset(file_name, 0, sizeof(file_name));
@@ -304,7 +308,7 @@ uint32_t ni_get_kernel_max_io_size(const char * p_dev)
         LRETURN;
     }
 
-    fclose(p_file);
+    (void)fclose(p_file);
     p_file = NULL;
     //Now get max_hw_sectors_kb
     memset(file_name, 0, sizeof(file_name));
@@ -345,13 +349,13 @@ uint32_t ni_get_kernel_max_io_size(const char * p_dev)
 
     // ni_log(NI_LOG_INFO, "\nMAX NVMe IO Size of %d was calculated for this platform and will
     // be used unless overwritten by user settings\n",io_size);
-    fflush(stdout);
+    (void)fflush(stdout);
 
 END:
 
     if (p_file)
     {
-        fclose(p_file);
+        (void)fclose(p_file);
     }
 
     return io_size;
@@ -416,7 +420,8 @@ void ni_usleep(int64_t usec)
         usleep(usec);
     } else
     {
-        sleep(usec >> 32);
+        struct timespec ts = {(time_t)(usec >> 32), 0};
+        nanosleep(&ts, NULL);
     }
 #endif
 }
@@ -425,7 +430,9 @@ char *ni_strtok(char *s, const char *delim, char **saveptr)
 {
     char *tok;
 
-    if (!s && !(s = *saveptr))
+    if (!s)
+        s = *saveptr;
+    if (!s)
         return NULL;
 
     /* skip leading delimiters */
@@ -452,7 +459,7 @@ char *ni_strtok(char *s, const char *delim, char **saveptr)
 
 ni_retcode_t ni_strcpy(char *dest, size_t dmax, const char *src)
 {
-#if defined(_MSC_VER)
+#if defined(_WIN32)
     if(strcpy_s(dest, dmax, src))
         return NI_RETCODE_FAILURE;
     else
@@ -655,7 +662,7 @@ ni_retcode_t ni_strncpy(char *dest, size_t dmax,
 
 ni_retcode_t ni_strerror(char *dest, size_t dmax, int errnum)
 {
-#if defined(_MSC_VER)
+#if defined(_WIN32)
     if(strerror_s(dest, dmax, errnum))
         return NI_RETCODE_FAILURE;
     else
@@ -664,8 +671,16 @@ ni_retcode_t ni_strerror(char *dest, size_t dmax, int errnum)
     if (!dest || !dmax || (dmax >= (size_t)(-1)))
         return NI_RETCODE_INVALID_PARAM;
 #if 1
-    const char *tmpbuf = strerror(errnum);
-    ni_strcpy(dest, dmax, tmpbuf);
+    char strerr_buf[256];
+#if defined(_GNU_SOURCE)
+    /* GNU strerror_r returns char* which may point to a static string, not buf */
+    const char *strerr_str = strerror_r(errnum, strerr_buf, sizeof(strerr_buf));
+    ni_strcpy(dest, dmax, strerr_str);
+#else
+    /* POSIX strerror_r fills buf in-place and returns int */
+    (void)strerror_r(errnum, strerr_buf, sizeof(strerr_buf));
+    ni_strcpy(dest, dmax, strerr_buf);
+#endif
 #else
     /* strerrorlen_s is supported since c11 */
     size_t len;
@@ -1002,7 +1017,7 @@ ni_retcode_t ni_fopen(FILE **fp, const char *filename, const char *mode)
 
 struct tm* ni_localtime(struct tm *dest, const time_t *src)
 {
-#if defined(_MSC_VER)
+#if defined(_WIN32)
     if (localtime_s(dest, src))
         return NULL;
     else
@@ -1013,8 +1028,7 @@ struct tm* ni_localtime(struct tm *dest, const time_t *src)
     if (*src < 0) {
         return NULL;
     }
-    dest = localtime(src);
-    return dest;
+    return localtime_r(src, dest);
 #endif
 }
 
@@ -1031,7 +1045,7 @@ int ni_fscanf(FILE *stream, const char *fmt, ...)
         return EOF;
     va_list args;
     va_start(args, fmt);
-    ret = vfscanf(stream, fmt, args);
+    ret = vfscanf(stream, fmt, args); // NOLINT(clang-analyzer-valist.Uninitialized) - false positive
     va_end(args);
 #endif
     return ret;
@@ -1046,7 +1060,7 @@ int ni_vsprintf(char *dest, const size_t dmax, const char *fmt, va_list args)
     if (!dest || !dmax || !fmt)
         return -1;
     // Use vsnprintf on Linux/macOS (which is safe if used correctly)
-    int ret = vsnprintf(dest, dmax, fmt, args);
+    int ret = vsnprintf(dest, dmax, fmt, args); // NOLINT(clang-analyzer-valist.Uninitialized) - false positive
     if (ret < 0) {
         // Encoding error occurred
         return -1;
@@ -1076,7 +1090,7 @@ ni_buf_t *ni_buf_pool_expand(ni_buf_pool_t *pool)
   int32_t i;
   for (i = 0; i < NI_DEC_FRAME_BUF_POOL_SIZE_EXPAND; i++)
   {
-    if( NULL == ni_buf_pool_allocate_buffer(pool, pool->buf_size) )
+    if( NULL == ni_buf_pool_allocate_buffer(pool, (int)pool->buf_size) )
     {
         ni_log(NI_LOG_FATAL, "FATAL: Failed to expand ni_buf_pool buffer: %p, "
                "current size: %u\n", pool, pool->number_of_buffers);
@@ -1211,8 +1225,9 @@ ni_buf_t *ni_buf_pool_allocate_buffer(ni_buf_pool_t *p_buffer_pool,
     ni_buf_t *p_buffer = NULL;
     void *p_buf = NULL;
 
-    if (NULL != p_buffer_pool &&
-        (p_buffer = (ni_buf_t *)malloc(sizeof(ni_buf_t))) != NULL)
+    if (NULL != p_buffer_pool)
+        p_buffer = (ni_buf_t *)malloc(sizeof(ni_buf_t));
+    if (NULL != p_buffer_pool && p_buffer != NULL)
     {
         // init the struct
         memset(p_buffer, 0, sizeof(ni_buf_t));
@@ -1322,8 +1337,8 @@ int32_t ni_dec_fme_buffer_pool_initialize(ni_session_context_t* p_ctx,
         }
     }
 
-    if ((p_ctx->dec_fme_buf_pool =
-             (ni_buf_pool_t *)malloc(sizeof(ni_buf_pool_t))) == NULL)
+    p_ctx->dec_fme_buf_pool = (ni_buf_pool_t *)malloc(sizeof(ni_buf_pool_t));
+    if (p_ctx->dec_fme_buf_pool == NULL)
     {
         ni_log2(p_ctx, NI_LOG_ERROR,  "Error alloc for dec fme buf pool\n");
         return -1;
@@ -1343,7 +1358,7 @@ int32_t ni_dec_fme_buffer_pool_initialize(ni_session_context_t* p_ctx,
     for (i = 0; i < number_of_buffers; i++)
     {
         if (NULL ==
-            ni_buf_pool_allocate_buffer(p_ctx->dec_fme_buf_pool, buffer_size))
+            ni_buf_pool_allocate_buffer(p_ctx->dec_fme_buf_pool, (int)buffer_size))
         {
             // release everything we have allocated so far and exit
             ni_dec_fme_buffer_pool_free(p_ctx->dec_fme_buf_pool);
@@ -1391,14 +1406,14 @@ void ni_dec_fme_buffer_pool_free(ni_buf_pool_t *p_buffer_pool)
             buf = p_next;
             count_free++;
         }
-        // NOLINTNEXTLINE(bugprone-branch-clone)
         if (count_free != p_buffer_pool->number_of_buffers)
         {
-            ni_log(NI_LOG_DEBUG, "%s free %d  != number_of_buffers %u\n",
+            ni_log(NI_LOG_DEBUG, "%s freed %d != number_of_buffers %u\n",
                    __func__, count_free, p_buffer_pool->number_of_buffers);
-        } else
+        }
+        else
         {
-            ni_log(NI_LOG_DEBUG, "%s all buffers freed: %d.\n", __func__,
+            ni_log(NI_LOG_DEBUG, "%s freed all %d buffers\n", __func__,
                    count_free);
         }
         free(p_buffer_pool);
@@ -1457,8 +1472,9 @@ ni_queue_node_t *ni_buffer_pool_allocate_buffer(ni_queue_buffer_pool_t *p_buffer
 {
     ni_queue_node_t *p_buffer = NULL;
 
-    if (NULL != p_buffer_pool &&
-        (p_buffer = (ni_queue_node_t *)malloc(sizeof(ni_queue_node_t))) != NULL)
+    if (NULL != p_buffer_pool)
+        p_buffer = (ni_queue_node_t *)malloc(sizeof(ni_queue_node_t));
+    if (NULL != p_buffer_pool && p_buffer != NULL)
     {
         //Inititalise the struct
         memset(p_buffer, 0, sizeof(ni_queue_node_t));
@@ -1494,8 +1510,9 @@ int32_t ni_buffer_pool_initialize(ni_session_context_t* p_ctx, int32_t number_of
         return -1;
     }
 
-    if ((p_ctx->buffer_pool = (ni_queue_buffer_pool_t *)malloc(
-             sizeof(ni_queue_buffer_pool_t))) == NULL)
+    p_ctx->buffer_pool = (ni_queue_buffer_pool_t *)malloc(
+             sizeof(ni_queue_buffer_pool_t));
+    if (p_ctx->buffer_pool == NULL)
     {
         ni_log(NI_LOG_ERROR, "Error alloc for pool\n");
         return -1;
@@ -1645,7 +1662,7 @@ int32_t ni_get_frame_index(uint32_t *value)
     ni_nvme_write_complete_dw0_t *p_value =
         (ni_nvme_write_complete_dw0_t *)value;
 
-    return p_value->frame_index;
+    return (int32_t)p_value->frame_index;
 }
 
 #ifdef _ANDROID
@@ -1859,7 +1876,7 @@ ni_retcode_t ni_find_blk_name(const char *p_dev, char *p_out_buf, int out_buf_le
     return NI_RETCODE_SUCCESS;
 #else
     ni_log(NI_LOG_DEBUG, "Set NVMe device name equal to NVMe block name\n");
-    snprintf(p_out_buf, out_buf_len, "%s", p_dev);
+    (void)snprintf(p_out_buf, out_buf_len, "%s", p_dev);
     return NI_RETCODE_SUCCESS;
 #endif
 }
@@ -2001,12 +2018,13 @@ ni_retcode_t ni_timestamp_register(ni_queue_buffer_pool_t *p_buffer_pool,
 
     err = ni_queue_push(p_buffer_pool, &p_table->list, data_info, timestamp);
 
-    if (NI_RETCODE_SUCCESS == err)   // NOLINT(bugprone-branch-clone)
+    if (NI_RETCODE_SUCCESS == err)
     {
         ni_log(NI_LOG_DEBUG, "%s: success\n", __func__);
-    } else
+    }
+    else
     {
-        ni_log(NI_LOG_ERROR, "ERROR: %s: FAILED\n", __func__);
+        ni_log(NI_LOG_ERROR, "ERROR: %s: FAILED with code %d\n", __func__, err);
     }
 
     return err;
@@ -2235,6 +2253,7 @@ ni_retcode_t ni_queue_pop(ni_queue_t *p_queue, uint64_t frame_info,
                           int64_t *p_timestamp, int32_t threshold,
                           int32_t print, ni_queue_buffer_pool_t *p_buffer_pool)
 {
+    (void)threshold;
     ni_queue_node_t *temp;
     ni_queue_node_t *temp_prev = NULL;
     int32_t found = 0;
@@ -2259,7 +2278,7 @@ ni_retcode_t ni_queue_pop(ni_queue_t *p_queue, uint64_t frame_info,
     if (p_queue->p_first == p_queue->p_last)
     {
         /*! If only one entry, retrieve timestamp without checking */
-        *p_timestamp = p_queue->p_first->timestamp;
+        *p_timestamp = (int64_t)p_queue->p_first->timestamp;
         // free(p_queue->p_first);
         ni_buffer_pool_return_buffer(p_queue->p_first, p_buffer_pool);
 
@@ -2278,7 +2297,7 @@ ni_retcode_t ni_queue_pop(ni_queue_t *p_queue, uint64_t frame_info,
                 if (!temp->p_prev)
                 {
                     ni_log(NI_LOG_DEBUG, "First in ts list, return it\n");
-                    *p_timestamp = temp->timestamp;
+                    *p_timestamp = (int64_t)temp->timestamp;
 
                     p_queue->p_first = temp->p_next;
                     temp->p_next->p_prev = NULL;
@@ -2290,7 +2309,7 @@ ni_retcode_t ni_queue_pop(ni_queue_t *p_queue, uint64_t frame_info,
                 }
 
                 // retrieve from p_prev and delete p_prev !
-                *p_timestamp = temp->p_prev->timestamp;
+                *p_timestamp = (int64_t)temp->p_prev->timestamp;
                 temp = temp->p_prev;
                 temp_prev = temp->p_prev;
 
@@ -2365,7 +2384,7 @@ ni_retcode_t ni_queue_pop_threshold(ni_queue_t *p_queue, uint64_t frame_info,
     if (p_queue->p_first == p_queue->p_last)
     {
         /*! If only one entry, retrieve timestamp without checking */
-        *p_timestamp = p_queue->p_first->timestamp;
+        *p_timestamp = (int64_t)p_queue->p_first->timestamp;
         // free(p_queue->p_first);
         ni_buffer_pool_return_buffer(p_queue->p_first, p_buffer_pool);
 
@@ -2380,7 +2399,7 @@ ni_retcode_t ni_queue_pop_threshold(ni_queue_t *p_queue, uint64_t frame_info,
         {
             if (llabs((int)frame_info - (int)temp->frame_info) <= threshold)
             {
-                *p_timestamp = temp->timestamp;
+                *p_timestamp = (int64_t)temp->timestamp;
                 if (temp_prev)
                 {
                     temp_prev->p_next = temp->p_next;
@@ -2500,7 +2519,7 @@ ni_retcode_t ni_queue_print(ni_queue_t *p_queue)
         ltime = ni_localtime(&temp_time, &temp->checkout_timestamp);
         if (ltime)
         {
-            strftime(buff, 20, "%Y-%m-%d %H:%M:%S", ltime);
+            (void)strftime(buff, 20, "%Y-%m-%d %H:%M:%S", ltime);
             ni_log(NI_LOG_TRACE, " %s [%" PRId64 ", %" PRId64 "]", buff,
                    temp->timestamp, temp->frame_info);
         }
@@ -2545,16 +2564,76 @@ int32_t ni_atobool(const char *p_str, bool *b_error)
 }
 
 /*!******************************************************************************
- *  \brief  Convert string to integer
+ *  \brief  Safely convert a decimal string to a 32-bit integer with full
+ *          validation. Trailing whitespace is tolerated.
  *
- *  \param
+ *  \param  str       Null-terminated string to convert (base 10)
+ *  \param  out_val   Pointer to store the converted value on success
  *
- *  \return
+ *  \return NI_RETCODE_SUCCESS on success,
+ *          NI_RETCODE_INVALID_PARAM if str is NULL/empty, contains
+ *          non-numeric characters, or the value overflows int32_t
  *******************************************************************************/
+ni_retcode_t ni_strtoi(const char *str, int32_t *out_val)
+{
+    char *end;
+    long v;
+
+    if (!str || !out_val || *str == '\0')
+        return NI_RETCODE_INVALID_PARAM;
+
+    errno = 0;
+    v = strtol(str, &end, 10);
+
+    if (end == str || errno == ERANGE ||
+        v < INT32_MIN || v > INT32_MAX)
+        return NI_RETCODE_INVALID_PARAM;
+
+    while (*end != '\0' && isspace((unsigned char)*end))
+        end++;
+    if (*end != '\0')
+        return NI_RETCODE_INVALID_PARAM;
+
+    *out_val = (int32_t)v;
+    return NI_RETCODE_SUCCESS;
+}
+
+/*!******************************************************************************
+ *  \brief  Safely convert a decimal string to a double with full validation.
+ *          Trailing whitespace is tolerated.
+ *
+ *  \param  str       Null-terminated string to convert
+ *  \param  out_val   Pointer to store the converted value on success
+ *
+ *  \return NI_RETCODE_SUCCESS on success,
+ *          NI_RETCODE_INVALID_PARAM if str is NULL/empty, contains
+ *          non-numeric characters, or the value overflows double range
+ *******************************************************************************/
+ni_retcode_t ni_strtod_val(const char *str, double *out_val)
+{
+    char *end;
+
+    if (!str || !out_val || *str == '\0')
+        return NI_RETCODE_INVALID_PARAM;
+
+    errno = 0;
+    *out_val = strtod(str, &end);
+
+    if (end == str || errno == ERANGE)
+        return NI_RETCODE_INVALID_PARAM;
+
+    while (*end != '\0' && isspace((unsigned char)*end))
+        end++;
+    if (*end != '\0')
+        return NI_RETCODE_INVALID_PARAM;
+
+    return NI_RETCODE_SUCCESS;
+}
+
 int32_t ni_atoi(const char *p_str, bool *b_error)
 {
     char *end;
-    int32_t v = strtol(p_str, &end, 0);
+    int32_t v = (int32_t)strtol(p_str, &end, 0);
 
     if (end == p_str || *end != '\0')
     {
@@ -2860,6 +2939,7 @@ void ni_copy_plane_data(uint8_t *p_dst[NI_MAX_NUM_DATA_POINTERS],
                           int src_height[NI_MAX_NUM_DATA_POINTERS],
                           int i)
 {
+    (void)frame_height;
     if (i >= NI_MAX_NUM_DATA_POINTERS)
     {
         ni_log(NI_LOG_ERROR, "%s: error, invalid plane index %d\n", __func__,
@@ -3122,7 +3202,7 @@ void ni_copy_yuv_444p_to_420p(uint8_t *p_dst0[NI_MAX_NUM_DATA_POINTERS],
     // Y component
     for (i = 0; i < frame_height; i++)
     {
-        memcpy(&p_dst0[0][i * y_420p_linesize], &p_src[0][i * y_444p_linesize],
+        memcpy(&p_dst0[0][(ptrdiff_t)i * y_420p_linesize], &p_src[0][(ptrdiff_t)i * y_444p_linesize],
                y_444p_linesize);
     }
 
@@ -3133,8 +3213,8 @@ void ni_copy_yuv_444p_to_420p(uint8_t *p_dst0[NI_MAX_NUM_DATA_POINTERS],
         // U component
         for (i = 0; i < frame_height; i++)
         {
-            memcpy(&p_dst1[0][i * y_420p_linesize],
-                   &p_src[1][i * y_444p_linesize], y_444p_linesize);
+            memcpy(&p_dst1[0][(ptrdiff_t)i * y_420p_linesize],
+                   &p_src[1][(ptrdiff_t)i * y_444p_linesize], y_444p_linesize);
         }
 
         for (i = 0; i < frame_height / 2; i++)
@@ -3174,7 +3254,7 @@ void ni_copy_yuv_444p_to_420p(uint8_t *p_dst0[NI_MAX_NUM_DATA_POINTERS],
                 // odd line 0.5U
                 memcpy(&p_dst1[0][2 * i * uv_444p_linesize + 2 * j],
                        &p_src[1][(2 * i + 1) * uv_444p_linesize + 2 * j],
-                       factor * 2);
+                       (ptrdiff_t)factor * 2);
                 // even line 0.25U
                 memcpy(&p_dst0[1][i * uv_420p_linesize + j],
                        &p_src[1][2 * i * uv_444p_linesize + 2 * j],
@@ -3188,7 +3268,7 @@ void ni_copy_yuv_444p_to_420p(uint8_t *p_dst0[NI_MAX_NUM_DATA_POINTERS],
                 // odd line 0.5V
                 memcpy(&p_dst1[0][(2 * i + 1) * uv_444p_linesize + 2 * j],
                        &p_src[2][(2 * i + 1) * uv_444p_linesize + 2 * j],
-                       factor * 2);
+                       (ptrdiff_t)factor * 2);
                 // even line 0.25V
                 memcpy(&p_dst0[2][i * uv_420p_linesize + j],
                        &p_src[2][2 * i * uv_444p_linesize + 2 * j],
@@ -3420,7 +3500,7 @@ static float ni_ai_fp16_to_fp32(const short in)
 static float ni_ai_affine_to_fp32(int32_t val, int32_t zeroPoint, float scale)
 {
     float result = 0.0f;
-    result = ((float)val - zeroPoint) * scale;
+    result = ((float)val - (float)zeroPoint) * scale;
     return result;
 }
 
@@ -3511,7 +3591,7 @@ static void ni_ai_type_get_range(int32_t type, double *max_range,
     double from, to;
     from = 0.0;
     to = 0.0;
-    bits = ni_ai_type_get_bytes(type) * 8;
+    bits = (int32_t)(ni_ai_type_get_bytes(type) * 8);
     if (ni_ai_type_is_integer(type))
     {
         if (ni_ai_type_is_signed(type))
@@ -3552,7 +3632,7 @@ static inline int ni_ai_math_floorf(double x)
 
 static double ni_ai_rint(double x)
 {
-#define _EPSILON 1e-8
+#define NI_AI_EPSILON 1e-8
     double decimal;
     double inter;
     int intpart;
@@ -3561,7 +3641,7 @@ static double ni_ai_rint(double x)
     decimal = x - intpart;
     inter = (double)intpart;
 
-    if (ni_abs((ni_abs(decimal) - 0.5f)) < _EPSILON)
+    if (ni_abs((ni_abs(decimal) - 0.5f)) < NI_AI_EPSILON)
     {
         inter += (int32_t)(inter) % 2;
     } else
@@ -3671,10 +3751,10 @@ static void ni_ai_float32_to_dtype(float src, unsigned char *dst,
         memcpy(dst, &src, sizeof(float));
             break;
         case NI_AI_BUFFER_FORMAT_FP16:
-            *(int16_t *)dst = ni_ai_fp32_to_fp16(src);
+            *(int16_t *)dst = (int16_t)ni_ai_fp32_to_fp16(src);
             break;
         case NI_AI_BUFFER_FORMAT_BFP16:
-            *(int16_t *)dst = ni_ai_fp32_to_bfp16_rtne(src);
+            *(int16_t *)dst = (int16_t)ni_ai_fp32_to_bfp16_rtne(src);
             break;
         case NI_AI_BUFFER_FORMAT_INT8:
         case NI_AI_BUFFER_FORMAT_UINT8:
@@ -3741,6 +3821,7 @@ struct tensor_rsrc
 static int open_tensor_rsrc_file(struct tensor_rsrc *rsrc, void *data,
                                  uint32_t num)
 {
+    (void)num;
     FILE *f = NULL;
     ni_fopen(&f, (const char *)data, "r");
     rsrc->private = (void *)f;
@@ -3764,7 +3845,7 @@ static int get_tensor_rsrc_from_file(struct tensor_rsrc *rsrc, float *value)
 static void close_tensor_rsrc_file(struct tensor_rsrc *rsrc)
 {
     FILE *fp = (FILE *)rsrc->private;
-    fclose(fp);
+    (void)fclose(fp);
 }
 
 static int open_tensor_rsrc_rawdata(struct tensor_rsrc *rsrc, void *data,
@@ -3822,7 +3903,7 @@ static ni_retcode_t ni_network_tensor_to_data(
                                data_format);
     stride = ni_ai_type_get_bytes(data_format);
 
-    if (sz * stride * sizeof(uint8_t) != dst_len)
+    if ((size_t)sz * stride * sizeof(uint8_t) != dst_len)
     {
         return NI_RETCODE_INVALID_PARAM;
     }
@@ -3839,14 +3920,14 @@ static ni_retcode_t ni_network_tensor_to_data(
         return NI_RETCODE_FAILURE;
     }
 
-    memset(dst, 0, sz * stride * sizeof(uint8_t));
+    memset(dst, 0, (size_t)sz * stride * sizeof(uint8_t));
     tensor_data = dst;
     for (i = 0; i < sz; i++)
     {
         if (get_tensor_rsrc(rsrc, &fval) == 0)
         {
-            ni_ai_float32_to_dtype(fval, &tensor_data[stride * i], data_format,
-                                   quant_format, fixed_point_pos, tf_scale,
+            ni_ai_float32_to_dtype(fval, &tensor_data[(ptrdiff_t)stride * i], data_format,
+                                   quant_format, (int8_t)fixed_point_pos, tf_scale,
                                    tf_zerop);
         } else
         {
@@ -3924,7 +4005,7 @@ ni_network_convert_data_to_tensor(float *dst, uint32_t dst_len, uint8_t *src,
 
             for (i = 0; i < ele_size; i++, data += type_size)
             {
-                dst_float[i] = ni_ai_int8_to_fp32(*data, fix_pos);
+                dst_float[i] = ni_ai_int8_to_fp32((int8_t)*data, (int8_t)fix_pos);
             }
         } else if (quant_format == NI_AI_BUFFER_QUANTIZE_TF_ASYMM)
         {
@@ -3969,7 +4050,7 @@ ni_network_convert_data_to_tensor(float *dst, uint32_t dst_len, uint8_t *src,
 
         for (i = 0; i < ele_size; i++, data += type_size)
         {
-            dst_float[i] = ni_ai_int16_to_fp32(*((short *)data), fix_pos);
+            dst_float[i] = ni_ai_int16_to_fp32(*((short *)data), (int8_t)fix_pos);
         }
     } else if (p_param->data_format == NI_AI_BUFFER_FORMAT_FP32)
     {
@@ -4139,7 +4220,7 @@ void ni_SHA256Final(SHA256CTX *psCtx, uint8_t aui8Hash[])
     }
 
     // Append to the padding the total message's length in bits and transform.
-    psCtx->ui64BitLength += psCtx->ui32DataLength * 8;
+    psCtx->ui64BitLength += (uint64_t)psCtx->ui32DataLength * 8;
     psCtx->aui8Data[63] = (uint8_t)psCtx->ui64BitLength;
     psCtx->aui8Data[62] = (uint8_t)(psCtx->ui64BitLength >> 8);
     psCtx->aui8Data[61] = (uint8_t)(psCtx->ui64BitLength >> 16);
@@ -4491,6 +4572,7 @@ int ni_retrieve_xcoder_gop(char xcoderGop[],
                            ni_xcoder_params_t *params,
                            ni_session_context_t *ctx)
 {
+    (void)ctx;
     char key[64], value[64];
     char *curr = xcoderGop, *colon_pos;
     int ret = 0;
@@ -5020,7 +5102,7 @@ uint32_t ni_decode_power_measurement(uint32_t current_data, const uint8_t *seria
         return NI_INVALID_POWER;
     }
     char pcb_config[3];
-    snprintf(pcb_config, sizeof(pcb_config), "%.2s", &serial_number[2]);
+    (void)snprintf(pcb_config, sizeof(pcb_config), "%.2s", &serial_number[2]);
 
     float current_value = (float)current_data;
     voltage_mv = 12000.0f;
@@ -5172,7 +5254,7 @@ static int ni_device_vendor_id_precheck(const char *p_dev)
 
     const size_t path_len = strlen(p_dev);
 
-    for (size_t i = 0; i < sizeof(vendor_path_devs)/sizeof(vendor_path_devs[0]) && ret == 0; ++i)
+    for (size_t i = 0; i < sizeof(vendor_path_devs)/sizeof(vendor_path_devs[0]); ++i)
     {
         size_t template_len = strlen(vendor_path_devs[i]);
         char *vendor_path = (char *)calloc(1, template_len + path_len);
@@ -5180,13 +5262,13 @@ static int ni_device_vendor_id_precheck(const char *p_dev)
         {
             continue;
         }
-        snprintf(vendor_path, template_len + path_len, vendor_path_devs[i], device_name);
+        (void)snprintf(vendor_path, template_len + path_len, vendor_path_devs[i], device_name);
 
         int fd = open(vendor_path, O_RDONLY);
         if (fd >= 0)
         {
             char vendor_id[10] = {0};
-            int read_size = read(fd, vendor_id, sizeof(vendor_id));
+            ssize_t read_size = read(fd, vendor_id, sizeof(vendor_id));
             if (read_size >= 4 && (size_t)read_size < sizeof(vendor_id))
             {
                 char *find_1d82 = strstr(vendor_id, "1d82");
@@ -5196,7 +5278,7 @@ static int ni_device_vendor_id_precheck(const char *p_dev)
                 }
                 else
                 {
-                    ni_log2(NULL, NI_LOG_DEBUG, "%s() vendor check failed. vendor id: %s", vendor_id);
+                    ni_log2(NULL, NI_LOG_DEBUG, "%s() vendor check failed. vendor id: %s", __func__, vendor_id);
                     ret = -1;
                 }
             }
@@ -5205,6 +5287,11 @@ static int ni_device_vendor_id_precheck(const char *p_dev)
         }
 
         free(vendor_path);
+
+        if (ret != 0)
+        {
+            break;
+        }
     }
 
     return ret;
@@ -5267,8 +5354,8 @@ static int ni_device_size_precheck_system_information(const char *p_dev, const u
         LRETURN;
     }
 
-    snprintf(block_path, sizeof(block_path_dev) + path_len, block_path_dev, device_name);
-    snprintf(logical_block_size_path, sizeof(logical_block_size_path_dev) + path_len, logical_block_size_path_dev, device_name);
+    (void)snprintf(block_path, sizeof(block_path_dev) + path_len, block_path_dev, device_name);
+    (void)snprintf(logical_block_size_path, sizeof(logical_block_size_path_dev) + path_len, logical_block_size_path_dev, device_name);
 
     size_fd = open(block_path, O_RDONLY);
     logical_block_fd = open(logical_block_size_path, O_RDONLY);
@@ -5397,9 +5484,8 @@ ni_retcode_t ni_quadra_card_identify_precheck(const char *p_dev)
         return NI_RETCODE_FAILURE;
     }
 
-    // Even if all previous prechecks cannot determine the result, still return SUCCESS
-    // This is to prevent query failures due to some reasons such as missing commands on the system
-    return (ret >= 0) ? NI_RETCODE_SUCCESS : NI_RETCODE_FAILURE;
+    // ret == 0 here: prechecks were inconclusive, default to success
+    return NI_RETCODE_SUCCESS;
 
 #endif
 }

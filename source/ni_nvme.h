@@ -413,6 +413,7 @@ typedef enum _nvme_config_xcoder_config_session_subtype
     nvme_config_xcoder_config_namespace_num = 0x0005,
     nvme_config_xcoder_config_ddr_priority = 0x0006,
     nvme_config_xcoder_config_frame_clone = 0x0007,
+    nvme_config_xcoder_config_session_host_time = 0x0008,
 } nvme_config_xcoder_config_session_subtype_t;
 
 typedef enum _nvme_config_xcoder_config_instance_subtype
@@ -666,6 +667,7 @@ int32_t ni_nvme_send_io_pass_through_command(ni_device_handle_t fd, ni_nvme_pass
 #define TP_LOG_OFFSET_IN_4K (DP_LOG_OFFSET_IN_4K + MBs_to_4k(1))
 #define FP_LOG_OFFSET_IN_4K (TP_LOG_OFFSET_IN_4K + MBs_to_4k(1))
 #define FL_LOG_OFFSET_IN_4K (FP_LOG_OFFSET_IN_4K + MBs_to_4k(1))
+#define ARTIFACTS_OFFSET_IN_4K (FL_LOG_OFFSET_IN_4K + MBs_to_4k(1))
 
 #define HIGH_OFFSET_IN_4K(sid, instance)                                       \
     ((((sid & 0x1FFUL) << NI_SESSION_ID_SHIFT_HI) | (instance))                \
@@ -915,6 +917,12 @@ int32_t ni_nvme_send_io_pass_through_command(ni_device_handle_t fd, ni_nvme_pass
         CTL_OFFSET_IN_4K(GAP(nvme_admin_cmd_xcoder_config),                    \
                          nvme_config_xcoder_config_session,                    \
                          nvme_config_xcoder_config_frame_clone)
+
+#define CONFIG_SESSION_SetHostTime_W(sid)                                      \
+    HIGH_OFFSET_IN_4K(sid, 0) +                                                \
+        CTL_OFFSET_IN_4K(GAP(nvme_admin_cmd_xcoder_config),                    \
+                         nvme_config_xcoder_config_session,                    \
+                         nvme_config_xcoder_config_session_host_time)
 
 #define CONFIG_INSTANCE_UploadModel_W(sid,instance)                            \
     HIGH_OFFSET_IN_4K(sid, instance) +                                         \

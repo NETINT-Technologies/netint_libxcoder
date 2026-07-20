@@ -197,9 +197,9 @@ int ni_nvme_enumerate_devices
     int    max_handles
 )
 {
-    TCHAR port_name_buffer[NI_MAX_DEVICE_NAME_LEN] = {0};
-    LPTSTR p_scsi_path = "\\\\.\\PHYSICALDRIVE";
-    LPCTSTR p_format = "%s%d";
+    char port_name_buffer[NI_MAX_DEVICE_NAME_LEN] = {0};
+    const char *p_scsi_path = "\\\\.\\PHYSICALDRIVE";
+    const char *p_format = "%s%d";
     PUCHAR p_buffer = NULL;
     ni_retcode_t rc;
     CHAR firmware_revision[8] = {0};
@@ -226,9 +226,9 @@ int ni_nvme_enumerate_devices
 
     for (scsi_port = 0; scsi_port < max_handles; scsi_port++)
     {
-        wsprintf(port_name_buffer, p_format, p_scsi_path, scsi_port);
+        wsprintfA(port_name_buffer, p_format, p_scsi_path, scsi_port);
         HANDLE handle =
-            CreateFile(port_name_buffer, GENERIC_READ | GENERIC_WRITE,
+            CreateFileA(port_name_buffer, GENERIC_READ | GENERIC_WRITE,
                        FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
                        FILE_ATTRIBUTE_NORMAL, NULL);
         if (INVALID_HANDLE_VALUE == handle)
@@ -555,6 +555,7 @@ int32_t ni_nvme_send_read_cmd(ni_device_handle_t handle,
                               ni_event_handle_t event_handle, void *p_data,
                               uint32_t data_len, uint32_t lba)
 {
+    (void)event_handle;
     int32_t rc;
     uint64_t offset = (uint64_t)lba << LBA_BIT_OFFSET;
 
@@ -617,7 +618,7 @@ int32_t ni_nvme_send_read_cmd(ni_device_handle_t handle,
             }
             else
             {
-                rc = pread(handle, p_buf, data_len, offset);
+                rc = (int32_t)pread(handle, p_buf, data_len, (off_t)offset);
                 if (rc >= 0)//copy only if anything has been read
                 {
                     memcpy(p_data, p_buf, data_len);
@@ -626,7 +627,7 @@ int32_t ni_nvme_send_read_cmd(ni_device_handle_t handle,
             }
         } else
         {
-            rc = pread(handle, p_data, data_len, offset);
+            rc = (int32_t)pread(handle, p_data, data_len, (off_t)offset);
         }
         ni_log(NI_LOG_TRACE,
                "%s: handle=%" PRIx64
@@ -661,6 +662,7 @@ int32_t ni_nvme_send_write_cmd(ni_device_handle_t handle,
                                ni_event_handle_t event_handle, void *p_data,
                                uint32_t data_len, uint32_t lba)
 {
+    (void)event_handle;
     int32_t rc;
     uint64_t offset = (uint64_t)lba << LBA_BIT_OFFSET;
 
@@ -726,13 +728,13 @@ int32_t ni_nvme_send_write_cmd(ni_device_handle_t handle,
             else
             {
                 memcpy(p_buf, p_data, data_len);
-                rc = pwrite(handle, p_buf, data_len, offset);
+                rc = (int32_t)pwrite(handle, p_buf, data_len, (off_t)offset);
                 ni_aligned_free(p_buf);
             }
         }
         else
         {
-            rc = pwrite(handle, p_data, data_len, offset);
+            rc = (int32_t)pwrite(handle, p_data, data_len, (off_t)offset);
         }
         ni_log(NI_LOG_TRACE,
                "%s: handle=%" PRIx64 ", lba=0x%lx, len=%d, rc=%d\n", __func__,
@@ -764,7 +766,7 @@ void ni_nvme_setup_aio_iocb(ni_device_handle_t handle, ni_iocb_t *iocb,
     iocb->aio_reqprio = 0;
     iocb->aio_buf = (uint64_t)p_data;
     iocb->aio_nbytes = data_len;
-    iocb->aio_offset = (uint64_t)lba << LBA_BIT_OFFSET;
+    iocb->aio_offset = (__s64)((uint64_t)lba << LBA_BIT_OFFSET); // NOLINT(bugprone-misplaced-widening-cast) - widening before shift is correct, lba is promoted to uint64_t first
 }
 
 int32_t ni_nvme_batch_cmd_aio(ni_aio_context_t ctx, ni_iocb_t **iocbs,
@@ -794,7 +796,7 @@ int32_t ni_nvme_batch_cmd_aio(ni_aio_context_t ctx, ni_iocb_t **iocbs,
     } else {
         for (i = 0; i < iocb_num; i++) {
             ni_io_event_t *evt = &events[i];
-            ni_iocb_t *iocb = (ni_iocb_t *)evt->obj;
+            ni_iocb_t *iocb = (ni_iocb_t *)evt->obj; // NOLINT(performance-no-int-to-ptr) - required by ioctl interface
             if (iocb->aio_nbytes != evt->res) {
                 ni_log(NI_LOG_ERROR, "ERROR %s(): failed to write data, size %llu, res %lld\n",
                         __func__, iocb->aio_nbytes, evt->res);

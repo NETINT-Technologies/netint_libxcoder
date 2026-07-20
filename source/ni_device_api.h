@@ -326,6 +326,8 @@ typedef enum {
 #define NI_MIN_KEEP_ALIVE_TIMEOUT 1
 #define NI_DEFAULT_KEEP_ALIVE_TIMEOUT 3
 
+#define NI_MAX_DEFAULT_RETRY   500
+
 #define NI_MIN_CUSTOM_SEI_PASSTHRU -1
 #define NI_MAX_CUSTOM_SEI_PASSTHRU 254
 #define NI_DISABLE_USR_DATA_SEI_PASSTHRU 0
@@ -339,6 +341,14 @@ typedef enum {
 #define NI_EC_POLICY_BEST_EFFORT_OUT_DC     6
 #define NI_EC_POLICY_DEFAULT         NI_EC_POLICY_BEST_EFFORT
 #define NI_EC_ERR_THRESHOLD_DEFAULT  10
+
+//DecDecoderMode defined in ctrlsw
+#define NI_DEC_MODE_NORMAL            0x00000000
+#define NI_DEC_MODE_LOW_LATENCY       0x00000001
+#define NI_DEC_MODE_LOW_LATENCY_RTL   0x00000002
+#define NI_DEC_MODE_SECURITY          0x00000004
+#define NI_DEC_MODE_PARTIAL_DECODING  0x00000008
+#define NI_DEC_MODE_INTRA_ONLY        0x00000010
 
 // Picked from the xcoder firmware, commit e3b882e7
 #define NI_VPU_CEIL(_data, _align)     (((_data)+((_align)-1))&~((_align)-1))
@@ -478,7 +488,9 @@ typedef enum
 #define NI_CC_SEI_HDR_HEVC_LEN 18
 #define NI_HDR10P_SEI_HDR_HEVC_LEN 9
 #define NI_HDR10P_SEI_HDR_H264_LEN 8
+#define NI_HDR10P_SEI_HDR_AV1_LEN 4
 #define NI_CC_SEI_HDR_H264_LEN 17
+#define NI_CC_SEI_HDR_AV1_LEN 13
 #define NI_CC_SEI_TRAILER_LEN  2
 #define NI_RBSP_TRAILING_BITS_LEN 1
 
@@ -499,6 +511,9 @@ typedef enum
 
 #define MOTION_CONSTRAINED_PERFORMANCE_MODE     1
 #define MOTION_CONSTRAINED_QUALITY_MODE     2
+#define MOTION_CONSTRAINED_QUALITY_MODE_ADVANCED    3
+// Highest supported mode id; when adding a mode, define its value then point MAX at the new last id (no separate literal).
+#define MOTION_CONSTRAINED_MODE_MAX MOTION_CONSTRAINED_QUALITY_MODE_ADVANCED
 
 /*!*
 * \brief Frame pool type.
@@ -1437,6 +1452,7 @@ typedef struct _ni_ppu_config{
     uint16_t ppu_h[NI_MAX_NUM_OF_DECODER_OUTPUTS];
 }ni_ppu_config_t;
 
+typedef float (*ni_kernel_coeff_fn)(int filtersize, double offset, double B, double C);
 typedef struct _ni_session_context
 {
     /*! MEASURE_LATENCY queue */
@@ -1450,8 +1466,10 @@ typedef struct _ni_session_context
     /*! close-caption/HDR10+ header and trailer template, used for encoder */
     uint8_t itu_t_t35_cc_sei_hdr_hevc[NI_CC_SEI_HDR_HEVC_LEN];
     uint8_t itu_t_t35_cc_sei_hdr_h264[NI_CC_SEI_HDR_H264_LEN];
+    uint8_t itu_t_t35_cc_sei_hdr_av1 [NI_CC_SEI_HDR_AV1_LEN];
     uint8_t itu_t_t35_hdr10p_sei_hdr_hevc[NI_HDR10P_SEI_HDR_HEVC_LEN];
     uint8_t itu_t_t35_hdr10p_sei_hdr_h264[NI_HDR10P_SEI_HDR_H264_LEN];
+    uint8_t itu_t_t35_hdr10p_sei_hdr_av1[NI_HDR10P_SEI_HDR_AV1_LEN];
 
     uint8_t sei_trailer[NI_CC_SEI_TRAILER_LEN];
 
@@ -1768,6 +1786,11 @@ typedef struct _ni_session_context
     uint32_t headers_length;
     uint32_t last_frame_dropped;
     uint8_t pending_bitstream_buffer_realloc;
+
+    bool use_mctf;
+    void *mctf;
+    ni_kernel_coeff_fn scaler_coeff_fn;
+    int max_retry_count;
 } ni_session_context_t;
 
 typedef struct _ni_split_context_t
@@ -2185,6 +2208,8 @@ NI_DEPRECATE_MACRO(NI_ENC_PARAM_GEN_HDRS)
 #define NI_ENC_PARAM_RC_INIT_DELAY "RcInitDelay"
 #define NI_ENC_PARAM_CBR "cbr"
 #define NI_ENC_PARAM_INTRA_REFRESH_MIN_PERIOD "intraRefreshMinPeriod"
+
+#define NI_ENC_PARAM_USE_MCTF "useMCTF"
 
 //QUADRA
 #ifndef DEPRECATION_AS_ERROR
@@ -2607,6 +2632,8 @@ typedef struct _ni_decoder_input_params_t
 #define NI_DEC_PARAM_REDUCE_DPB_DELAY "reduceDpbDelay"
 #define NI_DEC_PARAM_SKIP_EXTRA_HEADERS "skipExtraHeaders"
 #define NI_DEC_PARAM_ENABLE_CPU_AFFINITY "enableCpuAffinity"
+#define NI_DEC_PARAM_EXTEND_POOL_SIZE "extendPoolSize"
+#define NI_DEC_PARAM_DECODER_MODE "decoderMode"
 
     int hwframes;
     int enable_out1;
@@ -2652,6 +2679,8 @@ typedef struct _ni_decoder_input_params_t
     int reduce_dpb_delay;
     int skip_extra_headers;
     int decoder_disable_reorder;
+    int extend_pool_size;
+    int decoder_mode;
 } ni_decoder_input_params_t;
 
 typedef struct _ni_scaler_input_params_t
@@ -2674,7 +2703,25 @@ typedef struct _ni_scaler_input_params_t
 
     uint32_t rgba_color;
     ni_scaler_opcode_t op;
+
+    int in_extra_flags;
+    int out_extra_flags;
 } ni_scaler_input_params_t;
+
+/*
+ * Algorithm identifier for user-supplied Q14 kernel (N2D_FILTER_USER).
+ * Must match SCALER_ALGORITHM_USER_KERNEL in firmware/fp/inc/scaler_manager.h
+ * and NI_SCALER_ALGORITHM_USER_KERNEL in the 3rd_libs header copy.
+ */
+#define NI_SCALER_ALGORITHM_USER_KERNEL   6
+
+/* Kernel table geometry — must match firmware constants. */
+#define NI_SCALER_KERNEL_POSITIONS        17   /* gcvSUBPIXELLOADCOUNT        */
+#define NI_SCALER_KERNEL_SLOTS            9    /* gcvMAXTAPSIZE (rows)        */
+#define NI_SCALER_MAX_KERNEL_TAPS         5    /* gcvMAXTAPSIZE_OPF           */
+#define NI_SCALER_KERNEL_BYTES            (NI_SCALER_KERNEL_POSITIONS * \
+                                           NI_SCALER_KERNEL_SLOTS * 2)  /* 306 */
+#define NI_SCALER_Q14_ONE                 0x4000  /* 1.0 in Q14 fixed-point   */
 
 typedef struct _ni_scaler_params_t
 {
@@ -2683,6 +2730,21 @@ typedef struct _ni_scaler_params_t
     double scaler_param_b;
     double scaler_param_c;
     bool enable_scaler_params;
+    /* User-defined Q14 polyphase kernel (NI_SCALER_ALGORITHM_USER_KERNEL).
+     *
+     * Set kernel_taps to the number of active taps (1 .. NI_SCALER_MAX_KERNEL_TAPS).
+     * Populate kernel_array via ni_scaler_build_kernel():
+     *   kernel_array[0]  horizontal pass  (17 positions × 9 slots × uint16_t)
+     *   kernel_array[1]  vertical   pass  (same layout)
+     * ni_scaler_set_params() will:
+     *   - validate that each of the 17 rows in kernel_array[0] sums to Q14_ONE
+     *   - override filterblit → NI_SCALER_ALGORITHM_USER_KERNEL
+     *   - forward kernel_array[0] to the firmware (firmware shares one table
+     *     for both H and V passes; kernel_array[1] is reserved for future use)
+     *
+     * Leave kernel_taps = 0 to disable (all other filter algorithms). */
+    uint8_t  kernel_taps;                       /* active taps: 1..5; 0 = disabled */
+    uint16_t kernel_array[2][17 * 9];           /* Q14: [0]=H [1]=V, 17 pos × 9 slots */
 } ni_scaler_params_t;
 
 typedef struct _ni_scaler_drawbox_params_t
@@ -2833,6 +2895,8 @@ typedef struct _ni_frame
 
     // offset to be adjusted in FW for zero copy - obtain from ni_encoder_frame_zerocopy_adjust
     uint16_t hor_adjust_offset;
+    // for encoder: indicates if raw timecode data is present in frame extra data
+    uint8_t timecode_present;
 } ni_frame_t;
 
 typedef struct _ni_xcoder_params
@@ -2916,6 +2980,7 @@ typedef struct _ni_xcoder_params
     int interval_of_psnr;
     int8_t customize_roi_qp_map[NI_CUSTOMIZE_ROI_QPOFFSET_LEVEL][NI_CUSTOMIZE_ROI_QP_NUM];
     int enableCpuAffinity;
+    int useMCTF;
 } ni_xcoder_params_t;
 
 typedef struct _niFrameSurface1
@@ -5070,6 +5135,7 @@ LIB_API ni_retcode_t ni_uploader_frame_zerocopy_check(ni_session_context_t *p_up
  *              NI_RETCODE_INVALID_PARAM
 *******************************************************************************/
 LIB_API ni_retcode_t ni_device_alloc_and_get_firmware_logs(ni_session_context_t *p_ctx, void** p_log_buffer, bool gen_log_file);
+LIB_API ni_retcode_t ni_device_alloc_and_get_fw_log_artifacts(ni_session_context_t *p_ctx, bool gen_artifacts_file);
 
 /*!*****************************************************************************
  *  \brief  Set up hard coded demo ROI map
@@ -5257,6 +5323,38 @@ LIB_API ni_retcode_t ni_device_session_restart(ni_session_context_t *p_ctx,
 LIB_API ni_retcode_t ni_dec_reconfig_ppu_params(ni_session_context_t *p_session_ctx,
                                             ni_xcoder_params_t *p_param,
                                             ni_ppu_config_t *p_ppu_config);
+/*!*****************************************************************************
+ *  \brief  Replace the kernel coefficient callback.
+ *
+ *  \param   ni_session_context_t p_session_ctx - xcoder Context
+ *  \param   ni_kernel_coeff_fn fn - ni_kernel_coeff_fn
+ *  Thread-safety: must be called before any concurrent use of
+ *  ni_scaler_build_kernel().
+ *
+ *  \param[in] fn  New callback, or NULL to restore ni_bicubic_coeff_default.
+ *
+ *  \return - NI_RETCODE_SUCCESS on success, NI_RETCODE_INVALID_PARAM on failure
+ ******************************************************************************/
+LIB_API ni_retcode_t ni_kernel_set_callback(ni_session_context_t *p_session_ctx,
+                                                 ni_kernel_coeff_fn fn);
+
+/*!******************************************************************************
+*  \brief  Build scaler kernal array.
+*
+*  \param   ni_session_context_t p_session_ctx - xcoder Context
+*  \param   uint16_t kernel_array - fw kernel array[17 * 9]
+*  \param   int kernel_taps - kernel_taps
+*  \param   double param_b - param_b
+*  \param   double param_c - param_c
+*  \param   int SrcSize - input frame size(x/y)
+*  \param   int DstSize - output frame size(x/y)
+*
+*  \return - NI_RETCODE_SUCCESS on success
+*******************************************************************************/
+LIB_API ni_retcode_t ni_scaler_build_kernel(ni_session_context_t *p_session_ctx,
+                         uint16_t kernel_array[], int kernel_taps, double param_b,
+                         double param_c, int SrcSize, int DstSize);
+
 #ifdef __cplusplus
 }
 #endif

@@ -134,6 +134,7 @@ typedef struct _ni_device_info
   ni_sw_instance_info_t sw_instance[NI_MAX_CONTEXTS_PER_HW_INSTANCE];
   ni_lock_handle_t lock;
   int pcie_gen3_on_gen4_host;  /* 1=Gen3 FW on Gen4 host, 0=no, -1=unknown */
+  uint8_t fw_flavour;           /* FW flavour byte, '-' if unsupported */
 } ni_device_info_t;
 
 // This structure is very big (2.6MB). Recommend storing in heap

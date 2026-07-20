@@ -81,6 +81,12 @@ else
     echo "#undef PRINT_FW_LOGS" >> $XCODER_AUTO_HEADERS_H
 fi
 
+if [ $XCODER_ENABLE_MCTF = YES ]; then
+    echo "#define NI_HAVE_MCTF" >> $XCODER_AUTO_HEADERS_H
+else
+    echo "#undef NI_HAVE_MCTF" >> $XCODER_AUTO_HEADERS_H
+fi
+
 echo "" >> $XCODER_AUTO_HEADERS_H
 
 

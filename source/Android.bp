@@ -14,6 +14,7 @@ cc_library {
         "ni_rsrc_priv.cpp",
         "ni_rsrc_api.cpp",
         "ni_quadraprobe.c",
+        "ni_host_ts.c",
     ],
 	
     vendor_available: true,

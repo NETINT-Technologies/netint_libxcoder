@@ -115,6 +115,10 @@ EOF
 fi
 fi
 
+if [ $XCODER_ENABLE_MCTF = YES ]; then
+    sed -i 's/Libs.private: \(.*\)/Libs.private: \1 -lnimctf/' ${XCODER_PKG_CONF}
+fi
+
 # Attempt to create dir without root access first
 mkdir $prefix -p
 if [ ! -d "$prefix" ]; then
@@ -217,4 +221,10 @@ if [ $XCODER_PRINT_FW_LOGS = YES ]; then
 	echo -e "${GREEN}XCODER_PRINT_FW_LOGS is enabled${BLACK}"
 else
 	echo -e "${YELLOW}XCODER_PRINT_FW_LOGS is disabled${BLACK}"
+fi
+
+if [ $XCODER_ENABLE_MCTF = YES ]; then
+	echo -e "${GREEN}XCODER_ENABLE_MCTF is enabled${BLACK}"
+else
+	echo -e "${YELLOW}XCODER_ENABLE_MCTF is disabled${BLACK}"
 fi
