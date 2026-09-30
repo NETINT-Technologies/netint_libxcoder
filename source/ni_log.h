@@ -31,7 +31,7 @@
 #include <stdint.h>
 
 #ifdef LIBXCODER_OBJS_BUILD
-#include "../build/xcoder_auto_headers.h"
+#include "xcoder_auto_headers.h"
 #endif
 
 #ifdef _WIN32

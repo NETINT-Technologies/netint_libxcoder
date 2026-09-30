@@ -1,0 +1,32 @@
+option('examples', type : 'boolean', value : true,
+  description : 'Build example and demo programs')
+option('tests', type : 'boolean', value : true,
+  description : 'Build test programs')
+option('self-kill', type : 'boolean', value : false,
+  description : 'Self termination on multiple repeated NVMe errors')
+option('latency-display', type : 'boolean', value : false,
+  description : 'Per frame latency display')
+option('data-dump', type : 'boolean', value : false,
+  description : 'Debug dump of video data exchanged on NVMe')
+option('linux-virt-io-driver', type : 'boolean', value : false,
+  description : 'VM Linux virt-io driver support')
+option('tracelog-timestamps', type : 'boolean', value : false,
+  description : 'Microsecond timestamps on trace logs')
+option('info-level-ssim-log', type : 'boolean', value : false,
+  description : 'SSIM logging at info level instead of debug level')
+option('backtrace-print', type : 'boolean', value : true,
+  description : 'Print backtrace')
+option('cpu-affinity', type : 'boolean', value : false,
+  description : 'CPU affinity on multi-NUMA node Linux servers (requires libnuma)')
+option('print-fw-logs', type : 'boolean', value : false,
+  description : 'Dump FW logs when FW returns errors')
+option('mctf', type : 'boolean', value : false,
+  description : 'MCTF (Motion Compensated Temporal Filtering) support using prebuilt nimctf/libnimctf.a')
+option('secure-compile', type : 'boolean', value : false,
+  description : 'Strong stack protection and RELRO')
+option('deprecation-as-error', type : 'boolean', value : false,
+  description : 'Compile without deprecated macros, functions and variables')
+option('systemd', type : 'boolean', value : false,
+  description : 'Install systemd service that initializes libxcoder')
+option('systemdir', type : 'string', value : '/etc/systemd/system',
+  description : 'Install location for the systemd service')
