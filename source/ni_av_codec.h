@@ -214,8 +214,12 @@ typedef struct _ni_mastering_display_metadata
     int has_luminance;
 } ni_mastering_display_metadata_t;
 
-#define MASTERING_DISP_CHROMA_DEN 50000 //denominator value to have 0.00002 units
-#define MASTERING_DISP_LUMA_DEN 10000 //denominator value to have 0.0001 units
+#define MASTERING_DISP_CHROMA_DEN 50000 // H.264/H.265 denominator value (0.00002 units)
+#define MASTERING_DISP_LUMA_DEN   10000 // H.264/H.265 denominator value (0.0001 units)
+
+#define AV1_MASTERING_DISP_CHROMA_DEN   65536 // AV1 0.16 fixed-point (2^16)
+#define AV1_MASTERING_DISP_LUMA_MAX_DEN 256   // AV1 24.8 fixed-point (2^8)
+#define AV1_MASTERING_DISP_LUMA_MIN_DEN 16384 // AV1 18.14 fixed-point (2^14)
 
 // struct describing HDR10 Content light level
 typedef struct _ni_content_light_level
@@ -622,10 +626,36 @@ LIB_API int ni_extract_custom_sei(uint8_t *pkt_data, int pkt_size, long index,
  *
  * \return - 0 on success, non-0 on failure
  ********************************************************************************/
-LIB_API int ni_dec_packet_parse(ni_session_context_t *p_session_ctx,
+LIB_API NI_DEPRECATED int ni_dec_packet_parse(ni_session_context_t *p_session_ctx,
                         ni_xcoder_params_t *p_param, uint8_t *data, int size,
                         ni_packet_t *p_packet, int low_delay, int codec_format,
                         int pkt_nal_bitmap, int custom_sei_type,
+                        int *svct_skip_next_packet, int *is_lone_sei_pkt);
+
+/*!******************************************************************************
+ * \brief  Decode parse packet
+ *
+ * \param[in] p_session_ctx             Pointer to a caller allocated
+ *                                      ni_session_context_t struct
+ * \param[in] p_param                   Pointer to a caller allocated
+ *                                      ni_xcoder_params_t struct
+ * \param[in] *data                     FFmpeg AVPacket data
+ * \param[in] size                      packet size
+ * \param[in] p_packet                  Pointer to a caller allocated
+ *                                      ni_packet_t struct
+ * \param[in] low_delay                 FFmpeg lowdelay
+ * \param[in] codec_format              enum ni_codec_format_t
+ * \param[in] *p_pkt_nal_bitmap         p_pkt_nal_bitmap int*
+ * \param[in] custom_sei_type           custom_sei_type
+ * \param[in] *svct_skip_next_packet    svct_skip_next_packet int*
+ * \param[in] *is_lone_sei_pkt          is_lone_sei_pkt int*
+ *
+ * \return - 0 on success, non-0 on failure
+ ********************************************************************************/
+LIB_API int ni_dec_packet_parse2(ni_session_context_t *p_session_ctx,
+                        ni_xcoder_params_t *p_param, uint8_t *data, int size,
+                        ni_packet_t *p_packet, int low_delay, int codec_format,
+                        int *p_pkt_nal_bitmap, int custom_sei_type,
                         int *svct_skip_next_packet, int *is_lone_sei_pkt);
 
 /*!******************************************************************************

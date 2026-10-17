@@ -65,7 +65,10 @@ typedef void (LIB_API* PNIENCPREPAUXDATA) (ni_session_context_t *p_enc_ctx, ni_f
 typedef void (LIB_API* PNIENCCOPYAUXDATA) (ni_session_context_t *p_enc_ctx, ni_frame_t *p_enc_frame, ni_frame_t *p_dec_frame, ni_codec_format_t codec_format, const uint8_t *mdcv_data, const uint8_t *cll_data, const uint8_t *cc_data, const uint8_t *udu_data, const uint8_t *hdrp_data, int is_hwframe, int is_semiplanar);
 typedef int (LIB_API* PNIENCWRITEFROMYUVBUFFER) (ni_session_context_t *p_ctx, ni_frame_t *p_enc_frame, uint8_t *p_yuv_buffer);
 typedef int (LIB_API* PNIEXTRACTCUSTOMSEI) (uint8_t *pkt_data, int pkt_size, long index, ni_packet_t *p_packet, uint8_t sei_type, int vcl_found);
+#ifndef DEPRECATION_AS_ERROR
 typedef int (LIB_API* PNIDECPACKETPARSE) (ni_session_context_t *p_session_ctx, ni_xcoder_params_t *p_param, uint8_t *data, int size, ni_packet_t *p_packet, int low_delay, int codec_format, int pkt_nal_bitmap, int custom_sei_type, int *svct_skip_next_packet, int *is_lone_sei_pkt);
+#endif
+typedef int (LIB_API* PNIDECPACKETPARSE2) (ni_session_context_t *p_session_ctx, ni_xcoder_params_t *p_param, uint8_t *data, int size, ni_packet_t *p_packet, int low_delay, int codec_format, int *p_pkt_nal_bitmap, int custom_sei_type, int *svct_skip_next_packet, int *is_lone_sei_pkt);
 typedef int (LIB_API* PNIEXPANDFRAME) (ni_frame_t *dst, ni_frame_t *src, int dst_stride[], int raw_width, int raw_height, int ni_fmt, int nb_planes);
 typedef int (LIB_API* PNIRECONFIGPPUOUTPUT) (ni_session_context_t *p_session_ctx, ni_xcoder_params_t *p_param, ni_ppu_config_t *ppu_config);
 typedef int (LIB_API* PNIENCINSERTTIMECODE) (ni_session_context_t *p_enc_ctx, ni_frame_t *p_enc_frame, ni_timecode_t *p_timecode);
@@ -297,7 +300,10 @@ typedef struct _NETINT_LIBXCODER_API_FUNCTION_LIST
     PNIENCCOPYAUXDATA                    niEncCopyAuxData;                     /** Client should access ::ni_enc_copy_aux_data API through this pointer */
     PNIENCWRITEFROMYUVBUFFER             niEncWriteFromYuvBuffer;              /** Client should access ::ni_enc_write_from_yuv_buffer API through this pointer */
     PNIEXTRACTCUSTOMSEI                  niExtractCustomSei;                   /** Client should access ::ni_extract_custom_sei API through this pointer */
+#ifndef DEPRECATION_AS_ERROR
     PNIDECPACKETPARSE                    niDecPacketParse;                     /** Client should access ::ni_dec_packet_parse API through this pointer */
+#endif
+    PNIDECPACKETPARSE2                   niDecPacketParse2;                    /** Client should access ::ni_dec_packet_parse2 API through this pointer */
     PNIEXPANDFRAME                       niExpandFrame;                        /** Client should access ::ni_expand_frame API through this pointer */
     PNIRECONFIGPPUOUTPUT                 niReconfigPpuOutput;                  /** Client should access ::ni_reconfig_ppu_output API through this pointer */
     PNIENCINSERTTIMECODE                 niEncInsertTimecode;                  /** Client should access ::ni_enc_insert_timecode API through this pointer */
@@ -531,7 +537,10 @@ public:
         functionList->niEncCopyAuxData = reinterpret_cast<decltype(ni_enc_copy_aux_data)*>(dlsym(lib,"ni_enc_copy_aux_data"));
         functionList->niEncWriteFromYuvBuffer = reinterpret_cast<decltype(ni_enc_write_from_yuv_buffer)*>(dlsym(lib,"ni_enc_write_from_yuv_buffer"));
         functionList->niExtractCustomSei = reinterpret_cast<decltype(ni_extract_custom_sei)*>(dlsym(lib,"ni_extract_custom_sei"));
+#ifndef DEPRECATION_AS_ERROR
         functionList->niDecPacketParse = reinterpret_cast<decltype(ni_dec_packet_parse)*>(dlsym(lib,"ni_dec_packet_parse"));
+#endif
+        functionList->niDecPacketParse2 = reinterpret_cast<decltype(ni_dec_packet_parse2)*>(dlsym(lib,"ni_dec_packet_parse2"));
         functionList->niExpandFrame = reinterpret_cast<decltype(ni_expand_frame)*>(dlsym(lib,"ni_expand_frame"));
         functionList->niReconfigPpuOutput = reinterpret_cast<decltype(ni_reconfig_ppu_output)*>(dlsym(lib,"ni_reconfig_ppu_output"));
         functionList->niEncInsertTimecode = reinterpret_cast<decltype(ni_enc_insert_timecode)*>(dlsym(lib,"ni_enc_insert_timecode"));

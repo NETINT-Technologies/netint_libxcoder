@@ -26,6 +26,8 @@
  ******************************************************************************/
 #pragma once
 
+#include "ni_device_api.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -47,9 +49,40 @@ typedef struct _ni_drawbox_params
     int box_y;
 } ni_drawbox_params_t;
 
+typedef struct _ni_ai_pre_params
+{
+    int enabled;
+    char nb_file[FILE_NAME_LEN];   // path to the AI network binary (.nb) file
+    int out_width;                 // 0 = same as input width
+    int out_height;                // 0 = same as input height
+    int initialized;               // set to 1 after the AI session is opened
+} ni_ai_pre_params_t;
+
 int ni_scaler_params_set_value(ni_scale_params_t *params, const char *name, const char *value);
 int ni_drawbox_params_set_value(ni_drawbox_params_t *params, const char *name, const char *value);
-int retrieve_filter_params(char filter_params[], ni_scale_params_t *scale_params, ni_drawbox_params_t *drawbox_params);
+int ni_ai_pre_params_set_value(ni_ai_pre_params_t *params, const char *name, const char *value);
+int retrieve_filter_params(char filter_params[], ni_scale_params_t *scale_params,
+                           ni_drawbox_params_t *drawbox_params, ni_ai_pre_params_t *ai_pre_params);
+
+/*!*****************************************************************************
+ *  \brief  Open an AI session, configure the network binary and create the
+ *          hardware output frame pool used by the ai_pre filter.
+ *
+ *  \return 0 if successful, < 0 otherwise
+ ******************************************************************************/
+int ai_pre_filter_init(ni_session_context_t *p_ai_ctx, ni_network_data_t *p_network,
+                       int iXcoderGUID, ni_ai_pre_params_t *params,
+                       int in_width, int in_height, int in_gc620_format);
+
+/*!*****************************************************************************
+ *  \brief  Run one AI preprocess operation on a hardware frame. The output is a
+ *          new hardware frame preserving the input pixel format.
+ *
+ *  \return 0 if successful, < 0 otherwise
+ ******************************************************************************/
+int ai_pre_filter(ni_session_context_t *p_ai_ctx, ni_network_data_t *p_network,
+                  ni_frame_t *p_frame_in, ni_session_data_io_t *p_data_out,
+                  ni_ai_pre_params_t *params, int in_gc620_format);
 
 void init_scaler_params(ni_scaler_input_params_t *p_scaler_params, ni_scaler_opcode_t op, int in_rec_width,
                         int in_rec_height, int in_rec_x, int in_rec_y, int out_rec_x, int out_rec_y);

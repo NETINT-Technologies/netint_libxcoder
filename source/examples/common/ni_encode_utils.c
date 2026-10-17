@@ -492,6 +492,67 @@ void prep_reconf_demo_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc
             }
             break;
 
+        // set LTR and/or invalidate reference frames on the same frame.
+        // reconf file line format:
+        // <frame-number>:useCurSrcAsLongtermPic,invalidFrameNum
+        // invalidFrameNum -1 skips reference invalidation.
+        // useLongtermRef is not sent; firmware ignores that flag.
+        case XCODER_TEST_RECONF_LTR_INVALID_REF:
+            if (p_enc_ctx->frame_num ==
+                api_param->reconf_hash[p_ctx->reconfig_count][0])
+            {
+                uint8_t use_cur_src_as_long_term_pic =
+                    (uint8_t)api_param->reconf_hash[p_ctx->reconfig_count][1];
+                int32_t invalid_frame_num =
+                    api_param->reconf_hash[p_ctx->reconfig_count][2];
+
+                if (use_cur_src_as_long_term_pic > 0)
+                {
+                    aux_data = ni_frame_new_aux_data(
+                        frame, NI_FRAME_AUX_DATA_LONG_TERM_REF,
+                        sizeof(ni_long_term_ref_t));
+                    if (!aux_data)
+                    {
+                        ni_log(NI_LOG_ERROR,
+                            "Error %s(): no mem for reconf LTR aux_data\n",
+                            __func__);
+                        return;
+                    }
+                    ni_long_term_ref_t *ltr =
+                        (ni_long_term_ref_t *)aux_data->data;
+                    ltr->use_cur_src_as_long_term_pic =
+                        use_cur_src_as_long_term_pic;
+                    ltr->use_long_term_ref = 0;
+                    ni_log(NI_LOG_DEBUG,
+                        "%s(): frame #%lu reconf LTR "
+                        "use_cur_src_as_long_term_pic %u\n",
+                        __func__, p_enc_ctx->frame_num,
+                        ltr->use_cur_src_as_long_term_pic);
+                }
+
+                if (invalid_frame_num != -1)
+                {
+                    aux_data = ni_frame_new_aux_data(
+                        frame, NI_FRAME_AUX_DATA_INVALID_REF_FRAME,
+                        sizeof(int32_t));
+                    if (!aux_data)
+                    {
+                        ni_log(NI_LOG_ERROR,
+                            "Error %s(): no mem for reconf invalid ref "
+                            "frame aux_data\n",
+                            __func__);
+                        return;
+                    }
+                    *((int32_t *)aux_data->data) = invalid_frame_num;
+                    ni_log(NI_LOG_DEBUG,
+                        "%s(): frame #%lu reconf invalid ref frame %d\n",
+                        __func__, p_enc_ctx->frame_num, invalid_frame_num);
+                }
+
+                p_ctx->reconfig_count++;
+            }
+            break;
+
         case XCODER_TEST_FORCE_IDR_FRAME:
             if (p_enc_ctx->frame_num ==
                 api_param->reconf_hash[p_ctx->reconfig_count][0])
@@ -714,6 +775,40 @@ void prep_reconf_demo_data(ni_demo_context_t *p_ctx, ni_session_context_t *p_enc
                         "xcoder_send_frame: frame #%lu API reconfig sliceArg %d\n",
                         p_enc_ctx->frame_num,
                         api_param->reconf_hash[p_ctx->reconfig_count][1]);
+
+                p_ctx->reconfig_count++;
+            }
+            break;
+        case XCODER_TEST_RECONF_LTR_INVALID_REF_API:
+            if (p_enc_ctx->frame_num ==
+                api_param->reconf_hash[p_ctx->reconfig_count][0])
+            {
+                uint8_t use_cur_src_as_long_term_pic =
+                    (uint8_t)api_param->reconf_hash[p_ctx->reconfig_count][1];
+                int32_t invalid_frame_num =
+                    api_param->reconf_hash[p_ctx->reconfig_count][2];
+
+                if (use_cur_src_as_long_term_pic > 0)
+                {
+                    ni_long_term_ref_t ltr;
+                    ltr.use_cur_src_as_long_term_pic =
+                        use_cur_src_as_long_term_pic;
+                    ltr.use_long_term_ref = 0;
+                    ni_set_ltr(p_enc_ctx, &ltr);
+                    ni_log(NI_LOG_DEBUG,
+                        "%s(): frame #%lu API set LTR "
+                        "use_cur_src_as_long_term_pic %u\n",
+                        __func__, p_enc_ctx->frame_num,
+                        use_cur_src_as_long_term_pic);
+                }
+
+                if (invalid_frame_num != -1)
+                {
+                    ni_set_frame_ref_invalid(p_enc_ctx, invalid_frame_num);
+                    ni_log(NI_LOG_DEBUG,
+                        "%s(): frame #%lu API set frame ref invalid %d\n",
+                        __func__, p_enc_ctx->frame_num, invalid_frame_num);
+                }
 
                 p_ctx->reconfig_count++;
             }
@@ -1280,11 +1375,17 @@ int encoder_open_session(ni_session_context_t *p_enc_ctx, int dst_codec_format,
     p_enc_ctx->session_id = NI_INVALID_SESSION_ID;
     p_enc_ctx->codec_format = dst_codec_format;
 
-    // assign the card GUID in the encoder context and let session open
-    // take care of the rest
-    p_enc_ctx->device_handle = NI_INVALID_DEVICE_HANDLE;
-    p_enc_ctx->blk_io_handle = NI_INVALID_DEVICE_HANDLE;
-    p_enc_ctx->hw_id = iXcoderGUID;
+    // on a sequence change the device handles are deliberately left open by
+    // encoder_close_session; keep them (and the card GUID they belong to) so
+    // ni_device_session_open re-uses them rather than opening new ones
+    if (p_enc_ctx->session_run_state != SESSION_RUN_STATE_SEQ_CHANGE_DRAINING)
+    {
+        // assign the card GUID in the encoder context and let session open
+        // take care of the rest
+        p_enc_ctx->device_handle = NI_INVALID_DEVICE_HANDLE;
+        p_enc_ctx->blk_io_handle = NI_INVALID_DEVICE_HANDLE;
+        p_enc_ctx->hw_id = iXcoderGUID;
+    }
 
     // default: little endian
     p_enc_ctx->src_endian = NI_FRAME_LITTLE_ENDIAN;
@@ -1406,6 +1507,37 @@ int encoder_open_session(ni_session_context_t *p_enc_ctx, int dst_codec_format,
 }
 
 /*!*****************************************************************************
+ *  \brief  Compute the FW-side buffer sizes for a given resolution, matching
+ *          VCEncChangeResolutionCheck / EncAsicGetSize. The calculation assumes
+ *          ref_alignment = 64.
+ ******************************************************************************/
+static void get_fw_buffer_size(int width, int height, int bit_depth,
+                         int *internal_image_luma_size,
+                         int *luma_size, int *luma_size_4n, int *chroma_size)
+{
+    int width_4n;
+    int height_4n;
+
+    if (!internal_image_luma_size || !luma_size || !luma_size_4n || !chroma_size)
+    {
+        return;
+    }
+
+    width_4n = ((width + 15) / 16) * 4;
+    width = NI_ALIGN(width, 64);
+    height = NI_ALIGN(height, 64);
+    height_4n = height / 4;
+
+    *luma_size = NI_ALIGN(NI_ALIGN(width * 4 * bit_depth / 8, 16), 64) *
+                 height / 4;
+    *luma_size_4n = NI_ALIGN(NI_ALIGN(width_4n * 4 * bit_depth / 8, 16), 64) *
+                    height_4n / 4;
+    *internal_image_luma_size = (*luma_size + *luma_size_4n + 0xf) & ~0xf;
+    *internal_image_luma_size = NI_ALIGN(*internal_image_luma_size, 64);
+    *chroma_size = *luma_size / 2;
+}
+
+/*!*****************************************************************************
  *  \brief  Reopen or reconfig encoder upon sequence change
  *
  *  \param
@@ -1421,6 +1553,12 @@ int encoder_reinit_session(ni_session_context_t *p_enc_ctx,
 {
     int ret = NI_TEST_RETCODE_SUCCESS;
     int new_stride, ori_stride;
+    int internal_image_luma_size, luma_size, luma_size_4n, chroma_size;
+    int ori_internal_image_luma_size, ori_luma_size, ori_luma_size_4n, ori_chroma_size;
+    int pass1_internal_image_luma_size, pass1_luma_size, pass1_luma_size_4n, pass1_chroma_size;
+    int ori_pass1_internal_image_luma_size, ori_pass1_luma_size;
+    int ori_pass1_luma_size_4n, ori_pass1_chroma_size;
+    bool pass1_buffer_too_small = false;
     bool bIsSmallPicture = false;
     ni_frame_t *p_buffered_frame = &(p_in_data->data.frame);
     ni_xcoder_params_t *p_api_param = (ni_xcoder_params_t *)p_enc_ctx->p_session_config;
@@ -1473,10 +1611,31 @@ int encoder_reinit_session(ni_session_context_t *p_enc_ctx,
         ori_stride = NI_ALIGN(p_enc_ctx->ori_width * p_enc_ctx->bit_depth_factor, 128);
     }
 
-    if (p_api_param->cfg_enc_params.lookAheadDepth) {
+    get_fw_buffer_size(new_width, new_height,
+                       p_enc_ctx->bit_depth_factor == 2 ? 10 : 8,
+                       &internal_image_luma_size, &luma_size, &luma_size_4n,
+                       &chroma_size);
+    get_fw_buffer_size(p_enc_ctx->ori_width, p_enc_ctx->ori_height,
+                       p_enc_ctx->ori_bit_depth_factor == 2 ? 10 : 8,
+                       &ori_internal_image_luma_size, &ori_luma_size,
+                       &ori_luma_size_4n, &ori_chroma_size);
+
+    // RGBA: host input size uses width (no stride align). Recon/ref sizes keep
+    // get_fw_buffer_size results to match VCEncChangeResolutionCheck / EncAsicGetSize.
+    if (is_rgba)
+    {
+        new_stride = new_width;
+        ori_stride = p_enc_ctx->ori_width;
+    }
+
+    if (p_api_param->cfg_enc_params.lookAheadDepth ||
+        p_api_param->cfg_enc_params.crf >= 0 ||
+        p_api_param->cfg_enc_params.crfFloat >= 0) {
         ni_log(NI_LOG_DEBUG, "xcoder_encode_reinit 2-pass "
-             "lookaheadDepth %d\n",
-             p_api_param->cfg_enc_params.lookAheadDepth);
+             "lookaheadDepth %d and/or CRF %d and/or CRFFloat %f\n",
+             p_api_param->cfg_enc_params.lookAheadDepth,
+             p_api_param->cfg_enc_params.crf,
+             p_api_param->cfg_enc_params.crfFloat);
         if ((new_width < NI_2PASS_ENCODE_MIN_WIDTH) ||
            (new_height < NI_2PASS_ENCODE_MIN_HEIGHT)) {
           bIsSmallPicture = true;
@@ -1487,6 +1646,46 @@ int encoder_reinit_session(ni_session_context_t *p_enc_ctx,
            (new_height < NI_MIN_HEIGHT)) {
           bIsSmallPicture = true;
         }
+    }
+
+    // Match 2-pass WA gating: lookAheadDepth and/or CRF also allocate pass-1 buffers.
+    if (p_api_param->cfg_enc_params.lookAheadDepth ||
+        p_api_param->cfg_enc_params.crf >= 0 ||
+        p_api_param->cfg_enc_params.crfFloat >= 0) {
+        // 2-pass workaround requires 32x32-padded input, then apply inLoopDSRatio to pass-1 buffers:
+        // 0 = 1:1 (no DS), 1 = 1:2 (default).
+        int ds_shift = p_api_param->cfg_enc_params.inLoopDSRatio;
+        int pass1_width = NI_ALIGN(new_width, 32) >> ds_shift;
+        int pass1_height = NI_ALIGN(new_height, 32) >> ds_shift;
+        int ori_pass1_width = NI_ALIGN(p_enc_ctx->ori_width, 32) >> ds_shift;
+        int ori_pass1_height = NI_ALIGN(p_enc_ctx->ori_height, 32) >> ds_shift;
+
+        get_fw_buffer_size(pass1_width, pass1_height,
+                           p_enc_ctx->bit_depth_factor == 2 ? 10 : 8,
+                           &pass1_internal_image_luma_size, &pass1_luma_size,
+                           &pass1_luma_size_4n, &pass1_chroma_size);
+        get_fw_buffer_size(ori_pass1_width, ori_pass1_height,
+                           p_enc_ctx->ori_bit_depth_factor == 2 ? 10 : 8,
+                           &ori_pass1_internal_image_luma_size,
+                           &ori_pass1_luma_size, &ori_pass1_luma_size_4n,
+                           &ori_pass1_chroma_size);
+
+        pass1_buffer_too_small =
+            ori_pass1_luma_size < pass1_luma_size ||
+            ori_pass1_luma_size_4n < pass1_luma_size_4n ||
+            ori_pass1_internal_image_luma_size <
+            pass1_internal_image_luma_size ||
+            ori_pass1_chroma_size < pass1_chroma_size;
+
+        ni_log(NI_LOG_INFO, "%s pass-1 buffers (inLoopDSRatio %d) "
+             "original %dx%d luma %d/%d internal %d chroma %d "
+             "new %dx%d luma %d/%d internal %d chroma %d too_small %d\n",
+             __func__, ds_shift, ori_pass1_width, ori_pass1_height,
+             ori_pass1_luma_size, ori_pass1_luma_size_4n,
+             ori_pass1_internal_image_luma_size, ori_pass1_chroma_size,
+             pass1_width, pass1_height, pass1_luma_size, pass1_luma_size_4n,
+             pass1_internal_image_luma_size, pass1_chroma_size,
+             pass1_buffer_too_small);
     }
 
     if (p_api_param->cfg_enc_params.multicoreJointMode) {
@@ -1510,11 +1709,26 @@ int encoder_reinit_session(ni_session_context_t *p_enc_ctx,
          p_enc_ctx->ori_pix_fmt, new_pix_fmt, bIsSmallPicture,
          p_enc_ctx->codec_format);
 
+    ni_log(NI_LOG_INFO, "%s resolution changing %dx%d -> %dx%d "
+         "original stride %d height %d luma size %d/%d internal %d chroma %d pix fmt %d "
+         "new stride %d height %d luma size %d/%d internal %d chroma %d pix fmt %d\n",
+         __func__, p_enc_ctx->ori_width, p_enc_ctx->ori_height, new_width,
+         new_height, ori_stride, p_enc_ctx->ori_height, ori_luma_size,
+         ori_luma_size_4n, ori_internal_image_luma_size, ori_chroma_size,
+         p_enc_ctx->ori_pix_fmt, new_stride, new_height, luma_size,
+         luma_size_4n, internal_image_luma_size, chroma_size, new_pix_fmt);
+
     // fast sequence change without close / open only if new resolution < original resolution
     if (ori_stride*p_enc_ctx->ori_height < new_stride*new_height ||
+        ori_luma_size < luma_size ||
+        ori_luma_size_4n < luma_size_4n ||
+        ori_internal_image_luma_size < internal_image_luma_size ||
+        ori_chroma_size < chroma_size ||
+        pass1_buffer_too_small ||
         p_enc_ctx->ori_pix_fmt != new_pix_fmt ||
         bIsSmallPicture ||
-        p_enc_ctx->codec_format == NI_CODEC_FORMAT_JPEG)
+        p_enc_ctx->codec_format == NI_CODEC_FORMAT_JPEG ||
+        p_api_param->cfg_enc_params.disable_adaptive_buffers)
     {
         ni_log(NI_LOG_INFO, "XCoder encode sequence change by close / re-open session\n");
         encoder_close_session(p_enc_ctx, p_in_data, p_out_data);
@@ -1524,6 +1738,10 @@ int encoder_reinit_session(ni_session_context_t *p_enc_ctx,
         if (NI_RETCODE_SUCCESS != ret)
         {
             ni_log(NI_LOG_ERROR, "Failed to Re-open Encoder Session upon Sequence Change (status = %d)\n", ret);
+            // the sequence change did not complete - drop back to NORMAL so the
+            // state does not stay stuck at SEQ_CHANGE_DRAINING (the handles kept
+            // open by encoder_close_session are released by the caller's cleanup)
+            p_enc_ctx->session_run_state = SESSION_RUN_STATE_NORMAL;
             return ret;
         }
         p_out_data->data.packet.end_of_stream = 0;
@@ -1550,8 +1768,11 @@ int encoder_reinit_session(ni_session_context_t *p_enc_ctx,
       ret = encoder_sequence_change(p_enc_ctx, p_in_data, p_out_data, new_width, new_height, new_pix_fmt);
     }
 
-    // this state is referenced when sending first frame after sequence change
-    p_enc_ctx->session_run_state = SESSION_RUN_STATE_SEQ_CHANGE_OPENING;
+    // this state is referenced when sending first frame after sequence change;
+    // only claim it if the change succeeded, otherwise fall back to NORMAL so
+    // the next send does not take the post-sequence-change path
+    p_enc_ctx->session_run_state = ret >= 0 ? SESSION_RUN_STATE_SEQ_CHANGE_OPENING
+                                            : SESSION_RUN_STATE_NORMAL;
 
     ni_log(NI_LOG_DEBUG, "%s: session_run_state change to %d \n", __func__,
            p_enc_ctx->session_run_state);
@@ -1950,13 +2171,25 @@ int encoder_close_session(ni_session_context_t *p_enc_ctx,
     int ret = 0;
     ni_device_session_close(p_enc_ctx, 1, NI_DEVICE_TYPE_ENCODER);
 
-    ni_log(NI_LOG_DEBUG, "encoder_close_session - close encoder blk_io_handle %d device_handle %d\n", p_enc_ctx->blk_io_handle, p_enc_ctx->device_handle);
+    ni_log(NI_LOG_DEBUG, "encoder_close_session - session_run_state %d\n", p_enc_ctx->session_run_state);
+
+    // keep the device handle(s) open across a sequence change so the memory bin
+    // buffers get recycled instead of leaked; encoder_open_session leaves them
+    // alone in that state and ni_device_session_open re-uses them
+    if (p_enc_ctx->session_run_state != SESSION_RUN_STATE_SEQ_CHANGE_DRAINING)
+    {
+        ni_log(NI_LOG_DEBUG, "encoder_close_session - close encoder blk_io_handle %d device_handle %d\n", p_enc_ctx->blk_io_handle, p_enc_ctx->device_handle);
 #ifdef _WIN32
-    ni_device_close(p_enc_ctx->device_handle);
+        ni_device_close(p_enc_ctx->device_handle);
 #elif __linux__
-    ni_device_close(p_enc_ctx->device_handle);
-    ni_device_close(p_enc_ctx->blk_io_handle);
+        ni_device_close(p_enc_ctx->device_handle);
+        ni_device_close(p_enc_ctx->blk_io_handle);
 #endif
+        p_enc_ctx->device_handle = NI_INVALID_DEVICE_HANDLE;
+        p_enc_ctx->blk_io_handle = NI_INVALID_DEVICE_HANDLE;
+        p_enc_ctx->auto_dl_handle = NI_INVALID_DEVICE_HANDLE;
+        p_enc_ctx->sender_handle = NI_INVALID_DEVICE_HANDLE;
+    }
 
     if (p_enc_ctx->codec_format == NI_CODEC_FORMAT_AV1 &&
         p_out_data->data.packet.av1_buffer_index)

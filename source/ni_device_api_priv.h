@@ -703,6 +703,7 @@ typedef struct _ni_encoder_config_t
   uint8_t ui8customMinCoeffDiv;
   uint8_t ui8cutreeFlushIframe;
   uint8_t    ui8qpScaleEnable;
+  uint8_t ui8longTermReferenceOldest;
 } ni_encoder_config_t;
 
 

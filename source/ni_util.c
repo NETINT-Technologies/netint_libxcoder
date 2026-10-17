@@ -2717,7 +2717,11 @@ uint64_t ni_gettime_ns(void)
     return (time_sec * 1000000000LL + time_nsec);
 #else
     struct timespec ts;
+#ifdef __linux__
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+#else
     clock_gettime(CLOCK_REALTIME, &ts);
+#endif
     return ts.tv_sec * 1000000000LL + ts.tv_nsec;
 #endif
 }
@@ -4478,8 +4482,8 @@ int ni_param_get_key_value(char *p_str, char *key, char *value)
         key[0] = '\0';
         value[0] = '\0';
         int64_t key_len = p - p_str;
-        ni_strncpy(key, 64, p_str, key_len);
-        ni_strcpy(value, 64, p + 1);
+        ni_strncpy(key, 256, p_str, key_len);
+        ni_strcpy(value, 256, p + 1);
         return 0;
     }
 }

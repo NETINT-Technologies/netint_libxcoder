@@ -125,15 +125,51 @@ int ni_drawbox_params_set_value(ni_drawbox_params_t *params, const char *name, c
     return 0;
 }
 
-int retrieve_filter_params(char filter_params[], ni_scale_params_t *scale_params, ni_drawbox_params_t *drawbox_params)
+int ni_ai_pre_params_set_value(ni_ai_pre_params_t *params, const char *name, const char *value)
 {
-    char key[64], value[64];
+    if (!params || !name || !value)
+    {
+        ni_log(NI_LOG_ERROR, "Error: Null pointer received in ni_ai_pre_params_set_value\n");
+        return -1;
+    }
+
+    if (!strcmp("nb", name))
+    {
+        ni_strcpy(params->nb_file, sizeof(params->nb_file), value);
+    } else if (!strcmp("width", name))
+    {
+        if (ni_strtoi(value, &params->out_width) != NI_RETCODE_SUCCESS)
+        {
+            ni_log(NI_LOG_ERROR, "ERROR: %s invalid value for %s: %s\n", __func__, name, value);
+            return -1;
+        }
+    } else if (!strcmp("height", name))
+    {
+        if (ni_strtoi(value, &params->out_height) != NI_RETCODE_SUCCESS)
+        {
+            ni_log(NI_LOG_ERROR, "ERROR: %s invalid value for %s: %s\n", __func__, name, value);
+            return -1;
+        }
+    } else
+    {
+        ni_log(NI_LOG_ERROR, "Error: invalid ai_pre param name %s\n", name);
+        return -1;
+    }
+
+    return 0;
+}
+
+int retrieve_filter_params(char filter_params[], ni_scale_params_t *scale_params,
+                           ni_drawbox_params_t *drawbox_params, ni_ai_pre_params_t *ai_pre_params)
+{
+    char key[256], value[256];
     char *curr = filter_params, *colon_pos;
     int ret = 0;
 
     //reset all params to default values first
     memset(scale_params, 0, sizeof(ni_scale_params_t));
     memset(drawbox_params, 0, sizeof(ni_drawbox_params_t));
+    memset(ai_pre_params, 0, sizeof(ni_ai_pre_params_t));
     scale_params->format = GC620_I420;
 
     if (strncmp("ni_quadra_scale", curr, 15) == 0)
@@ -146,9 +182,14 @@ int retrieve_filter_params(char filter_params[], ni_scale_params_t *scale_params
         drawbox_params->enabled = 1;
         curr += 18;
     }
+    else if (strncmp("ni_quadra_ai_pre", curr, 16) == 0)
+    {
+        ai_pre_params->enabled = 1;
+        curr += 17;
+    }
     else
     {
-        ni_log(NI_LOG_ERROR, "Error: invalid filter, must be one of [ni_quadra_scale, ni_quadra_drawbox]");
+        ni_log(NI_LOG_ERROR, "Error: invalid filter, must be one of [ni_quadra_scale, ni_quadra_drawbox, ni_quadra_ai_pre]");
         return -1;
     }
 
@@ -172,6 +213,9 @@ int retrieve_filter_params(char filter_params[], ni_scale_params_t *scale_params
         if (scale_params->enabled)
         {
             ret = ni_scaler_params_set_value(scale_params, key, value);
+        } else if (ai_pre_params->enabled)
+        {
+            ret = ni_ai_pre_params_set_value(ai_pre_params, key, value);
         } else
         {
             ret = ni_drawbox_params_set_value(drawbox_params, key, value);
@@ -560,4 +604,162 @@ int scale_filter(ni_session_context_t *p_ctx, ni_frame_t *p_frame_in,
     }
 
     return ret;
+}
+
+/*!*****************************************************************************
+ *  \brief  Open an AI session, configure the network binary and create the
+ *          hardware output frame pool used by the ai_pre filter.
+ *
+ *          The ai_pre engine preserves the input pixel format (the input/output
+ *          format pairing is decided by the loaded .nb model).
+ *
+ *  \return 0 if successful, < 0 otherwise
+ ******************************************************************************/
+int ai_pre_filter_init(ni_session_context_t *p_ai_ctx, ni_network_data_t *p_network,
+                       int iXcoderGUID, ni_ai_pre_params_t *params,
+                       int in_width, int in_height, int in_gc620_format)
+{
+    int ret = 0;
+
+    if (params->out_width <= 0)
+    {
+        params->out_width = in_width;
+    }
+    if (params->out_height <= 0)
+    {
+        params->out_height = in_height;
+    }
+
+    p_ai_ctx->session_id = NI_INVALID_SESSION_ID;
+    p_ai_ctx->device_handle = NI_INVALID_DEVICE_HANDLE;
+    p_ai_ctx->blk_io_handle = NI_INVALID_DEVICE_HANDLE;
+    p_ai_ctx->hw_id = iXcoderGUID;
+    p_ai_ctx->hw_action = NI_CODEC_HW_ENABLE;
+    p_ai_ctx->device_type = NI_DEVICE_TYPE_AI;
+    p_ai_ctx->keep_alive_timeout = NI_DEFAULT_KEEP_ALIVE_TIMEOUT;
+
+    ret = ni_device_session_open(p_ai_ctx, NI_DEVICE_TYPE_AI);
+    if (ret != NI_RETCODE_SUCCESS)
+    {
+        ni_log(NI_LOG_ERROR, "Error: ai_pre session open failed %d\n", ret);
+        return -1;
+    }
+
+    ret = ni_ai_config_network_binary(p_ai_ctx, p_network, params->nb_file);
+    if (ret != NI_RETCODE_SUCCESS)
+    {
+        ni_log(NI_LOG_ERROR, "Error: ai_pre config network binary '%s' failed %d\n",
+               params->nb_file, ret);
+        return -1;
+    }
+
+    // Create a pool (size 8) of AI output hardware frames.
+    ret = ni_device_alloc_frame(p_ai_ctx, NI_VPU_CEIL(params->out_width, 2),
+                                NI_VPU_CEIL(params->out_height, 2), in_gc620_format,
+                                NI_AI_FLAG_IO | NI_AI_FLAG_PC,
+                                0, 0, 0, 0, 8, 0, NI_DEVICE_TYPE_AI);
+    if (ret != NI_RETCODE_SUCCESS)
+    {
+        ni_log(NI_LOG_ERROR, "Error: ai_pre failed to create frame pool %d\n", ret);
+        return -1;
+    }
+
+    params->initialized = 1;
+    ni_log(NI_LOG_INFO, "ai_pre session opened: nb=%s, out %dx%d, gc620 fmt %d\n",
+           params->nb_file, params->out_width, params->out_height, in_gc620_format);
+    return 0;
+}
+
+/*!*****************************************************************************
+ *  \brief  Run one AI preprocess operation on a hardware frame. The output is a
+ *          new hardware frame preserving the input pixel format.
+ *
+ *  \return 0 if successful, < 0 otherwise
+ ******************************************************************************/
+int ai_pre_filter(ni_session_context_t *p_ai_ctx, ni_network_data_t *p_network,
+                  ni_frame_t *p_frame_in, ni_session_data_io_t *p_data_out,
+                  ni_ai_pre_params_t *params, int in_gc620_format)
+{
+    int ret = 0;
+    niFrameSurface1_t *p_surface_in;
+    niFrameSurface1_t *p_surface_out;
+    uint64_t start_ns;
+    // ai frame acquire can be asynchronous; bound the wait by keep-alive timeout
+    const uint64_t timeout_ns = (uint64_t)NI_DEFAULT_KEEP_ALIVE_TIMEOUT * 1000000000ULL;
+
+    p_surface_in = (niFrameSurface1_t *)p_frame_in->p_data[3];
+    if (!p_surface_in)
+    {
+        ni_log(NI_LOG_ERROR, "Error: ai_pre input is not a hardware frame\n");
+        return -1;
+    }
+
+    // Allocate the host-side ni_frame_t that receives the output hw descriptor.
+    ret = ni_frame_buffer_alloc_hwenc(&p_data_out->data.frame,
+                                      NI_VPU_CEIL(params->out_width, 2),
+                                      NI_VPU_CEIL(params->out_height, 2), 0);
+    if (ret != 0)
+    {
+        ni_log(NI_LOG_ERROR, "Error: ai_pre failed to alloc output frame\n");
+        return -1;
+    }
+
+    // Acquire the AI destination (output) hardware frame from the pool.
+    start_ns = ni_gettime_ns();
+    do {
+        ret = ni_device_alloc_frame(p_ai_ctx, NI_VPU_CEIL(params->out_width, 2),
+                                    NI_VPU_CEIL(params->out_height, 2), in_gc620_format,
+                                    NI_AI_FLAG_IO, 0, 0, 0, 0, 0, -1,
+                                    NI_DEVICE_TYPE_AI);
+        if (ret < NI_RETCODE_SUCCESS)
+        {
+            ni_log(NI_LOG_ERROR, "Error: ai_pre failed to alloc AI dst frame %d\n", ret);
+            ni_frame_buffer_free(&p_data_out->data.frame);
+            return -1;
+        }
+        if (ni_gettime_ns() - start_ns > timeout_ns)
+        {
+            ni_log(NI_LOG_ERROR, "Error: ai_pre alloc AI dst frame timeout\n");
+            ni_frame_buffer_free(&p_data_out->data.frame);
+            return -1;
+        }
+    } while (ret != NI_RETCODE_SUCCESS);
+
+    // Provide the AI source (input) hardware frame.
+    ret = ni_device_alloc_frame(p_ai_ctx, 0, 0, 0, 0, 0, 0, 0, 0,
+                                p_surface_in->ui32nodeAddress,
+                                p_surface_in->ui16FrameIdx,
+                                NI_DEVICE_TYPE_AI);
+    if (ret != NI_RETCODE_SUCCESS)
+    {
+        ni_log(NI_LOG_ERROR, "Error: ai_pre failed to alloc AI src frame %d\n", ret);
+        ni_frame_buffer_free(&p_data_out->data.frame);
+        return -1;
+    }
+
+    // Read the output hardware descriptor (new frame index).
+    start_ns = ni_gettime_ns();
+    do {
+        ret = ni_device_session_read_hwdesc(p_ai_ctx, p_data_out, NI_DEVICE_TYPE_AI);
+        if (ret < NI_RETCODE_SUCCESS)
+        {
+            ni_log(NI_LOG_ERROR, "Error: ai_pre failed to read hwdesc %d\n", ret);
+            ni_frame_buffer_free(&p_data_out->data.frame);
+            return -1;
+        }
+        if (ni_gettime_ns() - start_ns > timeout_ns)
+        {
+            ni_log(NI_LOG_ERROR, "Error: ai_pre read hwdesc timeout\n");
+            ni_frame_buffer_free(&p_data_out->data.frame);
+            return -1;
+        }
+    } while (ret != NI_RETCODE_SUCCESS);
+
+    p_surface_out = (niFrameSurface1_t *)p_data_out->data.frame.p_data[3];
+    p_surface_out->ui16width = params->out_width;
+    p_surface_out->ui16height = params->out_height;
+    ni_log(NI_LOG_DEBUG, "ai_pre in FID %u -> out FID %u\n",
+           p_surface_in->ui16FrameIdx, p_surface_out->ui16FrameIdx);
+
+    return 0;
 }

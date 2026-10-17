@@ -124,6 +124,7 @@ int main(int argc, char *argv[])
     niFrameSurface1_t *p_hwframe = NULL;
     ni_scale_params_t scale_params = {0};
     ni_drawbox_params_t drawbox_params = {0};
+    ni_ai_pre_params_t ai_pre_params = {0};   // ai_pre not supported in this demo
     ni_test_frame_list_t frame_list = {0};
     ni_pthread_t dec_send_tid, dec_recv_tid, enc_send_tid, enc_recv_tid;
     dec_send_param_t dec_send_param = {0};
@@ -508,10 +509,16 @@ int main(int argc, char *argv[])
             ret = -1;
             goto end;
         }
-        ret = retrieve_filter_params(filter_conf_params, &scale_params, &drawbox_params);
+        ret = retrieve_filter_params(filter_conf_params, &scale_params, &drawbox_params, &ai_pre_params);
         if (ret)
         {
             ni_log(NI_LOG_ERROR, "Error: failed to parse filter parameters: %s\n", filter_conf_params);
+            goto end;
+        }
+        if (ai_pre_params.enabled)
+        {
+            ni_log(NI_LOG_ERROR, "Error: ni_quadra_ai_pre is not supported in this demo\n");
+            ret = -1;
             goto end;
         }
     }

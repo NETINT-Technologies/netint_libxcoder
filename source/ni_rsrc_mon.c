@@ -428,6 +428,15 @@ bool open_and_query(ni_device_type_t device_type,
 
   if(detail)
   {
+    if (ni_cmp_fw_api_ver((char*) &p_device_context->p_device_info->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX], "6tD") < 0 &&
+             device_type >= NI_DEVICE_TYPE_SCALER)
+    {
+      (void)fprintf(stderr,
+              "ERROR: cannot print scaler and ai detailed info for %s as it has FW API "
+              "version <6tD\n", p_device_context->p_device_info->dev_name);
+      return false;
+    }
+
     if (ni_cmp_fw_api_ver((char*) &p_device_context->p_device_info->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
                           "6i") < 0)
     {
@@ -1470,7 +1479,7 @@ void print_json_detail(ni_device_queue_t *p_device_queue, ni_session_context_t *
   dyn_str_buf_t output_buf = {0};
   ni_device_context_t *p_device_context;
   ni_device_type_t device_type;
-  int max_device_type = NI_DEVICE_TYPE_SCALER;
+  int max_device_type = NI_DEVICE_TYPE_XCODER_MAX;
   int first_item_printed = 0;
   int first_device_type_printed = 0;
 
@@ -1584,6 +1593,31 @@ void print_json_detail(ni_device_queue_t *p_device_queue, ni_session_context_t *
                     detail_data_v1->sInstDetailStatusAppend[index].ui32Width,
                     detail_data_v1->sInstDetailStatusAppend[index].ui32Height,
                     get_pixel_format(p_device_context, detail_data_v1->sInstDetailStatusAppend[index].u8PixelFormat),
+                    get_session_id(p_device_context, (int)detail_data_v1->sInstDetailStatusAppend[index].u32InstanceId),
+                    p_device_context->p_device_info->dev_name);
+          }
+          else if(device_type == NI_DEVICE_TYPE_SCALER ||
+                  device_type == NI_DEVICE_TYPE_AI)
+          {
+            strcat_dyn_buf(&output_buf,
+                    "\t\t{\n"
+                    "\t\t\t\"NUMBER\": %u,\n"
+                    "\t\t\t\"INDEX\": %u,\n"
+                    "\t\t\t\"VpuLoad\": %u,\n"
+                    "\t\t\t\"InFrame\": %u,\n"
+                    "\t\t\t\"OutFrame\": %u,\n"
+                    "\t\t\t\"Width\": %u,\n"
+                    "\t\t\t\"Height\": %u,\n"
+                    "\t\t\t\"SID\": \"%s\",\n"
+                    "\t\t\t\"DEVICE\": \"%s\"\n"
+                    "\t\t}",
+                    device_count,
+                    instance_count++,
+                    detail_data_v1->sInstDetailStatusAppend[index].ui16RealVpuLoad,
+                    detail_data_v1->sInstDetailStatus[index].ui32NumInFrame,
+                    detail_data_v1->sInstDetailStatus[index].ui32NumOutFrame,
+                    detail_data_v1->sInstDetailStatusAppend[index].ui32Width,
+                    detail_data_v1->sInstDetailStatusAppend[index].ui32Height,
                     get_session_id(p_device_context, (int)detail_data_v1->sInstDetailStatusAppend[index].u32InstanceId),
                     p_device_context->p_device_info->dev_name);
           }
@@ -2402,7 +2436,7 @@ PRINT_OUTPUT:
 }
 
 void print_text(ni_device_queue_t *coders,
-                ni_session_context_t *sessionCtxt, int detail, ni_instance_mgr_detail_status_v1_t *detail_data_v1, ni_instance_mgr_detail_status_v1_t (*previous_detail_data_p)[NI_DEVICE_TYPE_XCODER_MAX], int checkInterval)
+                ni_session_context_t *sessionCtxt, int detail, ni_instance_mgr_detail_status_v1_t *detail_data_v1, ni_instance_mgr_detail_status_v1_t (*previous_detail_data_p)[NI_MAX_DEVICE_CNT], int checkInterval)
 {
   int index, instance_count; // used in later FOR-loop when compiled without c99
   unsigned int i;
@@ -2415,8 +2449,6 @@ void print_text(ni_device_queue_t *coders,
   int max_device_type = NI_DEVICE_TYPE_XCODER_MAX;
   char _ml[16];
 
-  if(detail)
-    max_device_type = NI_DEVICE_TYPE_SCALER;
   for (module_type = NI_DEVICE_TYPE_DECODER;
        module_type != max_device_type;
        module_type++)
@@ -2440,15 +2472,15 @@ void print_text(ni_device_queue_t *coders,
         if(checkInterval)
         {
           strcat_dyn_buf(&output_buf,
-                         "%-5s %-7s %-9s %-5s %-7s %-8s %-4s %-5s %-6s %-5s %-14s %-20s\n", "INDEX",
-                         "AvgCost", "FrameRate", "IDR", "InFrame", "OutFrame", "fps", "Width", "Height",
+                         "%-5s %-7s %-7s %-9s %-5s %-7s %-8s %-4s %-5s %-6s %-5s %-14s %-20s\n", "INDEX",
+                         "AvgCost", "VpuLoad", "FrameRate", "IDR", "InFrame", "OutFrame", "fps", "Width", "Height",
                          "SID", "DEVICE", "NAMESPACE");
         }
         else
         {
           strcat_dyn_buf(&output_buf,
-                         "%-5s %-7s %-9s %-5s %-7s %-8s %-5s %-6s %-5s %-14s %-20s\n", "INDEX",
-                         "AvgCost", "FrameRate", "IDR", "InFrame", "OutFrame", "Width", "Height",
+                         "%-5s %-7s %-7s %-9s %-5s %-7s %-8s %-5s %-6s %-5s %-14s %-20s\n", "INDEX",
+                         "AvgCost", "VpuLoad", "FrameRate", "IDR", "InFrame", "OutFrame", "Width", "Height",
                          "SID", "DEVICE", "NAMESPACE");
         }
       }
@@ -2457,16 +2489,33 @@ void print_text(ni_device_queue_t *coders,
         if(checkInterval)
         {
           strcat_dyn_buf(&output_buf,
-                         "%-5s %-7s %-9s %-5s %-7s %-7s %-8s %-4s %-10s %-10s %-5s %-6s %-9s %-5s %-14s %-20s\n", "INDEX",
-                         "AvgCost", "FrameRate", "IDR", "UserIDR", "InFrame", "OutFrame", "fps", "BR", "AvgBR", "Width", "Height",
+                         "%-5s %-7s %-7s %-9s %-5s %-7s %-7s %-8s %-4s %-10s %-10s %-5s %-6s %-9s %-5s %-14s %-20s\n", "INDEX",
+                         "AvgCost", "VpuLoad", "FrameRate", "IDR", "UserIDR", "InFrame", "OutFrame", "fps", "BR", "AvgBR", "Width", "Height",
                           "Format", "SID", "DEVICE", "NAMESPACE");
         }
         else
         {
           strcat_dyn_buf(&output_buf,
-                         "%-5s %-7s %-9s %-5s %-7s %-7s %-8s %-10s %-10s %-5s %-6s %-9s %-5s %-14s %-20s\n", "INDEX",
-                         "AvgCost", "FrameRate", "IDR", "UserIDR", "InFrame", "OutFrame", "BR", "AvgBR", "Width", "Height",
+                         "%-5s %-7s %-7s %-9s %-5s %-7s %-7s %-8s %-10s %-10s %-5s %-6s %-9s %-5s %-14s %-20s\n", "INDEX",
+                         "AvgCost", "VpuLoad", "FrameRate", "IDR", "UserIDR", "InFrame", "OutFrame", "BR", "AvgBR", "Width", "Height",
                           "Format", "SID", "DEVICE", "NAMESPACE");
+        }
+      }
+      else if(module_type == NI_DEVICE_TYPE_SCALER || module_type == NI_DEVICE_TYPE_AI)
+      {
+        if(checkInterval)
+        {
+          strcat_dyn_buf(&output_buf,
+                         "%-5s %-7s %-7s %-8s %-4s %-5s %-6s %-5s %-14s %-20s\n", "INDEX",
+                         "VpuLoad", "InFrame", "OutFrame", "fps", "Width", "Height",
+                         "SID", "DEVICE", "NAMESPACE");
+        }
+        else
+        {
+          strcat_dyn_buf(&output_buf,
+                         "%-5s %-7s %-7s %-8s %-5s %-6s %-5s %-14s %-20s\n", "INDEX",
+                         "VpuLoad", "InFrame", "OutFrame", "Width", "Height",
+                         "SID", "DEVICE", "NAMESPACE");
         }
       }
     }
@@ -2500,9 +2549,10 @@ void print_text(ni_device_queue_t *coders,
                   if(module_type == NI_DEVICE_TYPE_DECODER)
                   {
                     strcat_dyn_buf(&output_buf,
-                           "%-5d %-7d %-9d %-5u %-7d %-8d %-4d %-5d %-6d %-5s %-14s %-20s\n",
+                           "%-5d %-7d %-7d %-9d %-5u %-7d %-8d %-4d %-5d %-6d %-5s %-14s %-20s\n",
                            instance_count++,
                            detail_data_v1->sInstDetailStatus[index].ui8AvgCost,
+                           detail_data_v1->sInstDetailStatusAppend[index].ui16RealVpuLoad,
                            detail_data_v1->sInstDetailStatus[index].ui16FrameRate,
                            detail_data_v1->sInstDetailStatus[index].ui32NumIDR,
                            detail_data_v1->sInstDetailStatus[index].ui32NumInFrame,
@@ -2517,9 +2567,10 @@ void print_text(ni_device_queue_t *coders,
                   else if (module_type == NI_DEVICE_TYPE_ENCODER)
                   {
                     strcat_dyn_buf(&output_buf,
-                           "%-5d %-7d %-9d %-5u %-7d %-7d %-8d %-4d %-10d %-10d %-5d %-6d %-9s %-5s %-14s %-20s\n",
+                           "%-5d %-7d %-7d %-9d %-5u %-7d %-7d %-8d %-4d %-10d %-10d %-5d %-6d %-9s %-5s %-14s %-20s\n",
                            instance_count++,
                            detail_data_v1->sInstDetailStatus[index].ui8AvgCost,
+                           detail_data_v1->sInstDetailStatusAppend[index].ui16RealVpuLoad,
                            detail_data_v1->sInstDetailStatus[index].ui16FrameRate,
                            detail_data_v1->sInstDetailStatus[index].ui32NumIDR,
                            detail_data_v1->sInstDetailStatusAppend[index].ui32UserIDR,
@@ -2535,6 +2586,21 @@ void print_text(ni_device_queue_t *coders,
                            p_device_context->p_device_info->dev_name,
                            p_device_context->p_device_info->blk_name);
                   }
+                  else if(module_type == NI_DEVICE_TYPE_SCALER || module_type == NI_DEVICE_TYPE_AI)
+                  {
+                    strcat_dyn_buf(&output_buf,
+                           "%-5d %-7d %-7d %-8d %-4d %-5d %-6d %-5s %-14s %-20s\n",
+                           instance_count++,
+                           detail_data_v1->sInstDetailStatusAppend[index].ui16RealVpuLoad,
+                           detail_data_v1->sInstDetailStatus[index].ui32NumInFrame,
+                           detail_data_v1->sInstDetailStatus[index].ui32NumOutFrame,
+                           (detail_data_v1->sInstDetailStatus[index].ui32NumOutFrame - previous_detail_data_p[module_type][i].sInstDetailStatus[index].ui32NumOutFrame) / checkInterval,
+                           detail_data_v1->sInstDetailStatusAppend[index].ui32Width,
+                           detail_data_v1->sInstDetailStatusAppend[index].ui32Height,
+                           get_session_id(p_device_context, (int)detail_data_v1->sInstDetailStatusAppend[index].u32InstanceId),
+                           p_device_context->p_device_info->dev_name,
+                           p_device_context->p_device_info->blk_name);
+                  }
                 }
               }
               else
@@ -2542,9 +2608,10 @@ void print_text(ni_device_queue_t *coders,
                 if(module_type == NI_DEVICE_TYPE_DECODER)
                 {
                   strcat_dyn_buf(&output_buf,
-                         "%-5d %-7d %-9d %-5u %-7d %-8d %-5d %-6d %-5s %-14s %-20s\n",
+                         "%-5d %-7d %-7d %-9d %-5u %-7d %-8d %-5d %-6d %-5s %-14s %-20s\n",
                          instance_count++,
                          detail_data_v1->sInstDetailStatus[index].ui8AvgCost,
+                         detail_data_v1->sInstDetailStatusAppend[index].ui16RealVpuLoad,
                          detail_data_v1->sInstDetailStatus[index].ui16FrameRate,
                          detail_data_v1->sInstDetailStatus[index].ui32NumIDR,
                          detail_data_v1->sInstDetailStatus[index].ui32NumInFrame,
@@ -2558,9 +2625,10 @@ void print_text(ni_device_queue_t *coders,
                 else if (module_type == NI_DEVICE_TYPE_ENCODER)
                 {
                   strcat_dyn_buf(&output_buf,
-                         "%-5d %-7d %-9d %-5u %-7d %-7d %-8d %-10d %-10d %-5d %-6d %-9s %-5s %-14s %-20s\n",
+                         "%-5d %-7d %-7d %-9d %-5u %-7d %-7d %-8d %-10d %-10d %-5d %-6d %-9s %-5s %-14s %-20s\n",
                          instance_count++,
                          detail_data_v1->sInstDetailStatus[index].ui8AvgCost,
+                         detail_data_v1->sInstDetailStatusAppend[index].ui16RealVpuLoad,
                          detail_data_v1->sInstDetailStatus[index].ui16FrameRate,
                          detail_data_v1->sInstDetailStatus[index].ui32NumIDR,
                          detail_data_v1->sInstDetailStatusAppend[index].ui32UserIDR,
@@ -2571,6 +2639,20 @@ void print_text(ni_device_queue_t *coders,
                          detail_data_v1->sInstDetailStatusAppend[index].ui32Width,
                          detail_data_v1->sInstDetailStatusAppend[index].ui32Height,
                          get_pixel_format(p_device_context, detail_data_v1->sInstDetailStatusAppend[index].u8PixelFormat),
+                         get_session_id(p_device_context, (int)detail_data_v1->sInstDetailStatusAppend[index].u32InstanceId),
+                         p_device_context->p_device_info->dev_name,
+                         p_device_context->p_device_info->blk_name);
+                }
+                else if(module_type == NI_DEVICE_TYPE_SCALER || module_type == NI_DEVICE_TYPE_AI)
+                {
+                  strcat_dyn_buf(&output_buf,
+                         "%-5d %-7d %-7d %-8d %-5d %-6d %-5s %-14s %-20s\n",
+                         instance_count++,
+                         detail_data_v1->sInstDetailStatusAppend[index].ui16RealVpuLoad,
+                         detail_data_v1->sInstDetailStatus[index].ui32NumInFrame,
+                         detail_data_v1->sInstDetailStatus[index].ui32NumOutFrame,
+                         detail_data_v1->sInstDetailStatusAppend[index].ui32Width,
+                         detail_data_v1->sInstDetailStatusAppend[index].ui32Height,
                          get_session_id(p_device_context, (int)detail_data_v1->sInstDetailStatusAppend[index].u32InstanceId),
                          p_device_context->p_device_info->dev_name,
                          p_device_context->p_device_info->blk_name);
@@ -2869,7 +2951,7 @@ int main(int argc, char *argv[])
   int should_match_rev = 1;
   int detail = 0;
   ni_instance_mgr_detail_status_v1_t detail_data_v1 = {0};
-  ni_instance_mgr_detail_status_v1_t (*previous_detail_data)[NI_DEVICE_TYPE_XCODER_MAX] = NULL;
+  ni_instance_mgr_detail_status_v1_t (*previous_detail_data)[NI_MAX_DEVICE_CNT] = NULL;
   ni_device_pool_t *p_device_pool = NULL;
   ni_device_queue_t *coders = NULL;
   ni_session_context_t *p_xCtxt = NULL;
@@ -3172,6 +3254,7 @@ int main(int argc, char *argv[])
              "Following detailed data is displayed per instance for decoder and encoder when -d flag is used"
              "INDEX         index number used by resource manager to identify the instance\n"
              "AvgCost       estimated load given in percentage based on framerate and resolution\n"
+             "VpuLoad      vpu load: per-channel consumption ratio in 1/10000 units. Always 0 on firmware < 6tD\n"
              "FrameRate     framerate of current session\n"
              "IDR           number of IDR frame it processes\n"
              "UserIDR       number of force IDR frame set by user(encoder only)\n"
@@ -3330,7 +3413,7 @@ int main(int argc, char *argv[])
   if(checkInterval)
   {
     int allocate_size = (int)((size_t)NI_MAX_DEVICE_CNT * NI_DEVICE_TYPE_XCODER_MAX * sizeof(ni_instance_mgr_detail_status_v1_t));
-    previous_detail_data = (ni_instance_mgr_detail_status_v1_t (*)[NI_DEVICE_TYPE_XCODER_MAX])malloc(allocate_size);
+    previous_detail_data = (ni_instance_mgr_detail_status_v1_t (*)[NI_MAX_DEVICE_CNT])malloc(allocate_size);
     if(previous_detail_data == NULL)
     {
         (void)fprintf(stderr, "FATAL: Allocate buffer fail\n");

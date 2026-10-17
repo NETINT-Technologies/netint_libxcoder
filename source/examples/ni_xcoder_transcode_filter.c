@@ -40,6 +40,115 @@
 #include <unistd.h>
 #endif
 
+typedef struct _ni_ai_pre_network_layer {
+    int32_t width;
+    int32_t height;
+    int32_t channel;
+    int32_t classes;
+    int32_t component;
+    int32_t output_number;
+    float *output;
+} ni_ai_pre_network_layer_t;
+
+typedef struct _ni_ai_pre_network {
+    int32_t netw;
+    int32_t neth;
+    int32_t net_out_w;
+    int32_t net_out_h;
+    ni_network_data_t raw;
+    ni_ai_pre_network_layer_t *layers;
+} ni_ai_pre_network_t;
+
+static void ni_destroy_network(ni_ai_pre_network_t *network)
+{
+    if (network) {
+        int i;
+
+        if (network->layers) {
+            for (i = 0; i < (int)network->raw.output_num; i++) {
+                free(network->layers[i].output);
+                network->layers[i].output = NULL;
+            }
+
+            free(network->layers);
+            network->layers = NULL;
+        }
+    }
+}
+
+static int ni_create_network(ni_ai_pre_network_t *network)
+{
+    int ret;
+    int i;
+    ni_network_data_t *ni_network = &network->raw;
+
+    ni_log(NI_LOG_INFO,
+           "network input number %d, output number %d\n",
+           ni_network->input_num, ni_network->output_num);
+
+    if (ni_network->input_num == 0 || ni_network->output_num == 0) {
+        ni_log(NI_LOG_ERROR, "invalid network layer\n");
+        return NI_RETCODE_INVALID_PARAM;
+    }
+
+    network->layers =
+        malloc(sizeof(ni_ai_pre_network_layer_t) * ni_network->output_num);
+    if (!network->layers) {
+        ni_log(NI_LOG_ERROR, "cannot allocate network layer memory\n");
+        return NI_RETCODE_ERROR_MEM_ALOC;
+    }
+    memset(network->layers, 0,
+           sizeof(ni_ai_pre_network_layer_t) * ni_network->output_num);
+
+    for (i = 0; i < (int)ni_network->output_num; i++) {
+        network->layers[i].width = ni_network->linfo.out_param[i].sizes[0];
+        network->layers[i].height =
+            ni_network->linfo.out_param[i].sizes[1];
+        network->layers[i].channel =
+            ni_network->linfo.out_param[i].sizes[2];
+        network->layers[i].component = 3;
+        network->layers[i].classes =
+            (network->layers[i].channel / network->layers[i].component) -
+            (4 + 1);
+        network->layers[i].output_number =
+            ni_ai_network_layer_dims(&ni_network->linfo.out_param[i]);
+        if (network->layers[i].output_number !=
+            network->layers[i].width * network->layers[i].height *
+            network->layers[i].channel) {
+            ni_log(NI_LOG_ERROR,
+                   "network layer %d output dims mismatch\n", i);
+            ret = NI_RETCODE_INVALID_PARAM;
+            goto out;
+        }
+
+        network->layers[i].output =
+            malloc(network->layers[i].output_number * sizeof(float));
+        if (!network->layers[i].output) {
+            ni_log(NI_LOG_ERROR,
+                   "failed to allocate network layer %d output buffer\n",
+                   i);
+            ret = NI_RETCODE_ERROR_MEM_ALOC;
+            goto out;
+        }
+
+        ni_log(NI_LOG_DEBUG,
+               "network layer %d: w %d, h %d, ch %d, co %d, cl %d\n", i,
+               network->layers[i].width, network->layers[i].height,
+               network->layers[i].channel, network->layers[i].component,
+               network->layers[i].classes);
+    }
+
+    network->netw = ni_network->linfo.in_param[0].sizes[1];
+    network->neth = ni_network->linfo.in_param[0].sizes[2];
+    network->net_out_w = ni_network->linfo.out_param[0].sizes[1];
+    network->net_out_h = ni_network->linfo.out_param[0].sizes[2];
+
+    return 0;
+out:
+    ni_destroy_network(network);
+    return ret;
+}
+
 static void print_usage(void)
 {
     ni_log(NI_LOG_ERROR,
@@ -83,6 +192,9 @@ static void print_usage(void)
         "                               e.g. ni_quadra_scale=width=1280:height=720:format=yuv420p\n"
         "                               ni_quadra_drawbox - supported params [x, y, width, height]\n"
         "                               e.g. ni_quadra_drawbox=x=300:y=150:width=600:height=400\n"
+        "                               ni_quadra_ai_pre - supported params [nb, width, height]\n"
+        "                               ai preprocessing driven by a network binary (.nb) file.\n"
+        "                               e.g. ni_quadra_ai_pre=nb=/path/model.nb\n"
         "                               (Default: \"\")\n"
         , NI_XCODER_REVISION, MAX_OUTPUT_FILES, MAX_OUTPUT_FILES);
 }
@@ -135,6 +247,9 @@ int main(int argc, char *argv[])
     int encoder_opened = 0, end_of_all_streams = 0;
     ni_scale_params_t scale_params[MAX_OUTPUT_FILES] = {0};
     ni_drawbox_params_t drawbox_params = {0};
+    ni_ai_pre_params_t ai_pre_params[MAX_OUTPUT_FILES] = {0};
+    ni_session_context_t ai_ctx[MAX_OUTPUT_FILES] = {0};
+    ni_ai_pre_network_t ai_network[MAX_OUTPUT_FILES] = {0};
     ni_pix_fmt_t enc_pix_fmt[MAX_OUTPUT_FILES];
     int hw_frame_ref_flag = 0;
     int recycle_hw_frame_for_scaler = 0;
@@ -528,7 +643,7 @@ int main(int argc, char *argv[])
                 goto end;
             }
 
-            ret = retrieve_filter_params(filter_conf_params[i], &scale_params[i], &drawbox_params);
+            ret = retrieve_filter_params(filter_conf_params[i], &scale_params[i], &drawbox_params, &ai_pre_params[i]);
             if (ret)
             {
                 ni_log(NI_LOG_ERROR, "Error: failed to parse filter parameters: %s\n", filter_conf_params[i]);
@@ -546,6 +661,28 @@ int main(int argc, char *argv[])
             }
             output_width[i] = scale_params[i].width;
             output_height[i] = scale_params[i].height;
+        }
+        else if (ai_pre_params[i].enabled)
+        {
+            if (!ai_pre_params[i].nb_file[0])
+            {
+                ni_log(NI_LOG_ERROR, "Error: ni_quadra_ai_pre requires an 'nb' (network binary) param\n");
+                ret = -1;
+                goto end;
+            }
+
+            ret = ni_device_session_context_init(&ai_ctx[i]);
+            if (ret)
+            {
+                ni_log(NI_LOG_ERROR, "Error: Failed to init ai_pre context\n");
+                goto end;
+            }
+
+            // ai_pre preserves the resolution unless the user overrides width/height.
+            if (ai_pre_params[i].out_width > 0)
+                output_width[i] = ai_pre_params[i].out_width;
+            if (ai_pre_params[i].out_height > 0)
+                output_height[i] = ai_pre_params[i].out_height;
         }
         else if ((drawbox_params.enabled)) // drawbox is only supported for a single instance in this example.
         {
@@ -581,6 +718,10 @@ int main(int argc, char *argv[])
     {
         if (drawbox_params.enabled && scale_params[i].enabled){
             ni_log(NI_LOG_ERROR, "Error: Mixing scale and drawbox filter is not supported in this demo\n");
+            goto end;
+        }
+        if (drawbox_params.enabled && ai_pre_params[i].enabled){
+            ni_log(NI_LOG_ERROR, "Error: Mixing ai_pre and drawbox filter is not supported in this demo\n");
             goto end;
         }
         ni_log(NI_LOG_INFO, "(Task %d) Starting to transcode: HWFrames %d, video resolution %dx%d -> %dx%d\n",
@@ -659,6 +800,77 @@ decode_send:
                                 scale_params[i].height, ni_to_gc620_pix_fmt(dec_ctx.pixel_format), scale_params[i].format);
                     frame_to_enc[i] = &filter_out_frame[i];
                 }
+                else if (ai_pre_params[i].enabled)
+                {
+                    int ai_out_gc620 = ni_to_gc620_pix_fmt(dec_ctx.pixel_format);
+
+                    if(!hw_frame_ref_flag)
+                    {
+                        hw_frame_ref_flag = 1;
+                        ni_hw_frame_ref(p_hwframe);
+                    }
+
+                    // Open the AI session lazily now that the decoder pixel
+                    // format and resolution are known.
+                    if (!ai_pre_params[i].initialized)
+                    {
+                        ret = ai_pre_filter_init(&ai_ctx[i], &ai_network[i].raw, xcoderGUID,
+                                                 &ai_pre_params[i], p_hwframe->ui16width,
+                                                 p_hwframe->ui16height, ai_out_gc620);
+                        if (ret != 0)
+                        {
+                            ni_log(NI_LOG_ERROR, "Error: ai_pre init failed\n");
+                            goto end;
+                        }
+
+                        // Parse the network layers to obtain the model
+                        // input/output resolutions.
+                        ret = ni_create_network(&ai_network[i]);
+                        if (ret != 0)
+                        {
+                            ni_log(NI_LOG_ERROR, "Error: ai_pre create network failed\n");
+                            goto end;
+                        }
+
+                        // channel_mode == 0: the model consumes/produces full
+                        // frames, so make sure the model resolution matches the
+                        // actual input/output resolution.
+                        if ((ai_network[i].netw != p_hwframe->ui16width
+                             && ai_network[i].neth != p_hwframe->ui16height)
+                            && ai_network[i].netw != NI_VPU_ALIGN128(p_hwframe->ui16width))
+                        {
+                            ni_log(NI_LOG_ERROR,
+                                   "Model not match input, model resolution=%dx%d, input resolution=%dx%d\n",
+                                   ai_network[i].netw, ai_network[i].neth,
+                                   p_hwframe->ui16width, p_hwframe->ui16height);
+                            ret = -1;
+                            goto end;
+                        }
+
+                        if ((ai_network[i].net_out_w != ai_pre_params[i].out_width
+                             && ai_network[i].net_out_h != ai_pre_params[i].out_height)
+                            && ai_network[i].net_out_w != NI_VPU_ALIGN128(ai_pre_params[i].out_width))
+                        {
+                            ni_log(NI_LOG_ERROR,
+                                   "Model not match output, model resolution=%dx%d, output resolution=%dx%d\n",
+                                   ai_network[i].net_out_w, ai_network[i].net_out_h,
+                                   ai_pre_params[i].out_width, ai_pre_params[i].out_height);
+                            ret = -1;
+                            goto end;
+                        }
+                    }
+
+                    // ai_pre preserves the decoder pixel format on its output.
+                    ret = ai_pre_filter(&ai_ctx[i], &ai_network[i].raw, &out_frame.data.frame,
+                                        &filter_out_frame[i], &ai_pre_params[i], ai_out_gc620);
+                    if (ret != 0)
+                    {
+                        ni_log(NI_LOG_ERROR, "Error: ai_pre filter failed\n");
+                        goto end;
+                    }
+
+                    frame_to_enc[i] = &filter_out_frame[i];
+                }
                 else if (drawbox_params.enabled)
                 {
                     if(!hw_frame_ref_flag)
@@ -676,7 +888,7 @@ decode_send:
                     break;
                 }
 
-                if (!scale_params[i].enabled)
+                if (!scale_params[i].enabled && !ai_pre_params[i].enabled)
                     recycle_hw_frame_for_scaler = 0;
             }
 
@@ -701,6 +913,8 @@ decode_send:
 
                     if (scale_params[i].enabled)
                         enc_pix_fmt[i] = gc620_to_ni_pix_fmt(scale_params[i].format);
+                    else if (ai_pre_params[i].enabled)
+                        enc_pix_fmt[i] = dec_ctx.pixel_format;
                     else if (drawbox_params.enabled)
                         enc_pix_fmt[i] = NI_PIX_FMT_YUV420P;
                     else
@@ -820,6 +1034,15 @@ end:
     decoder_stat_report_and_close(&ctx, &dec_ctx);
     encoder_stat_report_and_close(&ctx, enc_ctx, output_total);
 
+    for (i = 0; i < output_total; i++)
+    {
+        if (ai_pre_params[i].enabled)
+        {
+            ni_device_session_close(&ai_ctx[i], 1, NI_DEVICE_TYPE_AI);
+            ni_destroy_network(&ai_network[i]);
+        }
+    }
+
 #ifdef _WIN32
     ni_device_close(dec_ctx.device_handle);
     for (i = 0; i < output_total; i++)
@@ -828,6 +1051,10 @@ end:
         if (scale_params[i].enabled)
         {
             ni_device_close(sca_ctx[i].device_handle);
+        }
+        if (ai_pre_params[i].enabled)
+        {
+            ni_device_close(ai_ctx[i].device_handle);
         }
     }
     if (drawbox_params.enabled)
@@ -848,6 +1075,11 @@ end:
         {
             ni_device_close(sca_ctx[i].device_handle);
             ni_device_close(sca_ctx[i].blk_io_handle);
+        }
+        if (ai_pre_params[i].enabled)
+        {
+            ni_device_close(ai_ctx[i].device_handle);
+            ni_device_close(ai_ctx[i].blk_io_handle);
         }
     }
     if (drawbox_params.enabled)
@@ -893,6 +1125,10 @@ end:
         if (scale_params[i].enabled)
         {
             ni_device_session_context_clear(&sca_ctx[i]);
+        }
+        if (ai_pre_params[i].enabled)
+        {
+            ni_device_session_context_clear(&ai_ctx[i]);
         }
     }
     if (drawbox_params.enabled)

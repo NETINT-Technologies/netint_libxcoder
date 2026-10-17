@@ -69,6 +69,7 @@
 #endif
 #include "inttypes.h"
 #include "ni_nvme.h"
+#include "ni_bitstream.h"
 #include "ni_device_api.h"
 #include "ni_device_api_priv.h"
 #include "ni_util.h"
@@ -1553,6 +1554,1009 @@ void ni_print_backtrace() {
 #endif
 #endif
 
+#define MAX_MMCO 32
+#define START_CODE_LENGTH 4
+// Indices into ni_session_context_t::rbsp[] / rbsp_cap[].
+typedef enum
+{
+    NI_REORDER_BUF_RBSP = 0, // EPB-stripped input NAL
+    NI_REORDER_BUF_RBSP_OUT, // header + slice data, pre-EPB-insertion
+    NI_REORDER_BUF_COUNT
+} rbsp_buf_index_t;
+
+// Ensure *buf has at least `need` bytes; (re)alloc via *cap tracking.
+// Returns 0 on success, -1 on allocation failure. Contents not preserved.
+static int ensure_capacity(uint8_t **buf, size_t *cap, size_t need) {
+    if (*buf && *cap >= need) return 0;
+    uint8_t *p = (uint8_t*)realloc(*buf, need);
+    if (!p) return -1;                       /* *buf still valid; freed later */
+    *buf = p;
+    *cap = need;
+    return 0;
+}
+
+// Strip EPBs from nal[0..n) into the reusable rbsp[NI_REORDER_BUF_RBSP] buffer.
+// Returns 0 on success (buffer filled, *out_size set), -1 on alloc failure.
+static int ep_strip(ni_session_context_t *p_ctx,
+                    const uint8_t *nal, size_t n, size_t *out_size) {
+    // Output is never larger than input, so n bytes is a safe capacity.
+    if (ensure_capacity(&p_ctx->rbsp[NI_REORDER_BUF_RBSP],
+                        &p_ctx->rbsp_cap[NI_REORDER_BUF_RBSP], n) != 0)
+        return -1;
+
+    uint8_t *out = p_ctx->rbsp[NI_REORDER_BUF_RBSP];
+    size_t o = 0; int zeros = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (zeros >= 2 && nal[i] == 0x03 && i + 1 < n && nal[i+1] <= 0x03) {
+            zeros = 0; // drop emulation_prevention_three_byte
+            continue;
+        }
+        out[o++] = nal[i];
+        zeros = (nal[i] == 0x00) ? zeros + 1 : 0;
+    }
+    *out_size = o;
+    return 0;
+}
+
+// Insert emulation-prevention bytes from rbsp[0..n) into caller-provided dst.
+// Returns bytes written, or (size_t)-1 if the result would not fit in dst_cap.
+static size_t ep_insert(uint8_t *dst, size_t dst_cap,
+                        const uint8_t *rbsp, size_t n) {
+    size_t o = 0; int zeros = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (zeros >= 2 && rbsp[i] <= 0x03) {
+            if (o >= dst_cap) return (size_t)-1;
+            dst[o++] = 0x03;
+            zeros = 0;
+        }
+        if (o >= dst_cap) return (size_t)-1;
+        dst[o++] = rbsp[i];
+        zeros = (rbsp[i] == 0x00) ? zeros + 1 : 0;
+    }
+    return o;
+}
+
+// Input:  p_ctx    - session context holding reusable scratch buffers.
+//         nal      - one full NAL (WITHOUT start code), P slice, flag currently 1.
+//         nal_size - length of that NAL.
+//         dst      - caller buffer to receive rewritten NAL (WITHOUT start code).
+//         dst_cap  - capacity of dst.
+//         entropy_coding_mode_flag - 1 = CABAC, 0 = CAVLC
+// Output: *out_size set to the rewritten NAL length.
+// Returns 0 on success, -1 on bad input, alloc failure, or dst too small.
+// NOTE: dst may alias `nal`; safe because output is generated from
+//       rbsp[NI_REORDER_BUF_RBSP_OUT], never from `nal`, before ep_insert.
+static int clear_reorder_flag(ni_session_context_t *p_ctx,
+                              const uint8_t *nal, size_t nal_size,
+                              uint8_t *dst, size_t dst_cap,
+                              int entropy_coding_mode_flag, size_t *out_size) {
+    // Stream parameters derived from SPS/PPS for this stream.
+    const int log2_max_frame_num             = 12;
+    const int log2_max_poc_lsb               = 16;
+    //const int pic_order_cnt_type             = 0;
+    const int deblocking_filter_control_present = 1;
+    /* frame_mbs_only_flag == 1, bottom_field_pic_order_present == 0,
+       redundant_pic_cnt_present == 0 -> corresponding branches omitted below. */
+
+    size_t rbsp_size = 0;
+    ni_bitstream_writer_t bw;
+    int bw_inited = 0;
+    int rc = -1;
+
+    *out_size = 0;
+
+    // 1. Strip EPBs -> reusable rbsp[NI_REORDER_BUF_RBSP]
+    if (ep_strip(p_ctx, nal, nal_size, &rbsp_size) != 0) goto done;
+    if (rbsp_size < 1) goto done;            /* need at least the NAL header */
+
+    const uint8_t *rbsp = p_ctx->rbsp[NI_REORDER_BUF_RBSP];
+
+    ni_bitstream_reader_t br;
+    ni_bitstream_reader_init(&br, rbsp, (int)(rbsp_size * 8));
+
+    // NAL header byte
+    uint32_t nal_hdr = ni_bs_reader_get_bits(&br, 8);
+    uint32_t nal_unit_type = nal_hdr & 0x1F;
+    if (nal_unit_type != 1) goto done;       /* only non-IDR coded slice */
+
+    // 2. Decode slice_header() up to the flag
+    uint32_t first_mb   = ni_bs_reader_get_ue(&br);
+    uint32_t slice_type = ni_bs_reader_get_ue(&br);
+    uint32_t pps_id     = ni_bs_reader_get_ue(&br);
+    if ((slice_type % 5) != 0) goto done;    /* only P slice */
+
+    uint32_t frame_num  = ni_bs_reader_get_bits(&br, log2_max_frame_num);
+
+    uint32_t poc_lsb = 0;
+    //if (pic_order_cnt_type == 0)
+        poc_lsb = ni_bs_reader_get_bits(&br, log2_max_poc_lsb);
+
+    uint32_t num_ref_idx_override = ni_bitstream_get_1bit(&br);
+    uint32_t num_ref_idx_l0_m1 = 0;
+    if (num_ref_idx_override) {
+        num_ref_idx_l0_m1 = ni_bs_reader_get_ue(&br);
+    }
+
+    // ref_pic_list_modification()
+    uint32_t flag = ni_bitstream_get_1bit(&br);
+    if (flag != 1) goto done;                /* precondition: flag currently set */
+
+    for (;;) {                               /* consume+discard reorder list */
+        uint32_t idc = ni_bs_reader_get_ue(&br);
+        if (idc <= 2)      ni_bs_reader_get_ue(&br);
+        else /* idc == 3 */            break;
+        if (ni_bs_reader_get_bits_left(&br) < 0) goto done;
+    }
+
+    // dec_ref_pic_marking() (non-IDR)
+    uint32_t adaptive_flag = ni_bitstream_get_1bit(&br);
+    uint32_t mmco_op[MAX_MMCO], mmco_a[MAX_MMCO], mmco_b[MAX_MMCO];
+    int n_mmco = 0;
+    if (adaptive_flag) {
+        for (;;) {
+            if (n_mmco >= MAX_MMCO) goto done;   /* guard BEFORE writing */
+            uint32_t op = ni_bs_reader_get_ue(&br);
+            mmco_op[n_mmco] = op; mmco_a[n_mmco] = 0; mmco_b[n_mmco] = 0;
+            if (op == 1 || op == 3) mmco_a[n_mmco] = ni_bs_reader_get_ue(&br);
+            if (op == 2)            mmco_a[n_mmco] = ni_bs_reader_get_ue(&br);
+            if (op == 3 || op == 6) mmco_b[n_mmco] = ni_bs_reader_get_ue(&br);
+            if (op == 4)            mmco_a[n_mmco] = ni_bs_reader_get_ue(&br);
+            n_mmco++;
+            if (op == 0) break;
+        }
+    }
+
+    // cabac_init_idc: present only for CABAC (and not for I/SI slices).
+    uint32_t cabac_init_idc = 0;
+    if (entropy_coding_mode_flag)
+        cabac_init_idc = ni_bs_reader_get_ue(&br);
+    int32_t  slice_qp_delta = ni_bs_reader_get_se(&br);
+
+    // deblocking control
+    uint32_t disable_dbf = 0;
+    int32_t  alpha_off = 0, beta_off = 0;
+    if (deblocking_filter_control_present) {
+        disable_dbf = ni_bs_reader_get_ue(&br);
+        if (disable_dbf != 1) {
+            alpha_off = ni_bs_reader_get_se(&br);
+            beta_off  = ni_bs_reader_get_se(&br);
+        }
+    }
+
+    // Detect over-read: if the parser walked past the buffer, bail out.
+    if (ni_bs_reader_get_bits_left(&br) < 0) goto done;
+
+    // Bit position at the end of the header syntax elements.
+    int header_end_bit = ni_bs_reader_bits_count(&br);
+
+    // 3. Re-encode header with flag = 0, no reorder list
+    ni_bitstream_writer_init(&bw);
+    bw_inited = 1;
+
+    ni_bs_writer_put(&bw, nal_hdr, 8);
+    ni_bs_writer_put_ue(&bw, first_mb);
+    ni_bs_writer_put_ue(&bw, slice_type);
+    ni_bs_writer_put_ue(&bw, pps_id);
+    ni_bs_writer_put(&bw, frame_num, log2_max_frame_num);
+    //if (pic_order_cnt_type == 0)
+        ni_bs_writer_put(&bw, poc_lsb, log2_max_poc_lsb);
+    ni_bs_writer_put(&bw, num_ref_idx_override, 1);
+    if (num_ref_idx_override)
+        ni_bs_writer_put_ue(&bw, num_ref_idx_l0_m1);
+
+    ni_bs_writer_put(&bw, 0, 1);             /* <== flag cleared, list omitted */
+    ni_bs_writer_put(&bw, adaptive_flag, 1); /* dec_ref_pic_marking */
+    if (adaptive_flag) {
+        for (int i = 0; i < n_mmco; i++) {
+            uint32_t op = mmco_op[i];
+            ni_bs_writer_put_ue(&bw, op);
+            if (op == 1 || op == 3) ni_bs_writer_put_ue(&bw, mmco_a[i]);
+            if (op == 2)            ni_bs_writer_put_ue(&bw, mmco_a[i]);
+            if (op == 3 || op == 6) ni_bs_writer_put_ue(&bw, mmco_b[i]);
+            if (op == 4)            ni_bs_writer_put_ue(&bw, mmco_a[i]);
+        }
+    }
+
+    if (entropy_coding_mode_flag)
+        ni_bs_writer_put_ue(&bw, cabac_init_idc);
+    ni_bs_writer_put_se(&bw, slice_qp_delta);
+    if (deblocking_filter_control_present) {
+        ni_bs_writer_put_ue(&bw, disable_dbf);
+        if (disable_dbf != 1) {
+            ni_bs_writer_put_se(&bw, alpha_off);
+            ni_bs_writer_put_se(&bw, beta_off);
+        }
+    }
+
+    size_t new_rbsp_len;
+
+    if (entropy_coding_mode_flag) {
+        // CABAC path: byte-aligned slice data, byte for byte copy
+        while ((ni_bs_writer_tell(&bw) & 7) != 0)
+            ni_bs_writer_put(&bw, 1, 1);     /* cabac_alignment_one_bit */
+
+        size_t new_header_len = (size_t)(ni_bs_writer_tell(&bw) / 8);
+
+        // slice data starts at the byte-aligned end of the original header
+        size_t data_start_byte = (size_t)((header_end_bit + 7) / 8);
+        if (data_start_byte > rbsp_size) goto done;
+        const uint8_t *slice_data = rbsp + data_start_byte;
+        size_t slice_data_len = rbsp_size - data_start_byte;
+
+        new_rbsp_len = new_header_len + slice_data_len;
+        if (ensure_capacity(&p_ctx->rbsp[NI_REORDER_BUF_RBSP_OUT],
+                            &p_ctx->rbsp_cap[NI_REORDER_BUF_RBSP_OUT],
+                            new_rbsp_len) != 0) goto done;
+        uint8_t *out_rbsp = p_ctx->rbsp[NI_REORDER_BUF_RBSP_OUT];
+        ni_bs_writer_copy(out_rbsp, &bw);
+        memcpy(out_rbsp + new_header_len, slice_data, slice_data_len);
+    } else {
+        // CAVLC path: no alignment; slice data is NOT byte-aligned.
+        // The header shrank by a non-byte amount, so every slice-data bit
+        // shifts. We append the remaining RBSP bits into the bit writer,
+        // bit by bit, then the writer's byte-aligned output is the new RBSP.
+
+        // Read the tail as a bitstream starting exactly at header_end_bit.
+        ni_bitstream_reader_t tail;
+        ni_bitstream_reader_init(&tail, rbsp, (int)(rbsp_size * 8));
+        ni_bs_reader_skip_bits(&tail, header_end_bit);
+
+        int tail_bits = (int)(rbsp_size * 8) - header_end_bit;
+        if (tail_bits < 0) goto done;
+
+        // Copy tail bits 32 at a time where possible, remainder bit by bit.
+        while (tail_bits >= 32) {
+            uint32_t chunk = ni_bs_reader_get_bits(&tail, 32);
+            ni_bs_writer_put(&bw, chunk, 32);
+            tail_bits -= 32;
+        }
+        while (tail_bits > 0) {
+            int take = tail_bits >= 24 ? 24 : tail_bits; /* stay <=32 for put */
+            uint32_t chunk = ni_bs_reader_get_bits(&tail, take);
+            ni_bs_writer_put(&bw, chunk, (uint8_t)take);
+            tail_bits -= take;
+        }
+
+        // Make sure that the writer ends on a byte boundary.
+        if ((ni_bs_writer_tell(&bw) & 7) != 0) {
+            ni_bs_writer_align_zero(&bw);
+        }
+
+        new_rbsp_len = (size_t)(ni_bs_writer_tell(&bw) / 8);
+        if (ensure_capacity(&p_ctx->rbsp[NI_REORDER_BUF_RBSP_OUT],
+                            &p_ctx->rbsp_cap[NI_REORDER_BUF_RBSP_OUT],
+                            new_rbsp_len) != 0) goto done;
+        ni_bs_writer_copy(p_ctx->rbsp[NI_REORDER_BUF_RBSP_OUT], &bw);
+    }
+
+    // 5. Re-insert EPBs into dst.
+    {
+        uint8_t *out_rbsp = p_ctx->rbsp[NI_REORDER_BUF_RBSP_OUT];
+        size_t written = ep_insert(dst, dst_cap, out_rbsp, new_rbsp_len);
+        if (written == (size_t)-1) goto done;
+        *out_size = written;
+        rc = 0;
+    }
+
+done:
+    if (bw_inited)  ni_bs_writer_clear(&bw);
+    // rbsp[0..1] are reused across calls and released at encoder close.
+    return rc;
+}
+
+static void reencode_slice_header(ni_session_context_t *p_ctx, ni_packet_t *p_packet, int entropy_coding_mode)
+{
+    uint8_t *p_src = (uint8_t*)p_packet->p_data + p_ctx->meta_size + START_CODE_LENGTH;
+    ni_metadata_enc_bstream_t *p_meta = (ni_metadata_enc_bstream_t *)p_packet->p_data;
+    size_t nal_size;
+    size_t out_size = 0;
+
+    nal_size = (size_t)p_packet->data_len - p_ctx->meta_size - START_CODE_LENGTH;
+
+    ni_log2(p_ctx, NI_LOG_DEBUG,
+            "### before data_len=%u meta_size=%d frame_type=%u avg_frame_qp=%u codec_format=%u frame_size=%u\n",
+            p_packet->data_len, p_ctx->meta_size, p_packet->frame_type,
+            p_packet->avg_frame_qp, p_ctx->codec_format, p_meta->frame_size);
+
+    // To set ref_pic_list_modification_flag_l0 to 0, re-encode H.264 slice header
+    int rc = clear_reorder_flag(p_ctx, p_src, nal_size, p_src, nal_size, entropy_coding_mode, &out_size);
+    if (rc != 0) {
+        ni_log2(p_ctx, NI_LOG_DEBUG, "%s: no modification applied\n", __func__);
+        return;
+    }
+
+    p_packet->data_len = (uint32_t)(p_ctx->meta_size + START_CODE_LENGTH + out_size);
+    // frame_size will be 0 if statisticOutputLevel is not enabled
+    p_meta->frame_size = p_meta->frame_size ? (p_packet->data_len - p_ctx->meta_size) : 0;
+
+    ni_log2(p_ctx, NI_LOG_DEBUG, "### after setting ref_pic_list_modification_flag_l0 to 0: data_len=%u frame_size=%u\n",
+            p_packet->data_len, p_meta->frame_size);
+}
+
+/* Quadra hardware fixes these AVC slice-header widths. Firmware does not
+ * change them, so SPS/PPS are not parsed. Same widths as clear_reorder_flag(). */
+#define AVC_LOG2_MAX_FRAME_NUM 12
+#define AVC_LOG2_MAX_POC_LSB 16
+/* ue(4), ue(2): prepended in front of a list Quadra already emitted (mmco 6). */
+#define AVC_MMCO4_PREPEND_BITS 0x2Bu
+#define AVC_MMCO4_PREPEND_NBITS 8
+/* Slice-header parse is limited to this many leading bytes. If
+ * adaptive_ref_pic_marking_mode_flag is not in that prefix, or it is 0,
+ * the picture is left unchanged. */
+#define AVC_LTR_HEADER_PROBE 64
+/* ni_bitstream_reader_t stores the length in an int. */
+#define AVC_BS_MAX_BYTES ((size_t)0x0fffffff)
+
+/* Bounded RBSP bit cursor. A read past the buffer fails. */
+static int avc_reader_init(ni_bitstream_reader_t *br, const uint8_t *data,
+                           size_t nbytes)
+{
+    if (!data || nbytes > AVC_BS_MAX_BYTES)
+        return -1;
+    ni_bitstream_reader_init(br, data, (int)(nbytes * 8));
+    return 0;
+}
+
+static int avc_get_bit(ni_bitstream_reader_t *br, uint32_t *out)
+{
+    if (ni_bs_reader_get_bits_left(br) < 1)
+        return -1;
+    *out = ni_bitstream_get_1bit(br);
+    return 0;
+}
+
+static int avc_get_bits(ni_bitstream_reader_t *br, int n, uint32_t *out)
+{
+    if (n < 0 || n > 32 || ni_bs_reader_get_bits_left(br) < n)
+        return -1;
+    *out = ni_bs_reader_get_bits(br, n);
+    return 0;
+}
+
+static int avc_get_ue(ni_bitstream_reader_t *br, uint32_t *out)
+{
+    int zeros = 0;
+    uint32_t b = 0;
+    uint32_t info = 0;
+
+    while (zeros < 16)
+    {
+        if (avc_get_bit(br, &b) != 0)
+            return -1;
+        if (b)
+            break;
+        zeros++;
+    }
+    if (zeros == 16)
+        return -1;
+    if (zeros && avc_get_bits(br, zeros, &info) != 0)
+        return -1;
+    *out = ((1u << zeros) - 1u) + info;
+    return 0;
+}
+
+/* Consume dec_ref_pic_marking() after the mode flag has been read as 1.
+ * Returns 0 when the list ends, 1 when mmco 4 is already present, or -1 if
+ * an illegal op is found or the RBSP ends before the list. */
+static int avc_skip_mmco_list(ni_bitstream_reader_t *br)
+{
+    uint32_t op = 0;
+    uint32_t arg = 0;
+
+    for (;;)
+    {
+        if (avc_get_ue(br, &op) != 0)
+            return -1;
+        if (op == 0)
+            return 0;
+        if (op == 4)
+            return 1; /* already present; do not insert another */
+        if (op > 6)
+            return -1;
+        if (op == 1 || op == 2 || op == 3)
+        {
+            if (avc_get_ue(br, &arg) != 0)
+                return -1;
+        }
+        if (op == 3 || op == 6)
+        {
+            if (avc_get_ue(br, &arg) != 0)
+                return -1;
+        }
+    }
+}
+
+/* ref_pic_list_modification() for one list. Returns 0, or -1 if the RBSP
+ * ends or an illegal modification_of_pic_nums_idc is found. */
+static int avc_skip_ref_list_mod(ni_bitstream_reader_t *br)
+{
+    uint32_t flag = 0;
+    uint32_t idc = 0;
+    uint32_t arg = 0;
+    int n = 0;
+
+    if (avc_get_bit(br, &flag) != 0)
+        return -1;
+    if (!flag)
+        return 0;
+    for (;;)
+    {
+        if (++n > 32 || avc_get_ue(br, &idc) != 0)
+            return -1;
+        if (idc == 3)
+            return 0;
+        if (idc > 3 || avc_get_ue(br, &arg) != 0)
+            return -1;
+    }
+}
+
+/* Locate adaptive_ref_pic_marking_mode_flag in a reference slice.
+ *
+ * Quadra AVC slice headers are generated by hardware, and firmware does not
+ * change these field widths, so parsing logic does not need to parse SPS or PPS.
+ * Assumed fixed for every Quadra AVC stream (same as clear_reorder_flag()):
+ *   - progressive: frame_mbs_only_flag = 1, no field flags
+ *   - separate_colour_plane_flag = 0
+ *   - log2_max_frame_num = 12
+ *   - pic_order_cnt_type = 0 with a 16-bit pic_order_cnt_lsb, unless
+ *     use_low_delay_poc_type selects POC type 2 (no POC bits in the slice)
+ *   - bottom_field_pic_order_in_frame_present_flag = 0
+ *   - redundant_pic_cnt_present_flag = 0
+ *   - weighted_pred_flag = 0, so there is no pred_weight_table
+ *   - one PPS, so pic_parameter_set_id = 0 (ue(0), a single 1 bit)
+ * Called only for the AVC_LTR_HEADER_PROBE prefix. Returns 0 and *flag_bit
+ * when the marking flag is 1 and the existing MMCO list is valid and does
+ * not contain mmco 4. Returns -1 otherwise. */
+static int avc_find_p_marking(ni_session_context_t *p_ctx,
+                              const uint8_t *rbsp, size_t rbsp_size,
+                              size_t *flag_bit)
+{
+    ni_bitstream_reader_t br;
+    uint32_t v = 0;
+    uint32_t slice_type;
+    int low_delay_poc = 0;
+
+    if (avc_reader_init(&br, rbsp, rbsp_size) != 0)
+        return -1;
+
+    if (avc_get_bits(&br, 8, &v) != 0)
+        return -1;
+    if ((v & 0x1f) != 1 || ((v >> 5) & 0x3) == 0)
+        return -1;
+
+    if (avc_get_ue(&br, &v) != 0) /* first_mb_in_slice */
+        return -1;
+    if (avc_get_ue(&br, &slice_type) != 0)
+        return -1;
+    slice_type %= 5; /* 0 P, 1 B, 2 I */
+    if (slice_type > 2)
+        return -1;
+    /* pic_parameter_set_id = 0 is the one-bit code 1. */
+    if (avc_get_bit(&br, &v) != 0 || v != 1)
+        return -1;
+
+    /* frame_num is 12 bits. No colour_plane_id and no field flags. */
+    if (avc_get_bits(&br, AVC_LOG2_MAX_FRAME_NUM, &v) != 0)
+        return -1;
+
+    /* POC type 0 carries a 16-bit pic_order_cnt_lsb and no bottom-field
+     * delta. POC type 2 (use_low_delay_poc_type) carries no POC bits. */
+    if (p_ctx && p_ctx->p_session_config &&
+        ((ni_xcoder_params_t *)p_ctx->p_session_config)->use_low_delay_poc_type)
+        low_delay_poc = 1;
+    if (!low_delay_poc)
+    {
+        if (avc_get_bits(&br, AVC_LOG2_MAX_POC_LSB, &v) != 0)
+            return -1;
+    }
+
+    /* No redundant_pic_cnt and no pred_weight_table. P and B carry the
+     * ref-idx override and ref_pic_list_modification. B also has
+     * direct_spatial_mv_pred_flag and a second list. */
+    if (slice_type == 1 && avc_get_bit(&br, &v) != 0) /* For B-slice: Consume direct_spatial_mv_pred_flag. Its value is not checked. */
+        return -1;
+    if (slice_type == 0 || slice_type == 1)
+    {
+        if (avc_get_bit(&br, &v) != 0) /* num_ref_idx_active_override_flag */
+            return -1;
+        if (v)
+        {
+            if (avc_get_ue(&br, &v) != 0) /* num_ref_idx_l0_active_minus1 */
+                return -1;
+            if (slice_type == 1 && avc_get_ue(&br, &v) != 0)
+                return -1; /* num_ref_idx_l1_active_minus1 */
+        }
+        if (avc_skip_ref_list_mod(&br) != 0)
+            return -1;
+        if (slice_type == 1 && avc_skip_ref_list_mod(&br) != 0)
+            return -1;
+    }
+
+    /* MMCO list starts immediately after adaptive_ref_pic_marking_mode_flag.
+     * A value of 0 means mmco insertion is not needed; leave the slice unchanged. */
+    *flag_bit = (size_t)ni_bs_reader_bits_count(&br);
+    if (avc_get_bit(&br, &v) != 0 || v == 0)
+        return -1;
+    /* Walk the existing MMCO list. mmco 4 already present means this slice
+     * is not rewritten. */
+    if (avc_skip_mmco_list(&br) != 0)
+        return -1;
+    return 0;
+}
+
+static int avc_copy_bits(ni_bitstream_reader_t *br, ni_bitstream_writer_t *bw,
+                         int n)
+{
+    if (n < 0)
+        return -1;
+    if (n == 0)
+        return 0;
+    if (ni_bs_reader_get_bits_left(br) < n)
+        return -1;
+    while (n >= 32)
+    {
+        ni_bs_writer_put(bw, ni_bs_reader_get_bits(br, 32), 32);
+        n -= 32;
+    }
+    if (n > 0)
+        ni_bs_writer_put(bw, ni_bs_reader_get_bits(br, n), (uint8_t)n);
+    return 0;
+}
+
+/* adaptive_ref_pic_marking_mode_flag is already 1. Insert the 8-bit mmco 4
+ * immediately after it and copy every following bit unchanged. Eight bits
+ * keep the following syntax on its original alignment. dst and src must not
+ * overlap. */
+static size_t rbsp_insert_mmco4(uint8_t *dst, size_t dst_cap,
+                               const uint8_t *src, size_t src_len,
+                               size_t flag_bit)
+{
+    size_t src_bits; /* Length of the original RBSP in bits. */
+    ni_bitstream_reader_t br;
+    ni_bitstream_writer_t bw;
+    int tail_bits; /* Source bits following adaptive_ref_pic_marking_mode_flag. */
+    size_t out_bytes; /* Length of the rewritten RBSP in bytes. */
+
+    if (src_len == 0 || src_len > AVC_BS_MAX_BYTES || flag_bit > 0x7fffffff)
+        return (size_t)-1;
+    src_bits = src_len * 8;
+    /* One byte for the inserted mmco 4. */
+    if (flag_bit + 1 > src_bits || src_len + 1 > dst_cap)
+        return (size_t)-1;
+    if (avc_reader_init(&br, src, src_len) != 0)
+        return (size_t)-1;
+    ni_bitstream_writer_init(&bw);
+
+    if (avc_copy_bits(&br, &bw, (int)flag_bit) != 0 ||
+        ni_bs_reader_get_bits_left(&br) < 1)
+    {
+        ni_bs_writer_clear(&bw);
+        return (size_t)-1;
+    }
+    /* Skip the source flag bit. One byte is inserted for mmco 4, which keeps
+     * the following syntax on its original alignment. */
+    ni_bs_reader_skip_bits(&br, 1);
+    ni_bs_writer_put(&bw, 1, 1); /* adaptive_ref_pic_marking_mode_flag */
+    ni_bs_writer_put(&bw, AVC_MMCO4_PREPEND_BITS, AVC_MMCO4_PREPEND_NBITS);
+
+    tail_bits = (int)src_bits - (int)(flag_bit + 1);
+    if (avc_copy_bits(&br, &bw, tail_bits) != 0 ||
+        (ni_bs_writer_tell(&bw) & 7))
+    {
+        ni_bs_writer_clear(&bw);
+        return (size_t)-1;
+    }
+    out_bytes = (size_t)(ni_bs_writer_tell(&bw) / 8);
+    if (out_bytes > dst_cap)
+    {
+        ni_bs_writer_clear(&bw);
+        return (size_t)-1;
+    }
+    ni_bs_writer_copy(dst, &bw);
+    ni_bs_writer_clear(&bw);
+    return out_bytes;
+}
+
+/* Scan the first 64 bytes of the slice NAL unit to determine whether mmco 4 is needed. */
+static int avc_ltr_slice_needs_mmco4(ni_session_context_t *p_ctx,
+                                    const uint8_t *nal, size_t nal_avail)
+{
+    size_t rbsp_size = 0;
+    size_t flag_bit = 0;
+    size_t probe;
+    int found;
+
+    if (nal_avail == 0)
+        return 0;
+    probe = nal_avail > AVC_LTR_HEADER_PROBE ? AVC_LTR_HEADER_PROBE : nal_avail;
+    if (ep_strip(p_ctx, nal, probe, &rbsp_size) != 0)
+        return -1;
+    found = avc_find_p_marking(p_ctx, p_ctx->rbsp[NI_REORDER_BUF_RBSP],
+                               rbsp_size, &flag_bit);
+    return found == 0 ? 1 : 0;
+}
+
+/* Build a rewritten slice NAL containing mmco 4; the caller needs to free *out_nal when done. */
+static int avc_ltr_try_insert(ni_session_context_t *p_ctx,
+                              const uint8_t *nal, size_t nal_size,
+                              uint8_t **out_nal, size_t *out_size)
+{
+    uint8_t *nal_out = NULL; /* Rewritten NAL with emulation-prevention bytes. */
+    size_t rbsp_size = 0; /* Length of the EPB-stripped RBSP in bytes. */
+    size_t flag_bit = 0; /* Bit offset of adaptive_ref_pic_marking_mode_flag. */
+    size_t out_rbsp = 0; /* Length of the rewritten RBSP in bytes. */
+    size_t nal_cap; /* Allocated capacity of nal_out in bytes. */
+    size_t written; /* Length of nal_out in bytes. */
+    size_t probe; /* Leading NAL bytes used to parse the slice header. */
+    int found; /* 0 for an insertion target, -1 otherwise. */
+
+    *out_nal = NULL;
+    *out_size = 0;
+    if (nal_size == 0)
+        return 0;
+    probe = nal_size > AVC_LTR_HEADER_PROBE ? AVC_LTR_HEADER_PROBE : nal_size;
+    if (ep_strip(p_ctx, nal, probe, &rbsp_size) != 0)
+        return -1;
+    found = avc_find_p_marking(p_ctx, p_ctx->rbsp[NI_REORDER_BUF_RBSP],
+                               rbsp_size, &flag_bit);
+    if (found != 0)
+        return 0;
+    /* Full slice NAL with emulation-prevention bytes removed. */
+    if (ep_strip(p_ctx, nal, nal_size, &rbsp_size) != 0)
+        return -1;
+
+    /* Rewritten RBSP containing mmco 4. */
+    if (ensure_capacity(&p_ctx->rbsp[NI_REORDER_BUF_RBSP_OUT],
+                        &p_ctx->rbsp_cap[NI_REORDER_BUF_RBSP_OUT],
+                        rbsp_size + 2) != 0)
+        return -1;
+    out_rbsp = rbsp_insert_mmco4(p_ctx->rbsp[NI_REORDER_BUF_RBSP_OUT],
+                                rbsp_size + 2,
+                                p_ctx->rbsp[NI_REORDER_BUF_RBSP],
+                                rbsp_size, flag_bit);
+    if (out_rbsp == (size_t)-1)
+    {
+        ni_log2(p_ctx, NI_LOG_ERROR, "avc_ltr: mmco 4 insert failed\n");
+        return 0;
+    }
+
+    nal_cap = out_rbsp * 2 + 8;
+    nal_out = (uint8_t *)malloc(nal_cap);
+    if (!nal_out)
+        return -1;
+    written = ep_insert(nal_out, nal_cap, p_ctx->rbsp[NI_REORDER_BUF_RBSP_OUT],
+                        out_rbsp);
+    if (written == (size_t)-1)
+    {
+        free(nal_out);
+        ni_log2(p_ctx, NI_LOG_ERROR, "avc_ltr: mmco 4 insert failed\n");
+        return 0;
+    }
+    *out_nal = nal_out;
+    *out_size = written;
+    return 1;
+}
+
+/* Next Annex-B start code at or after `from`. The scan covers at most
+ * `window` bytes and returns len when no code begins in that span.
+ * *sc_len is 3 or 4 when a code is found. */
+static size_t avc_find_start_code(const uint8_t *au, size_t len, size_t from,
+                                  size_t window, int *sc_len)
+{
+    size_t i;
+    size_t end;
+
+    if (from >= len)
+        return len;
+    if (window > len - from)
+        window = len - from;
+    end = from + window;
+    for (i = from; i + 2 < end; i++)
+    {
+        if (au[i] == 0x00 && au[i + 1] == 0x00 && au[i + 2] == 0x01)
+        {
+            if (i > from && au[i - 1] == 0x00)
+            {
+                *sc_len = 4;
+                return i - 1;
+            }
+            *sc_len = 3;
+            return i;
+        }
+    }
+    return len;
+}
+
+/* Ensure the packet buffer p_packet->p_buffer can hold the rewritten access unit. */
+static int avc_ltr_reserve_packet(ni_session_context_t *p_ctx,
+                                  ni_packet_t *p_packet, size_t need)
+{
+    uint8_t *old_buf;
+    uint8_t *new_buf = NULL;
+    size_t data_off;
+    size_t new_cap;
+    int rc;
+
+    if ((size_t)p_packet->buffer_size >= need)
+        return 0;
+    old_buf = (uint8_t *)p_packet->p_buffer;
+    if (!old_buf || !p_packet->p_data)
+        return -1;
+    if ((uint8_t *)p_packet->p_data < old_buf ||
+        (uint8_t *)p_packet->p_data > old_buf + p_packet->buffer_size)
+        return -1;
+    data_off = (size_t)((uint8_t *)p_packet->p_data - old_buf);
+    new_cap = ((need + (NI_MEM_PAGE_ALIGNMENT - 1)) / NI_MEM_PAGE_ALIGNMENT) *
+              NI_MEM_PAGE_ALIGNMENT;
+    if (new_cap > UINT32_MAX)
+        return -1;
+    rc = ni_posix_memalign((void **)&new_buf, NI_MEM_PAGE_ALIGNMENT, new_cap);
+    if (rc != 0 || !new_buf)
+    {
+        ni_log2(p_ctx, NI_LOG_ERROR, "avc_ltr: packet grow OOM (need=%zu)\n",
+                need);
+        return -1;
+    }
+    memcpy(new_buf, old_buf, (size_t)p_packet->data_len);
+    ni_aligned_free(p_packet->p_buffer);
+    p_packet->p_buffer = new_buf;
+    p_packet->p_data = new_buf + data_off;
+    p_packet->buffer_size = (uint32_t)new_cap;
+    return 0;
+}
+
+/* Bitstream metadata picture type. I and IDR are both IDR frames. */
+static int avc_meta_pic_is_idr(uint32_t frame_type)
+{
+    return frame_type == PIC_TYPE_I || frame_type == PIC_TYPE_IDR;
+}
+
+/* Append n bytes to a growable access-unit buffer. */
+static int avc_ltr_au_append(uint8_t **buf, size_t *len, size_t *cap,
+                             const uint8_t *src, size_t n)
+{
+    size_t need;
+    size_t ncap;
+    uint8_t *grown;
+
+    if (n == 0)
+        return 0;
+    need = *len + n;
+    if (need > *cap)
+    {
+        ncap = *cap ? *cap : 256;
+        while (ncap < need)
+        {
+            if (ncap > (size_t)-1 / 2)
+                return -1;
+            ncap *= 2;
+        }
+        grown = (uint8_t *)realloc(*buf, ncap);
+        if (!grown)
+            return -1;
+        *buf = grown;
+        *cap = ncap;
+    }
+    memcpy(*buf + *len, src, n);
+    *len += n;
+    return 0;
+}
+
+/* Insert mmco 4 into every slice header (if multiple slices are present) of the first non-IDR LTR frame in a GOP, or leave the packet unchanged. */
+static int avc_ltr_rewrite_au(ni_session_context_t *p_ctx,
+                              ni_packet_t *p_packet)
+{
+    uint8_t *au; /* Original access unit in the packet. */
+    uint8_t *au_out = NULL; /* Temporary rewritten access unit. */
+    uint8_t *new_nal = NULL; /* Temporary rewritten slice NAL. */
+    size_t au_len; /* Length of the original access unit. */
+    size_t pos; /* Offset where the next start-code search begins. */
+    size_t out_len = 0; /* Bytes written to au_out. */
+    size_t out_cap = 0; /* Bytes allocated for au_out. */
+    size_t new_sz = 0; /* Length of new_nal. */
+    int sc_len = 0; /* Length of the current start code. */
+    int inserting = 0; /* Rewritten access-unit construction has started. */
+    ni_metadata_enc_bstream_t *p_meta; /* Packet bitstream metadata. */
+    uint16_t old_frame_size; /* Original metadata frame_size value. */
+
+    if (p_packet->data_len <= p_ctx->meta_size)
+        return 0;
+    au = (uint8_t *)p_packet->p_data + p_ctx->meta_size;
+    au_len = (size_t)p_packet->data_len - p_ctx->meta_size;
+    p_meta = (ni_metadata_enc_bstream_t *)p_packet->p_data;
+    old_frame_size = p_meta->frame_size;
+
+    pos = 0;
+    while (pos < au_len)
+    {
+        size_t sc = avc_find_start_code(au, au_len, pos, au_len - pos, &sc_len);
+        size_t nal_start;
+        size_t nal_end;
+        int nsc_len = 0;
+        uint8_t nal_type;
+        int rc;
+
+        /* Next start code not found. */
+        if (sc == au_len)
+        {
+            /* If mmco4 insertion has not started, return 0 (original packet unchanged). */
+            if (!inserting)
+                return 0;
+            /* No later start code. Copy the trailing bytes after the last NAL unit. */
+            if (avc_ltr_au_append(&au_out, &out_len, &out_cap,
+                                  au + pos, au_len - pos) != 0)
+            {
+                free(au_out);
+                return -1;
+            }
+            break;
+        }
+        nal_start = sc + (size_t)sc_len;
+        /* No NAL header to check. The access unit ends after the start code, before a NAL header. */
+        if (nal_start >= au_len)
+        {
+            /* If mmco4 insertion has not started, return 0 (original packet unchanged). */
+            if (!inserting)
+                return 0;
+            /* Preserve the trailing start code that has no NAL header. */
+            if (avc_ltr_au_append(&au_out, &out_len, &out_cap,
+                                  au + sc, au_len - sc) != 0)
+            {
+                free(au_out);
+                return -1;
+            }
+            break;
+        }
+        nal_type = au[nal_start] & 0x1f;
+        /* IDR slice (NAL type 5) cannot signal mmco 4. */
+        if (nal_type == 5)
+        {
+            ni_log2(p_ctx, NI_LOG_ERROR,
+                    "avc_ltr: IDR slice; mmco 4 not inserted\n");
+            free(au_out);
+            return -1;
+        }
+        /* Skip non-slice header NALs (SPS, PPS, SEI, filler) until a non-IDR slice header (NAL type 1) is found. */
+        if (nal_type != 1)
+        {
+            /* If mmco4 insertion has not started, simply skip non-slice header NALs */
+            if (!inserting)
+            {
+                pos = nal_start;
+                continue;
+            }
+            /* If mmco4 insertion has started, copy non-slice header NALs (filler NALs) to the output buffer and continue to the next NAL. */
+            nal_end = avc_find_start_code(au, au_len, nal_start,
+                                         au_len - nal_start, &nsc_len);
+            if (avc_ltr_au_append(&au_out, &out_len, &out_cap,
+                                  au + sc, nal_end - sc) != 0)
+            {
+                free(au_out);
+                return -1;
+            }
+            pos = nal_end;
+            continue;
+        }
+
+        /* Found a non-IDR slice header (NAL type 1).
+         * Scan the first 64 bytes of the slice NAL unit to determine if mmco 4 is needed. */
+        rc = avc_ltr_slice_needs_mmco4(p_ctx, au + nal_start,
+                                       au_len - nal_start);
+        if (rc != 1)
+        {
+            /* If mmco4 insertion has started, but a later slice does not need mmco 4, it would make the
+             * picture's marking syntax differ across slices, so abort the insertion.
+             * The original packet is left unchanged. */
+            if (inserting)
+            {
+                free(au_out);
+                ni_log2(p_ctx, NI_LOG_ERROR,
+                        "avc_ltr: slice marking differs; mmco 4 not inserted\n");
+                return -1;
+            }
+            /* If mmco 4 insertion has not started, and the first slice does not need mmco 4, return without continuing to the next slice. */
+            return rc;
+        }
+        /* Found a slice that needs mmco 4. */
+        if (!inserting)
+        {
+            /* If mmco4 insertion has not started, start the insertion. */
+            inserting = 1;
+            /* Copy everything before the first slice header to the output buffer. */
+            if (avc_ltr_au_append(&au_out, &out_len, &out_cap, au, sc) != 0)
+            {
+                free(au_out);
+                return -1;
+            }
+        }
+        /* Find the next start code after the current slice NAL unit. */
+        nal_end = avc_find_start_code(au, au_len, nal_start,
+                                     au_len - nal_start, &nsc_len);
+        /* Build a rewritten slice NAL containing mmco 4. */
+        rc = avc_ltr_try_insert(p_ctx, au + nal_start, nal_end - nal_start,
+                                &new_nal, &new_sz);
+        if (rc != 1)
+        {
+            free(new_nal);
+            free(au_out);
+            return rc;
+        }
+        /* Append the original start code, then the rewritten slice NAL containing mmco 4. */
+        if (avc_ltr_au_append(&au_out, &out_len, &out_cap,
+                              au + sc, nal_start - sc) != 0 ||
+            avc_ltr_au_append(&au_out, &out_len, &out_cap, new_nal, new_sz) != 0)
+        {
+            free(new_nal);
+            free(au_out);
+            return -1;
+        }
+        free(new_nal);
+        new_nal = NULL;
+        pos = nal_end;
+    }
+    /* If mmco4 insertion has not started, return 0 (original packet unchanged). */
+    if (!inserting)
+        return 0;
+
+    /* Replace the packet's access unit with the completed rewritten access unit. */
+    {
+        size_t new_len = p_ctx->meta_size + out_len;
+
+        /* Ensure the aligned packet buffer p_packet->p_buffer can hold its metadata and the
+         * completed rewritten access unit au_out. */
+        if (new_len > UINT32_MAX ||
+            avc_ltr_reserve_packet(p_ctx, p_packet, new_len) != 0)
+        {
+            free(au_out);
+            return -1;
+        }
+        p_meta = (ni_metadata_enc_bstream_t *)p_packet->p_data;
+        memcpy((uint8_t *)p_packet->p_data + p_ctx->meta_size, au_out, out_len);
+        p_packet->data_len = (uint32_t)new_len;
+        p_meta->frame_size =
+            (uint16_t)(old_frame_size ? (p_packet->data_len - p_ctx->meta_size)
+                                     : 0);
+        free(au_out);
+        ni_log2(p_ctx, NI_LOG_DEBUG,
+                "avc_ltr: rewritten AU data_len=%u frame_size=%u\n",
+                p_packet->data_len, p_meta->frame_size);
+        return 1;
+    }
+}
+
+static void avc_ltr_process_packet(ni_session_context_t *p_ctx,
+                                   ni_packet_t *p_packet)
+{
+    int rc;
+
+    if (!p_ctx || !p_packet || !p_packet->p_data)
+        return;
+
+    /* Another IDR repopulates the flag. Insertion waits for a later slice
+     * that already carries an MMCO list. */
+    if (avc_meta_pic_is_idr(p_packet->frame_type))
+    {
+        p_ctx->avc_ltr_seen_idr = 1;
+        ni_log2(p_ctx, NI_LOG_DEBUG,
+                "avc_ltr: IDR, mmco 4 armed until marking mode is 1\n");
+        return;
+    }
+    if (!p_ctx->avc_ltr_seen_idr)
+        return;
+
+    rc = avc_ltr_rewrite_au(p_ctx, p_packet);
+    if (rc < 0)
+    {
+        /* OOM, IDR slice, or mismatched slice marking. The packet is written
+         * only after every slice has been rewritten. */
+        ni_log2(p_ctx, NI_LOG_ERROR, "avc_ltr: rewrite aborted; packet unchanged\n");
+        return;
+    }
+    if (rc == 1)
+        p_ctx->avc_ltr_seen_idr = 0;
+}
+
+
 /*!******************************************************************************
  *  \brief  Open a xcoder decoder instance
  *
@@ -1560,6 +2564,53 @@ void ni_print_backtrace() {
  *
  *  \return
 *******************************************************************************/
+
+/*!******************************************************************************
+ *  Host reclaim: if open failed after FW assigned a session ID, CLOSE it.
+ ******************************************************************************/
+static void ni_reclaim_session_if_open_failed(ni_session_context_t *p_ctx,
+                                             ni_retcode_t retval,
+                                             ni_device_type_t device_type)
+{
+    if (!p_ctx || NI_RETCODE_SUCCESS == retval)
+    {
+        return;
+    }
+    if (NI_INVALID_SESSION_ID == p_ctx->session_id)
+    {
+        return;
+    }
+    ni_log2(p_ctx, NI_LOG_ERROR,
+           "open failed (rc=%d) after session 0x%x assigned; issuing CLOSE "
+           "(device_type=%d)\n",
+           (int)retval, p_ctx->session_id, (int)device_type);
+    switch (device_type)
+    {
+        case NI_DEVICE_TYPE_DECODER:
+            (void)ni_decoder_session_close(p_ctx, 0);
+            break;
+        case NI_DEVICE_TYPE_ENCODER:
+            (void)ni_encoder_session_close(p_ctx, 0);
+            break;
+        case NI_DEVICE_TYPE_UPLOAD:
+            /* Match ni_device_session_close: close P2P netint_fd first, then FW */
+            (void)ni_uploader_session_close(p_ctx);
+            (void)ni_encoder_session_close(p_ctx, 0);
+            break;
+        case NI_DEVICE_TYPE_SCALER:
+            (void)ni_scaler_session_close(p_ctx, 0);
+            break;
+        case NI_DEVICE_TYPE_AI:
+            (void)ni_ai_session_close(p_ctx, 0);
+            break;
+        default:
+            ni_log2(p_ctx, NI_LOG_ERROR,
+                   "reclaim: unsupported device_type %d for session 0x%x\n",
+                   (int)device_type, p_ctx->session_id);
+            break;
+    }
+}
+
 ni_retcode_t ni_decoder_session_open(ni_session_context_t* p_ctx)
 {
   ni_retcode_t retval = NI_RETCODE_SUCCESS;
@@ -1859,6 +2910,7 @@ ni_retcode_t ni_decoder_session_open(ni_session_context_t* p_ctx)
 
 END:
 
+    ni_reclaim_session_if_open_failed(p_ctx, retval, NI_DEVICE_TYPE_DECODER);
     ni_aligned_free(p_buffer);
     ni_log2(p_ctx, NI_LOG_TRACE,  "%s(): exit\n", __func__);
 
@@ -3788,6 +4840,7 @@ ni_retcode_t ni_encoder_session_open(ni_session_context_t* p_ctx)
     p_ctx->av1_pkt_num = 0;
     p_ctx->rc_error_count = 0;
     p_ctx->force_frame_type = 0;
+    p_ctx->avc_ltr_seen_idr = 0;
     p_ctx->ready_to_close = 0;
     p_ctx->auto_dl_handle = 0;
     //Sequence change tracking related stuff
@@ -4225,6 +5278,7 @@ ni_retcode_t ni_encoder_session_open(ni_session_context_t* p_ctx)
 
 END:
 
+    ni_reclaim_session_if_open_failed(p_ctx, retval, NI_DEVICE_TYPE_ENCODER);
     ni_aligned_free(p_buffer);
     ni_log2(p_ctx, NI_LOG_TRACE,  "%s(): exit\n", __func__);
 
@@ -4435,6 +5489,15 @@ END:
         free(p_ctx->input_frame_fifo[i].p_input_buffer);
         p_ctx->input_frame_fifo[i].p_input_buffer = NULL;
       }
+    }
+
+    for (i = 0; i < NI_REORDER_BUF_COUNT; i++) {
+        if (p_ctx->rbsp[i] != NULL)
+        {
+            free(p_ctx->rbsp[i]);
+            p_ctx->rbsp[i] = NULL;
+        }
+        p_ctx->rbsp_cap[i] = 0;
     }
 
     ni_log2(p_ctx, NI_LOG_DEBUG,  "%s(): CTX[Card:%" PRIx64 " / HW:%d / INST:%d]\n",
@@ -4926,6 +5989,66 @@ start_write:
         p_meta->start_len[0], p_meta->start_len[1], p_meta->start_len[2],
         p_meta->inconsecutive_transfer,
         p_meta->get_recon_frame_mode);
+
+    // Log ni_metadata_enc_frame_t fields not already logged above
+    ni_log2(p_ctx, NI_LOG_DEBUG,
+        "%s(): p_meta metadata_common frame_tstamp=%" PRIu64 " "
+        "frame_force_type_enable=%u frame_force_type=%u force_pic_qp_enable=%u "
+        "force_pic_qp_p=%u force_pic_qp_b=%u force_headers=%u\n",
+        __func__, p_meta->metadata_common.ui64_data.frame_tstamp,
+        p_meta->frame_force_type_enable, p_meta->frame_force_type,
+        p_meta->force_pic_qp_enable, p_meta->force_pic_qp_p,
+        p_meta->force_pic_qp_b, p_meta->force_headers);
+
+    if (p_meta->enc_reconfig_data_size > 0)
+    {
+        ni_encoder_change_params_t *p_change = p_ctx->enc_change_params;
+
+        ni_log2(p_ctx, NI_LOG_DEBUG,
+               "%s(): reconfig present on frame_num=%" PRIu64 ", "
+               "enc_reconfig_data_size=%u\n",
+               __func__, p_ctx->frame_num, p_meta->enc_reconfig_data_size);
+
+        // Log ni_encoder_change_params_t fields for the current frame
+        if (p_change)
+        {
+            ni_log2(p_ctx, NI_LOG_DEBUG,
+                   "%s(): enc_change_params enable_option=0x%x bitRate=%d "
+                   "hvsQPEnable=%d hvsQpScale=%d vbvBufferSize=%d "
+                   "mbLevelRcEnable=%d minQpI=%d maxQpI=%d maxDeltaQp=%d "
+                   "intraQP=%d intraPeriod=%d repeatHeaders=%d\n",
+                   __func__, p_change->enable_option, p_change->bitRate,
+                   p_change->hvsQPEnable, p_change->hvsQpScale,
+                   p_change->vbvBufferSize, p_change->mbLevelRcEnable,
+                   p_change->minQpI, p_change->maxQpI, p_change->maxDeltaQp,
+                   p_change->intraQP, p_change->intraPeriod,
+                   p_change->repeatHeaders);
+#ifdef QUADRA
+            ni_log2(p_ctx, NI_LOG_DEBUG,
+                   "%s(): enc_change_params minQpPB=%d maxQpPB=%d "
+                   "colorDescPresent=%u colorPrimaries=%u colorTrc=%u "
+                   "colorSpace=%u aspectRatioWidth=%u aspectRatioHeight=%u "
+                   "videoFullRange=%u sliceArg=%d vbvMaxRate=%d crfDecimal=%u "
+                   "crf=%u maxFrameSize=%u invalidFrameNum=%d ltrInterval=%d "
+                   "frameRateNum=%d frameRateDenom=%d\n",
+                   __func__, p_change->minQpPB, p_change->maxQpPB,
+                   p_change->colorDescPresent, p_change->colorPrimaries,
+                   p_change->colorTrc, p_change->colorSpace,
+                   p_change->aspectRatioWidth, p_change->aspectRatioHeight,
+                   p_change->videoFullRange, p_change->sliceArg,
+                   p_change->vbvMaxRate, p_change->crfDecimal, p_change->crf,
+                   p_change->maxFrameSize, p_change->invalidFrameNum,
+                   p_change->ltrInterval, p_change->frameRateNum,
+                   p_change->frameRateDenom);
+#else
+            ni_log2(p_ctx, NI_LOG_DEBUG,
+                   "%s(): enc_change_params minQpP=%d minQpB=%d maxQpP=%d "
+                   "maxQpB=%d\n",
+                   __func__, p_change->minQpP, p_change->minQpB,
+                   p_change->maxQpP, p_change->maxQpB);
+#endif
+        }
+    }
   }
   if (p_frame->start_of_stream)
   {
@@ -5672,6 +6795,43 @@ int ni_encoder_session_read(ni_session_context_t* p_ctx, ni_packet_t* p_packet)
     (void)fflush(f);
     (void)fclose(f);
 #endif
+
+    if ((((ni_xcoder_params_t *)(p_ctx->p_session_config))->cfg_enc_params.clearRefListModification) &&
+        (p_ctx->codec_format == NI_CODEC_FORMAT_H264) && (p_packet->frame_type == PIC_TYPE_P))
+    {
+        reencode_slice_header(p_ctx, p_packet,
+            ((ni_xcoder_params_t *)(p_ctx->p_session_config))->cfg_enc_params.entropy_coding_mode);
+    }
+
+    if (p_ctx->codec_format == NI_CODEC_FORMAT_H264 &&
+        p_packet->data_len > p_ctx->meta_size)
+    {
+        ni_xcoder_params_t *p_params =
+            (ni_xcoder_params_t *)p_ctx->p_session_config;
+        ni_encoder_cfg_params_t *p_enc_cfg = &p_params->cfg_enc_params;
+        /* 2 LTRs: an IDR leaves MaxLongTermFrameIdx at 0. After metadata
+         * reports that IDR, the next picture whose slice headers already
+         * contain adaptive_ref_pic_marking_mode_flag = 1 gets mmco 4
+         * (max_long_term_frame_idx_plus1 = 2) prepended to that list
+         * (before mmco 6) in every non-IDR slice. A flag of 0, or a header
+         * that does not reach the flag, leaves the picture unchanged and
+         * keeps waiting.
+         * Quadra emits only mmco 1 and mmco 6, never mmco 5, so that value
+         * holds until the next IDR. Slice-header field widths are fixed by
+         * hardware; SPS/PPS are copied unchanged. One LTR, or LTR disabled,
+         * leaves the bitstream unchanged.
+         * Skip AVCC HVCC: avccHvcc=1 is length-prefixed.
+         * Start-code scan conflicts with AVCC/HVCC 4-byte NAL lengths,
+         * so the rewrite is skipped and the 2-LTR MaxLongTermFrameIdx fix
+         * is not applied. */
+        if (p_enc_cfg->long_term_ref_enable && p_enc_cfg->long_term_ref_count > 1 &&
+            !p_enc_cfg->avcc_hvcc)
+        {
+            uint32_t len_before = p_packet->data_len;
+            avc_ltr_process_packet(p_ctx, p_packet);
+            size += (int)p_packet->data_len - (int)len_before;
+        }
+    }
   }
 
   ni_log2(p_ctx,
@@ -5748,6 +6908,7 @@ ni_retcode_t ni_encoder_session_sequence_change(ni_session_context_t* p_ctx, ni_
     int gop_preset_index = ((ni_xcoder_params_t *)p_ctx->p_session_config)->cfg_enc_params.gop_preset_index;
     p_ctx->last_gop_size = g_map_preset_to_gopsize[lookAheadEnable][gop_preset_index + 1];
     p_ctx->av1_pkt_num = 0;
+    p_ctx->avc_ltr_seen_idr = 0;
 
     //Configure encoder sequence change
     retval = ni_config_instance_set_sequence_change(p_ctx, NI_DEVICE_TYPE_ENCODER,
@@ -5996,6 +7157,7 @@ int ni_scaler_session_open(ni_session_context_t* p_ctx)
 
 END:
 
+    ni_reclaim_session_if_open_failed(p_ctx, retval, NI_DEVICE_TYPE_SCALER);
     ni_aligned_free(p_buffer);
     return retval;
 }
@@ -10439,6 +11601,8 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
       p_cfg->ui8getCuInfo = 1;
   }
 
+  p_cfg->ui8longTermReferenceOldest = p_enc->longTermReferenceOldest;
+
   ni_log2(p_ctx, NI_LOG_DEBUG, "lowDelay=%d\n", p_src->low_delay_mode);
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui8bitstreamFormat=%d\n", p_cfg->ui8bitstreamFormat);
   ni_log2(p_ctx, NI_LOG_DEBUG, "i32picWidth=%d\n", p_cfg->i32picWidth);
@@ -10764,6 +11928,8 @@ void ni_set_custom_template(ni_session_context_t *p_ctx,
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui8adaptiveCrfMode=%u\n",p_cfg->ui8adaptiveCrfMode);
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui8cutreeFlushIframe=%u\n",p_cfg->ui8cutreeFlushIframe);
   ni_log2(p_ctx, NI_LOG_DEBUG, "ui8qpScaleEnable=%u\n", p_cfg->ui8qpScaleEnable);
+  ni_log2(p_ctx, NI_LOG_DEBUG, "ui8longTermReferenceOldest=%u\n",
+          p_cfg->ui8longTermReferenceOldest);
 }
 
 /*!******************************************************************************
@@ -11163,6 +12329,7 @@ void ni_set_default_template(ni_session_context_t* p_ctx, ni_encoder_config_t* p
   p_config->ui8adaptiveCrfMode = 0;
   p_config->ui8cutreeFlushIframe = 0;
   p_config->ui8qpScaleEnable = 0;
+  p_config->ui8longTermReferenceOldest = 0;
 }
 
 /*!******************************************************************************
@@ -12775,6 +13942,13 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
+      if (p_enc->clearRefListModification)
+      {
+          ni_strncpy(p_param_err, max_err_len, "clearRefListModification is not supported for h.265 encoder",
+                  max_err_len - 1);
+          param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
+          LRETURN;
+      }
     }
   } else if (NI_CODEC_FORMAT_AV1 == p_ctx->codec_format)
   {
@@ -12899,6 +14073,13 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       if (p_enc->getBitstreamFeatures)
       {
           ni_strncpy(p_param_err, max_err_len, "getBitstreamFeatures is not supported for av1 encoder",
+                  max_err_len - 1);
+          param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
+          LRETURN;
+      }
+      if (p_enc->clearRefListModification)
+      {
+          ni_strncpy(p_param_err, max_err_len, "clearRefListModification is not supported for av1 encoder",
                   max_err_len - 1);
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
@@ -13376,6 +14557,13 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
           param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
           LRETURN;
       }
+      if (p_enc->clearRefListModification)
+      {
+          ni_strncpy(p_param_err, max_err_len, "clearRefListModification is not supported for jpeg encoder",
+                  max_err_len - 1);
+          param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FEATURE;
+          LRETURN;
+       }
   }
 
   if (p_src->force_frame_type != 0 && p_src->force_frame_type != 1)
@@ -13894,14 +15082,28 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
 
     if (p_cfg->ui8motionConstrainedMode)
     {
-      if (STD_HEVC != p_cfg->ui8bitstreamFormat)
+      if (STD_JPEG == p_cfg->ui8bitstreamFormat)
       {
-          ni_strncpy(p_param_warn, max_err_len, "Motion Constrained mode force disabled for codecs other than HEVC", max_err_len - 1);
+          ni_strncpy(p_param_warn, max_err_len, "Motion Constrained mode force disabled for JPEG", max_err_len - 1);
           warning = NI_RETCODE_PARAM_WARN;
           p_cfg->ui8motionConstrainedMode = 0;
       }
       else
       {
+        /* HEVC motionConstrainedMode is older. AVC and AV1 support starts at 6tF. */
+        if ((STD_AVC == p_cfg->ui8bitstreamFormat ||
+             STD_AV1 == p_cfg->ui8bitstreamFormat) &&
+            ni_cmp_fw_api_ver(
+                (char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+                "6tF") < 0)
+        {
+          (void)snprintf(
+              p_param_err, max_err_len,
+              "motionConstrainedMode is not supported for AVC or AV1 on device with FW API version < 6tF");
+          param_ret = NI_RETCODE_ERROR_UNSUPPORTED_FW_VERSION;
+          LRETURN;
+        }
+
         if (p_cfg->ui8motionConstrainedMode >=
             MOTION_CONSTRAINED_QUALITY_MODE_ADVANCED)
         {
@@ -13929,6 +15131,8 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
 
         if (p_cfg->ui8motionConstrainedMode >= MOTION_CONSTRAINED_QUALITY_MODE)
         {
+          int align = (STD_AVC == p_cfg->ui8bitstreamFormat) ? 16 : 64;
+
           if (p_cfg->ui8multicoreJointMode)
           {
             ni_strncpy(
@@ -13938,20 +15142,58 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
             param_ret = NI_RETCODE_INVALID_PARAM;
             LRETURN;
           }
-          if (p_src->source_width % 64 || p_src->source_height % 64)
+          if (p_src->source_width % align || p_src->source_height % align)
           {
             if (!p_cfg->ui32cropWidth || !p_cfg->ui32cropHeight ||
-                p_cfg->ui32cropWidth % 64 || p_cfg->ui32cropHeight % 64)
+                p_cfg->ui32cropWidth % align || p_cfg->ui32cropHeight % align)
             {
-              ni_strncpy(
+              (void)snprintf(
                   p_param_err, max_err_len,
-                  "input resolution (or cropping window) must be 64x64 aligned "
+                  "input resolution (or cropping window) must be %dx%d aligned "
                   "for Motion Constrained mode 2 or 3",
-                  max_err_len - 1);
+                  align, align);
               param_ret = NI_RETCODE_INVALID_PARAM;
               LRETURN;
             }
           }
+        }
+
+        // Custom ROI and motion-constrained mode cannot be used together.
+        if (p_cfg->u8customizeRoiQpLevel != NI_CUS_ROI_DISABLE)
+        {
+          ni_strncpy(
+              p_param_err, max_err_len,
+              "customizeRoiQpLevel is not supported with motionConstrainedMode",
+              max_err_len - 1);
+          param_ret = NI_RETCODE_INVALID_PARAM;
+          LRETURN;
+        }
+
+        // Host roiEnable ROI map assigns absolute-QP, which cannot be used with motion-constrained mode.
+        // Motion-constrained intra-boundary dQP overwrites ROI bytes as signed
+        // deltas and clears the absolute-QP bit. Host roiEnable maps set that bit.
+        if (p_enc->roi_enable)
+        {
+          ni_strncpy(
+              p_param_err, max_err_len,
+              "roiEnable is not supported with motionConstrainedMode",
+              max_err_len - 1);
+          param_ret = NI_RETCODE_INVALID_PARAM;
+          LRETURN;
+        }
+
+        // AV1 freezes the frame QP. hvsQPEnable still clamps qpMax to that base,
+        // and cuLevelRCEnable adjusts block QP around it.
+        if (STD_AV1 == p_cfg->ui8bitstreamFormat &&
+            (p_cfg->niParamT408.enable_hvs_qp ||
+             p_cfg->niParamT408.enable_cu_level_rate_control))
+        {
+          ni_strncpy(
+              p_param_err, max_err_len,
+              "hvsQPEnable and cuLevelRCEnable are not supported with motionConstrainedMode for AV1",
+              max_err_len - 1);
+          param_ret = NI_RETCODE_INVALID_PARAM;
+          LRETURN;
         }
       }
     }
@@ -14000,6 +15242,20 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
             LRETURN;
         }
     }
+  }
+
+  if (p_cfg->ui8longTermReferenceOldest)
+  {
+      if (ni_cmp_fw_api_ver(
+              (char*) &p_ctx->fw_rev[NI_XCODER_REVISION_API_MAJOR_VER_IDX],
+              "6tE") < 0)
+      {
+          ni_strncpy(p_param_err, max_err_len,
+                  "longTermReferenceOldest is not supported in FW API version < 6tE\n",
+                  max_err_len - 1);
+          param_ret = NI_RETCODE_INVALID_PARAM;
+          LRETURN;
+      }
   }
 
   if (p_cfg->niParamT408.cu_size_mode < 0 ||
@@ -14162,6 +15418,17 @@ ni_retcode_t ni_validate_custom_template(ni_session_context_t *p_ctx,
       param_ret = NI_RETCODE_PARAM_ERROR_VBV_BUFFER_SIZE;
       LRETURN;
     }
+  }
+
+  // customizeQpLevel re-selects each block's QP from the customize QP map
+  // after rate control. The per-block level map that indexes that table is
+  // only built and attached to a frame when ROI is enabled
+  if (p_cfg->u8customizeRoiQpLevel != NI_CUS_ROI_DISABLE && !p_enc->roi_enable)
+  {
+    ni_strncpy(p_param_err, max_err_len,
+               "customizeQpLevel requires roiEnable=1", max_err_len - 1);
+    param_ret = NI_RETCODE_INVALID_PARAM;
+    LRETURN;
   }
 
   // check valid for common param
@@ -15066,6 +16333,7 @@ ni_retcode_t ni_uploader_session_open(ni_session_context_t* p_ctx)
 
 END:
 
+  ni_reclaim_session_if_open_failed(p_ctx, retval, NI_DEVICE_TYPE_UPLOAD);
   ni_aligned_free(p_buffer);
   ni_log2(p_ctx, NI_LOG_TRACE,  "%s(): exit\n", __func__);
   return retval;
@@ -18963,7 +20231,7 @@ ni_retcode_t ni_ai_session_open(ni_session_context_t *p_ctx)
         LRETURN;
     }
 
-    p_ctx->iocbs = (ni_iocb_t **)malloc(sizeof(ni_iocb_t *) * NI_MAX_SEGMENT_NUM);
+    p_ctx->iocbs = (ni_iocb_t **)calloc(NI_MAX_SEGMENT_NUM, sizeof(ni_iocb_t *));
     if (!p_ctx->iocbs) {
         ni_log2(p_ctx, NI_LOG_ERROR, "ERROR %s(): failed to allocate iocbs\n", __func__);
         retval = NI_RETCODE_ERROR_MEM_ALOC;
@@ -18998,6 +20266,7 @@ ni_retcode_t ni_ai_session_open(ni_session_context_t *p_ctx)
 
 END:
 
+    ni_reclaim_session_if_open_failed(p_ctx, retval, NI_DEVICE_TYPE_AI);
     ni_aligned_free(p_buffer);
     ni_log2(p_ctx, NI_LOG_TRACE,  "%s(): exit\n", __func__);
     return retval;
@@ -19554,6 +20823,8 @@ ni_retcode_t ni_ai_session_read_hwdesc(ni_session_context_t *p_ctx,
 {
     int retval = NI_RETCODE_SUCCESS;
     int retry_count = 0;
+    int query_time = 0;
+    int retry_delay = NI_RETRY_INTERVAL_100US;
 
     ni_log2(p_ctx, NI_LOG_TRACE,  "%s(): enter\n", __func__);
 
@@ -19566,6 +20837,8 @@ ni_retcode_t ni_ai_session_read_hwdesc(ni_session_context_t *p_ctx,
         retval = NI_RETCODE_ERROR_INVALID_SESSION;
         LRETURN;
     }
+
+    retry_delay = ni_max(p_ctx->accumulated_query_time/2, NI_RETRY_INTERVAL_100US);
 
     for (;;)
     {
@@ -19580,15 +20853,18 @@ ni_retcode_t ni_ai_session_read_hwdesc(ni_session_context_t *p_ctx,
 
         if (retval == NI_RETCODE_ERROR_RESOURCE_UNAVAILABLE)
         {
-            if (retry_count >= 500)
+            if (retry_count >= NI_MAX_AI_SESSION_RETRY)
             {
                 ni_log2(p_ctx, NI_LOG_DEBUG,  "Warning hwdesc read fail rc %d\n",
                        retval);
                 LRETURN;
             }
             ni_pthread_mutex_unlock(&p_ctx->mutex);
-            ni_usleep(100);
+            ni_usleep(retry_delay);
             ni_pthread_mutex_lock(&p_ctx->mutex);
+            query_time += retry_delay;
+            retry_count += (retry_delay / NI_RETRY_INTERVAL_100US - 1);
+            retry_delay = ni_max((retry_delay/2), NI_RETRY_INTERVAL_100US);
         }
         else if (retval != NI_RETCODE_SUCCESS)
         {
@@ -19606,7 +20882,7 @@ ni_retcode_t ni_ai_session_read_hwdesc(ni_session_context_t *p_ctx,
             /* A frame index of zero is invalid, the memory acquisition failed */
             if (pFrameSurface->ui16FrameIdx == 0)
             {
-                if (retry_count >= 500)
+                if (retry_count >= NI_MAX_AI_SESSION_RETRY)
                 {
                     ni_log2(p_ctx, NI_LOG_DEBUG,  "Warning hwdesc read fail rc %d\n",
                            retval);
@@ -19614,8 +20890,11 @@ ni_retcode_t ni_ai_session_read_hwdesc(ni_session_context_t *p_ctx,
                     LRETURN;
                 }
                 ni_pthread_mutex_unlock(&p_ctx->mutex);
-                ni_usleep(100);
+                ni_usleep(retry_delay);
                 ni_pthread_mutex_lock(&p_ctx->mutex);
+                query_time += retry_delay;
+                retry_count += (retry_delay / NI_RETRY_INTERVAL_100US - 1);
+                retry_delay = ni_max((retry_delay/2), NI_RETRY_INTERVAL_100US);
                 continue;
             }
             LRETURN;
@@ -19623,7 +20902,9 @@ ni_retcode_t ni_ai_session_read_hwdesc(ni_session_context_t *p_ctx,
     }
 
 END:
-
+    // Time iteration
+    p_ctx->accumulated_query_time = ni_min((p_ctx->accumulated_query_time + query_time) / 2,
+        NI_RETRY_INTERVAL_100US * NI_MAX_AI_SESSION_RETRY);
     ni_pthread_mutex_unlock(&p_ctx->mutex);
 
     ni_log2(p_ctx, NI_LOG_TRACE,  "%s(): exit\n", __func__);

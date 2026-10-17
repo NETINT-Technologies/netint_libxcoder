@@ -34,11 +34,16 @@
 #include <stddef.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <math.h>
+#include <inttypes.h>
+#include "ni_defs.h"
 #include "ni_util.h"
-#include "ni_nvme.h"
+#include "ni_log.h"
 #include "ni_bitstream.h"
 #include "ni_av_codec.h"
+#include "ni_device_api.h"
 #include "ni_device_api_priv.h"
 
 typedef enum
@@ -290,44 +295,46 @@ void ni_dec_retrieve_aux_data(ni_frame_t *frame)
         {
             ni_mastering_display_metadata_t *mdm =
                 (ni_mastering_display_metadata_t *)aux_data->data;
-            const int chroma_den = MASTERING_DISP_CHROMA_DEN;
-            const int luma_den = MASTERING_DISP_LUMA_DEN;
-            ni_dec_mastering_display_colour_volume_bytes_t *pColourVolume =
-                (ni_dec_mastering_display_colour_volume_bytes_t
-                     *)((uint8_t *)frame->p_data[start_offset] +
-                        frame->sei_hdr_mastering_display_color_vol_offset);
 
-            // HEVC uses a g,b,r ordering, which we convert to a more natural r,
-            // g,b,this is so we are compatible with FFmpeg default soft decoder
-            mdm->display_primaries[0][0].num =
-                ntohs(pColourVolume->display_primaries[2][0]);
-            mdm->display_primaries[0][0].den = chroma_den;
-            mdm->display_primaries[0][1].num =
-                ntohs(pColourVolume->display_primaries[2][1]);
-            mdm->display_primaries[0][1].den = chroma_den;
-            mdm->display_primaries[1][0].num =
-                ntohs(pColourVolume->display_primaries[0][0]);
-            mdm->display_primaries[1][0].den = chroma_den;
-            mdm->display_primaries[1][1].num =
-                ntohs(pColourVolume->display_primaries[0][1]);
-            mdm->display_primaries[1][1].den = chroma_den;
-            mdm->display_primaries[2][0].num =
-                ntohs(pColourVolume->display_primaries[1][0]);
-            mdm->display_primaries[2][0].den = chroma_den;
-            mdm->display_primaries[2][1].num =
-                ntohs(pColourVolume->display_primaries[1][1]);
-            mdm->display_primaries[2][1].den = chroma_den;
+            const ni_dec_mastering_display_colour_volume_bytes_t *pColourVolume =
+                (const ni_dec_mastering_display_colour_volume_bytes_t *)
+                ((uint8_t *)frame->p_data[start_offset] +
+                 frame->sei_hdr_mastering_display_color_vol_offset);
+
+            int is_av1 = (frame->src_codec == NI_CODEC_FORMAT_AV1);
+
+            // Map destination primary index (R,G,B) to source index.
+            //   AV1 stores native R,G,B          -> {0,1,2}
+            //   H.264/H.265 store G,B,R          -> R=src[2], G=src[0], B=src[1]
+            static const int src_idx_av1[3]  = {0, 1, 2};
+            static const int src_idx_hevc[3] = {2, 0, 1};
+            const int *src_idx = is_av1 ? src_idx_av1 : src_idx_hevc;
+
+            int chroma_den   = is_av1 ? AV1_MASTERING_DISP_CHROMA_DEN
+                                      : MASTERING_DISP_CHROMA_DEN;
+            int luma_min_den = is_av1 ? AV1_MASTERING_DISP_LUMA_MIN_DEN
+                                      : MASTERING_DISP_LUMA_DEN;
+            int luma_max_den = is_av1 ? AV1_MASTERING_DISP_LUMA_MAX_DEN
+                                      : MASTERING_DISP_LUMA_DEN;
+
+            for (int dst = 0; dst < 3; dst++)
+            {
+                int s = src_idx[dst];
+                mdm->display_primaries[dst][0].num = ntohs(pColourVolume->display_primaries[s][0]);
+                mdm->display_primaries[dst][0].den = chroma_den;
+                mdm->display_primaries[dst][1].num = ntohs(pColourVolume->display_primaries[s][1]);
+                mdm->display_primaries[dst][1].den = chroma_den;
+            }
+
             mdm->white_point[0].num = ntohs(pColourVolume->white_point_x);
             mdm->white_point[0].den = chroma_den;
             mdm->white_point[1].num = ntohs(pColourVolume->white_point_y);
             mdm->white_point[1].den = chroma_den;
 
-            mdm->min_luminance.num =
-                (int)ntohl(pColourVolume->min_display_mastering_luminance);
-            mdm->min_luminance.den = luma_den;
-            mdm->max_luminance.num =
-                (int)ntohl(pColourVolume->max_display_mastering_luminance);
-            mdm->max_luminance.den = luma_den;
+            mdm->min_luminance.num = (int)ntohl(pColourVolume->min_display_mastering_luminance);
+            mdm->min_luminance.den = luma_min_den;
+            mdm->max_luminance.num = (int)ntohl(pColourVolume->max_display_mastering_luminance);
+            mdm->max_luminance.den = luma_max_den;
 
             mdm->has_luminance = mdm->has_primaries = 1;
         }
@@ -868,7 +875,10 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
     ni_xcoder_params_t *api_params =
         (ni_xcoder_params_t *)p_enc_ctx->p_session_config;
 
-    // reset all auxiliary data flag and length of encode frame
+    const int is_av1 = (NI_CODEC_FORMAT_AV1 == codec_format);
+    const int is_h264 = (NI_CODEC_FORMAT_H264 == codec_format);
+
+    // reset all auxiliary data flags and lengths of encode frame
     p_enc_frame->preferred_characteristics_data_len =
         p_enc_frame->use_cur_src_as_long_term_pic =
             p_enc_frame->use_long_term_ref = 0;
@@ -949,23 +959,15 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
     if (aux_data)
     {
         p_enc_ctx->mdcv_max_min_lum_data_len = 8;
-        if (NI_CODEC_FORMAT_AV1 == codec_format)
-        {
-            // AV1 Metadata OBU: Header(1) + MetadataType(1) + Payload(24) = 26 bytes
-            // No emulation prevention or trailing bits needed for AV1 OBUs
-            p_enc_ctx->sei_hdr_mastering_display_color_vol_len =
-               3 + 6 * 2 + 2 * 2 + 2 * 4 + 1;
-        }
+        // Payload is 24 bytes: 6*2 primaries + 2*2 white point + 2*4 luminance.
+        // AV1: type(3) + payload(24)  + trailing(1).
+        // H.265: header(8) + payload(24) + trailing(1).
+        // H.264: header(7) + payload(24) + trailing(1) -> one byte less than H.265.
+        if (is_av1)
+            p_enc_ctx->sei_hdr_mastering_display_color_vol_len = 4 + 24;
         else
-        {
             p_enc_ctx->sei_hdr_mastering_display_color_vol_len =
-                8 + 6 * 2 + 2 * 2 + 2 * 4 + 1;
-
-            if (NI_CODEC_FORMAT_H264 == codec_format)
-            {
-                p_enc_ctx->sei_hdr_mastering_display_color_vol_len--;
-            }
-        }
+                (is_h264 ? 8 : 9) + 24;
 
         ni_mastering_display_metadata_t *p_src =
             (ni_mastering_display_metadata_t *)aux_data->data;
@@ -982,20 +984,25 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
         {
             memcpy(p_enc_ctx->p_master_display_meta_data, p_src,
                    sizeof(ni_mastering_display_metadata_t));
+            const int luma_max_den = is_av1 ? AV1_MASTERING_DISP_LUMA_MAX_DEN
+                                            : MASTERING_DISP_LUMA_DEN;
+            const int luma_min_den = is_av1 ? AV1_MASTERING_DISP_LUMA_MIN_DEN
+                                            : MASTERING_DISP_LUMA_DEN;
 
-            const int luma_den = MASTERING_DISP_LUMA_DEN;
+            uint32_t max_lum = htonl(
+                (uint32_t)lrint(luma_max_den * ni_q2d(p_src->max_luminance)));
+            uint32_t min_lum = htonl(
+                (uint32_t)lrint(luma_min_den * ni_q2d(p_src->min_luminance)));
 
-            uint32_t uint32_t_tmp = htonl(
-                (uint32_t)(lrint(luma_den * ni_q2d(p_src->max_luminance))));
-            memcpy(p_enc_ctx->ui8_mdcv_max_min_lum_data, &uint32_t_tmp,
-                   sizeof(uint32_t));
-            uint32_t_tmp = htonl(
-                (uint32_t)(lrint(luma_den * ni_q2d(p_src->min_luminance))));
-            memcpy(p_enc_ctx->ui8_mdcv_max_min_lum_data + 4, &uint32_t_tmp,
-                   sizeof(uint32_t));
+            ni_log2(p_enc_ctx, NI_LOG_DEBUG,  "### %s: luma_max_den %d luma_min_den %d\n", __func__, luma_max_den, luma_min_den);
+            ni_log2(p_enc_ctx, NI_LOG_DEBUG,  "### %s: max n %d d %d min n %d d %d\n", __func__,
+                    p_src->max_luminance.num, p_src->max_luminance.den,
+                    p_src->min_luminance.num, p_src->min_luminance.den);
 
-            // Emulation prevention checking (NOT required for AV1)
-            if (NI_CODEC_FORMAT_AV1 != codec_format)
+            memcpy(p_enc_ctx->ui8_mdcv_max_min_lum_data,     &max_lum, 4);
+            memcpy(p_enc_ctx->ui8_mdcv_max_min_lum_data + 4, &min_lum, 4);
+
+            if (!is_av1)
             {
                 // emulation prevention checking of luminance data
                 int emu_bytes_inserted = ni_insert_emulation_prevent_bytes(
@@ -1013,7 +1020,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
         p_enc_ctx->p_master_display_meta_data && should_send_sei_with_frame)
     {
         dst = mdcv_data;
-        if (NI_CODEC_FORMAT_AV1 == codec_format)
+        if (is_av1)
         {
             // AV1 Metadata OBU Header for obu_type: 5 (OBU_METADATA)
             dst[0] = 0x2a;  // (5 << 3) + 2;
@@ -1021,7 +1028,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
             dst[2] = 0x2;   // metadata_type METADATA_TYPE_HDR_MDCV  // See 5.8 in spec
             dst += 3;
         }
-        else if (NI_CODEC_FORMAT_H264 == codec_format)
+        else if (is_h264)
         {
             dst[0] = dst[1] = dst[2] = 0; dst[3] = 1; // Annex B Start Code
             dst[4] = 0x6;    // nal_unit_type = SEI
@@ -1045,51 +1052,35 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
             (ni_mastering_display_metadata_t *)
                 p_enc_ctx->p_master_display_meta_data;
 
-        const int chroma_den = MASTERING_DISP_CHROMA_DEN;
-        const int luma_den = MASTERING_DISP_LUMA_DEN;
+        const int chroma_den = is_av1 ? AV1_MASTERING_DISP_CHROMA_DEN
+                                      : MASTERING_DISP_CHROMA_DEN;
 
-        uint16_t dp00 = 0, dp01 = 0, dp10 = 0, dp11 = 0, dp20 = 0, dp21 = 0,
-                 wpx = 0, wpy = 0;
-        // assuming p_src->has_primaries is always true
-        // this is stored in r,g,b order and needs to be in g.b,r order
-        // when sent to encoder
-        dp00 = (uint16_t)lrint(chroma_den *
-                               ni_q2d(p_src->display_primaries[1][0]));
-        p_mdcv->display_primaries[0][0] = htons(dp00);
-        dp01 = (uint16_t)lrint(chroma_den *
-                               ni_q2d(p_src->display_primaries[1][1]));
-        p_mdcv->display_primaries[0][1] = htons(dp01);
-        dp10 = (uint16_t)lrint(chroma_den *
-                               ni_q2d(p_src->display_primaries[2][0]));
-        p_mdcv->display_primaries[1][0] = htons(dp10);
-        dp11 = (uint16_t)lrint(chroma_den *
-                               ni_q2d(p_src->display_primaries[2][1]));
-        p_mdcv->display_primaries[1][1] = htons(dp11);
-        dp20 = (uint16_t)lrint(chroma_den *
-                               ni_q2d(p_src->display_primaries[0][0]));
-        p_mdcv->display_primaries[2][0] = htons(dp20);
-        dp21 = (uint16_t)lrint(chroma_den *
-                               ni_q2d(p_src->display_primaries[0][1]));
-        p_mdcv->display_primaries[2][1] = htons(dp21);
+        // Destination primary index (dst order) -> source index in p_src.
+        //   AV1 is native R,G,B         -> {0,1,2}
+        //   H.264/H.265 need G,B,R      -> G=src[1], B=src[2], R=src[0]
+        static const int src_idx_av1[3]  = {0, 1, 2};
+        static const int src_idx_hevc[3] = {1, 2, 0};
+        const int *src_idx = is_av1 ? src_idx_av1 : src_idx_hevc;
 
-        wpx = (uint16_t)lrint(chroma_den * ni_q2d(p_src->white_point[0]));
-        p_mdcv->white_point_x = htons(wpx);
-        wpy = (uint16_t)lrint(chroma_den * ni_q2d(p_src->white_point[1]));
-        p_mdcv->white_point_y = htons(wpy);
+        for (int d = 0; d < 3; d++)
+        {
+            int s = src_idx[d];
+            p_mdcv->display_primaries[d][0] = htons(
+                (uint16_t)lrint(chroma_den * ni_q2d(p_src->display_primaries[s][0])));
+            p_mdcv->display_primaries[d][1] = htons(
+                (uint16_t)lrint(chroma_den * ni_q2d(p_src->display_primaries[s][1])));
+        }
 
-        ni_log2(p_enc_ctx, NI_LOG_DEBUG,
-            "mastering display color volume, primaries "
-            "%u/%u/%u/%u/%u/%u white_point_x/y %u/%u max/min_lumi %u/%u\n",
-            (uint16_t)dp00, (uint16_t)dp01, (uint16_t)dp10, (uint16_t)dp11,
-            (uint16_t)dp20, (uint16_t)dp21, (uint16_t)wpx, (uint16_t)wpy,
-            (uint32_t)(luma_den * ni_q2d(p_src->max_luminance)),
-            (uint32_t)(luma_den * ni_q2d(p_src->min_luminance)));
+        p_mdcv->white_point_x =
+            htons((uint16_t)lrint(chroma_den * ni_q2d(p_src->white_point[0])));
+        p_mdcv->white_point_y =
+            htons((uint16_t)lrint(chroma_den * ni_q2d(p_src->white_point[1])));
 
         dst += 6 * 2 + 2 * 2;
         memcpy(dst, p_enc_ctx->ui8_mdcv_max_min_lum_data,
                p_enc_ctx->mdcv_max_min_lum_data_len);
-
         dst += p_enc_ctx->mdcv_max_min_lum_data_len;
+
         *dst = 0x80; // RBSP Trailing bit
 
         p_enc_frame->sei_hdr_mastering_display_color_vol_len =
@@ -1821,7 +1812,8 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
                ltr.use_long_term_ref);
     }
 
-    if (p_enc_ctx->ltr_to_set.use_cur_src_as_long_term_pic > 0)
+    if (p_enc_ctx->ltr_to_set.use_cur_src_as_long_term_pic > 0 ||
+        p_enc_ctx->ltr_to_set.use_long_term_ref > 0)
     {
         ltr = p_enc_ctx->ltr_to_set;
         p_enc_ctx->ltr_to_set.use_cur_src_as_long_term_pic =
@@ -1834,7 +1826,7 @@ void ni_enc_prep_aux_data(ni_session_context_t *p_enc_ctx,
                ltr.use_long_term_ref);
     }
 
-    if (ltr.use_cur_src_as_long_term_pic > 0)
+    if (ltr.use_cur_src_as_long_term_pic > 0 || ltr.use_long_term_ref > 0)
     {
         p_enc_frame->use_cur_src_as_long_term_pic =
             ltr.use_cur_src_as_long_term_pic;
@@ -3276,7 +3268,7 @@ int ni_extract_custom_sei(uint8_t *pkt_data, int pkt_size, long index,
  *
  * \return - 0 on success, non-0 on failure
  ********************************************************************************/
-int ni_dec_packet_parse(ni_session_context_t *p_session_ctx, ni_xcoder_params_t *p_param,
+NI_DEPRECATED int ni_dec_packet_parse(ni_session_context_t *p_session_ctx, ni_xcoder_params_t *p_param,
                            uint8_t *data, int size, ni_packet_t *p_packet, int low_delay,
                            int codec_format, int pkt_nal_bitmap, int custom_sei_type,
                            int *svct_skip_next_packet, int *is_lone_sei_pkt)
@@ -3366,7 +3358,7 @@ int ni_dec_packet_parse(ni_session_context_t *p_session_ctx, ni_xcoder_params_t 
             {
                 // Find the end of the SEI NAL unit
                 next = ni_find_start_code(ptr, end, &stc);
-                if (*(next - 5) == 0)
+                if (next >= data + 5 && *(next - 5) == 0)
                     next -= 5; // long start code
                 else
                     next -= 4; // short start code
@@ -3397,12 +3389,12 @@ int ni_dec_packet_parse(ni_session_context_t *p_session_ctx, ni_xcoder_params_t 
                     // Skip the current SEI message including any emulation prevention bytes
                     ptr++;
                     sei_size = 0;
-                    while (ptr < next && *ptr == 0xff)
+                    while (ptr + 1 < next && *ptr == 0xff)
                     {
                         sei_size += *ptr++;
                     }
                     sei_size += *ptr++;
-                    for (i = 0; i < sei_size; i++)
+                    for (i = 0; i < sei_size && next - ptr > 1; i++)
                     {
                         if (i >= 2 && *(ptr - 2) == 0 && *(ptr - 1) == 0 && *ptr == 3)
                             sei_size++;
@@ -3478,7 +3470,7 @@ int ni_dec_packet_parse(ni_session_context_t *p_session_ctx, ni_xcoder_params_t 
             {
                 // Find the end of the SEI NAL unit
                 next = ni_find_start_code(ptr, end, &stc);
-                if (*(next - 5) == 0)
+                if (next >= data + 5 && *(next - 5) == 0)
                     next -= 5; // long start code
                 else
                     next -= 4; // short start code
@@ -3511,12 +3503,12 @@ int ni_dec_packet_parse(ni_session_context_t *p_session_ctx, ni_xcoder_params_t 
                     // Skip the current SEI message including any emulation prevention bytes
                     ptr++;
                     sei_size = 0;
-                    while (ptr < next && *ptr == 0xff)
+                    while (ptr + 1 < next && *ptr == 0xff)
                     {
                         sei_size += *ptr++;
                     }
                     sei_size += *ptr++;
-                    for (i = 0; i < sei_size; i++)
+                    for (i = 0; i < sei_size && next - ptr > 1; i++)
                     {
                         if (i >= 2 && *(ptr - 2) == 0 && *(ptr - 1) == 0 && *ptr == 3)
                             sei_size++;
@@ -3540,6 +3532,319 @@ int ni_dec_packet_parse(ni_session_context_t *p_session_ctx, ni_xcoder_params_t 
     {
         *is_lone_sei_pkt = pkt_sei_alone;
     }
+
+    return 0;
+}
+
+
+/*!******************************************************************************
+ * \brief  Decode parse packet
+ *
+ * \param[in] p_session_ctx             Pointer to a caller allocated
+ *                                      ni_session_context_t struct
+ * \param[in] p_param                   Pointer to a caller allocated
+ *                                      ni_xcoder_params_t struct
+ * \param[in] *data                     FFmpeg AVPacket data
+ * \param[in] size                      packet size
+ * \param[in] p_packet                  Pointer to a caller allocated
+ *                                      ni_packet_t struct
+ * \param[in] low_delay                 FFmpeg lowdelay
+ * \param[in] codec_format              enum ni_codec_format_t
+ * \param[in] *p_pkt_nal_bitmap         p_pkt_nal_bitmap int*
+ * \param[in] custom_sei_type           custom_sei_type
+ * \param[in] *svct_skip_next_packet    svct_skip_next_packet int*
+ * \param[in] *is_lone_sei_pkt          is_lone_sei_pkt int*
+ *
+ * \return - 0 on success, non-0 on failure
+ ********************************************************************************/
+int ni_dec_packet_parse2(ni_session_context_t *p_ctx, ni_xcoder_params_t *p_param,
+                           uint8_t *data, int size, ni_packet_t *p_packet, int low_delay,
+                           int codec_format, int *p_pkt_nal_bitmap, int custom_sei_type,
+                           int *svct_skip_next_packet, int *is_lone_sei_pkt)
+{
+    int pkt_sei_alone = 1;
+    int vcl_found = 0;
+    int tmp_low_delay = 0;
+
+    int svct_layer = NI_INVALID_SVCT_DECODING_LAYER;
+    int pkt_nal_bitmap = 0;
+    const uint8_t *ptr;
+    const uint8_t *end;
+    uint32_t stc;
+    int nalu_type;
+    uint8_t sei_type = 0;
+    int ret = 0;
+    int nalu_count = 0;
+    ni_bitstream_reader_t br;
+    int temporal_id;
+    const uint8_t *next = NULL;
+    int sei_size = 0, i = 0;
+
+    if (!data)
+    {
+        ni_log2(p_ctx, NI_LOG_TRACE, "%s(): null packet data, return 0\n",
+             __func__);
+        return 0;
+    }
+
+    if (!p_ctx || !p_param || !p_packet || !p_pkt_nal_bitmap || !svct_skip_next_packet || !is_lone_sei_pkt)
+    {
+        ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR: %s() passed parameters are null!, return\n",
+             __func__);
+        return -1;
+    }
+
+    tmp_low_delay = (p_ctx->decoder_low_delay == -1) ? 0 : low_delay;
+    svct_layer = (codec_format == NI_CODEC_FORMAT_H264) ?
+        p_param->dec_input_params.svct_decoding_layer :
+        NI_INVALID_SVCT_DECODING_LAYER;
+    pkt_nal_bitmap = *p_pkt_nal_bitmap;
+    ptr = data;
+    end = data + size;
+
+    if (pkt_nal_bitmap & NI_GENERATE_ALL_NAL_HEADER_BIT)
+    {
+        ni_log2(p_ctx, NI_LOG_TRACE,
+               "%s(): already find the header of streams.\n",
+               __func__);
+        low_delay = 0;
+    }
+
+    while (
+        (custom_sei_type != NI_INVALID_SEI_TYPE ||
+         p_param->dec_input_params.custom_sei_passthru != NI_INVALID_SEI_TYPE ||
+         svct_layer != NI_INVALID_SVCT_DECODING_LAYER || tmp_low_delay ||
+         p_param->dec_input_params.enable_all_sei_passthru) &&
+        ptr < end)
+    {
+        stc = -1;
+        ptr = ni_find_start_code(ptr, end, &stc);
+        if (ptr == end)
+        {
+            if (0 == nalu_count)
+            {
+                pkt_sei_alone = 0;
+                ni_log2(p_ctx, NI_LOG_TRACE,  "%s(): no NAL found in pkt.\n",
+                       __func__);
+            }
+            break;
+        }
+        nalu_count++;
+
+        if (NI_CODEC_FORMAT_H264 == codec_format)
+        {
+            nalu_type = (int)stc & 0x1f;
+
+            //check whether the packet is sei alone
+            pkt_sei_alone = (pkt_sei_alone && 6 /*H264_NAL_SEI */ == nalu_type);
+
+            // Enable decoder low delay mode on sequence change
+            if (low_delay)
+            {
+                switch (nalu_type)
+                {
+                    case 7 /*H264_NAL_SPS */:
+                        pkt_nal_bitmap |= NI_NAL_SPS_BIT;
+                        break;
+                    case 8 /*H264_NAL_PPS */:
+                        pkt_nal_bitmap |= NI_NAL_PPS_BIT;
+                        break;
+                    default:
+                        break;
+                }
+
+                if (pkt_nal_bitmap == (NI_NAL_SPS_BIT | NI_NAL_PPS_BIT))
+                {
+                    ni_log2(p_ctx, NI_LOG_TRACE,
+                           "%s(): Detect SPS, PPS and IDR, "
+                           "enable decoder low delay mode.\n",
+                           __func__);
+                    p_ctx->decoder_low_delay = low_delay;
+                    pkt_nal_bitmap |= NI_GENERATE_ALL_NAL_HEADER_BIT;
+                    low_delay = 0;
+                }
+            }
+            // check whether the packet contains SEI NAL after VCL units
+            if (6 /*H264_NAL_SEI */ == nalu_type)
+            {
+                // Find the end of the SEI NAL unit
+                next = ni_find_start_code(ptr, end, &stc);
+                if (next >= data + 5 && *(next - 5) == 0)
+                    next -= 5; // long start code
+                else
+                    next -= 4; // short start code
+
+                // More SEI messages in the NAL unit if remaining data larger than 1 byte
+                while (next - ptr > 1)
+                {
+                    sei_type = *ptr;
+                    if (vcl_found ||
+                        custom_sei_type == sei_type ||
+                        p_param->dec_input_params.custom_sei_passthru == sei_type ||
+                        p_param->dec_input_params.enable_all_sei_passthru)
+                    {
+                        // SEI after VCL found or SEI type indicated then extract
+                        // the SEI unit;
+                        // ret = ni_quadra_extract_custom_sei(ni_dec_ctx, data, size,
+                        //                                    ptr + 1 - data, p_packet,
+                        //                                    sei_type, vcl_found);
+                        ret =  ni_extract_custom_sei(data, size,
+                                                    (long)(ptr + 1 - data), p_packet,
+                                                    sei_type, vcl_found);
+                        if (ret != 0)
+                        {
+                            return ret;
+                        }
+                    }
+
+                    // Skip the current SEI message including any emulation prevention bytes
+                    ptr++;
+                    sei_size = 0;
+                    while (ptr + 1 < next && *ptr == 0xff)
+                    {
+                        sei_size += *ptr++;
+                    }
+                    sei_size += *ptr++;
+                    for (i = 0; i < sei_size && next - ptr > 1; i++)
+                    {
+                        if (i >= 2 && *(ptr - 2) == 0 && *(ptr - 1) == 0 && *ptr == 3)
+                            sei_size++;
+                        ptr++;
+                    }
+                }
+            } else if (nalu_type >= 1 /* H264_NAL_SLICE */ &&
+                       nalu_type <= 5 /* H264_NAL_IDR_SLICE */)
+            {
+                vcl_found = 1;
+            } else if (14 /*H264_NAL_PREFIX */ == nalu_type)
+            {
+                ni_bitstream_reader_init(&br, ptr,
+                                         48);   // 3 * 2 bytes * 8 = 48 bits
+                // skip some header
+                ni_bs_reader_skip_bits(&br, 16);
+                temporal_id = (int)ni_bs_reader_get_bits(&br, 3);
+                if (temporal_id > svct_layer)
+                {
+                    // H264_NAL_PREFIX UNIT will be sent with the last packet.
+                    // So, the H264_NAL_PREFIX here is used for the next packet.
+                    *svct_skip_next_packet = 1;
+                    ni_log2(p_ctx, NI_LOG_TRACE,
+                           "%s(): temporal_id %d"
+                           " is bigger than decoded layer %d, skip the next "
+                           "packet\n",
+                           __func__, temporal_id, svct_layer);
+                }
+            }
+        } else if (NI_CODEC_FORMAT_H265 == codec_format)
+        {
+            nalu_type = (int)(stc >> 1) & 0x3F;
+
+            //check whether the packet is sei alone
+            pkt_sei_alone = (pkt_sei_alone &&
+                             (39 /* HEVC_NAL_SEI_PREFIX */ == nalu_type ||
+                              40 /* HEVC_NAL_SEI_SUFFIX */ == nalu_type));
+
+            // Enable decoder low delay mode on sequence change
+            if (low_delay)
+            {
+                switch (nalu_type)
+                {
+                    case 32 /* HEVC_NAL_VPS */:
+                        pkt_nal_bitmap |= NI_NAL_VPS_BIT;
+                        break;
+                    case 33 /* HEVC_NAL_SPS */:
+                        pkt_nal_bitmap |= NI_NAL_SPS_BIT;
+                        break;
+                    case 34 /* HEVC_NAL_PPS */:
+                        pkt_nal_bitmap |= NI_NAL_PPS_BIT;
+                        break;
+                    default:
+                        break;
+                }
+
+                if (pkt_nal_bitmap ==
+                    (NI_NAL_VPS_BIT | NI_NAL_SPS_BIT | NI_NAL_PPS_BIT))
+                {
+                    // Packets before the header is sent cannot be decoded.
+                    // So set packet num to zero here.
+                    ni_log2(p_ctx, NI_LOG_TRACE,
+                           "%s(): Detect VPS, SPS, PPS and "
+                           "IDR enable decoder low delay mode.\n", __func__);
+                    p_ctx->decoder_low_delay = low_delay;
+                    pkt_nal_bitmap |= NI_GENERATE_ALL_NAL_HEADER_BIT;
+                    low_delay = 0;
+                }
+            }
+            // check whether the packet contains SEI NAL after VCL units
+            if (39 /* HEVC_NAL_SEI_PREFIX */ == nalu_type ||
+                40 /* HEVC_NAL_SEI_SUFFIX */ == nalu_type)
+            {
+                // Find the end of the SEI NAL unit
+                next = ni_find_start_code(ptr, end, &stc);
+                if (next >= data + 5 && *(next - 5) == 0)
+                    next -= 5; // long start code
+                else
+                    next -= 4; // short start code
+
+                // Skip NAL unit header
+                ptr++;
+
+                // More SEI messages in the NAL unit if remaining data larger than 1 byte
+                while (next - ptr > 1)
+                {
+                    sei_type = *ptr;
+                    if (vcl_found ||
+                        custom_sei_type == sei_type ||
+                        p_param->dec_input_params.custom_sei_passthru == sei_type ||
+                        p_param->dec_input_params.enable_all_sei_passthru)
+                    {
+                        // SEI after VCL found or SEI type indicated then extract
+                        // the SEI unit;
+                        // ret = ni_quadra_extract_custom_sei(ni_dec_ctx, data, size,
+                        //                                    ptr + 2 - data, p_packet,
+                        //                                    sei_type, vcl_found);
+                        ret = ni_extract_custom_sei(data, size, (long)(ptr + 1 - data), p_packet,
+                                                    sei_type, vcl_found);
+                        if (ret != 0)
+                        {
+                            return ret;
+                        }
+                    }
+
+                    // Skip the current SEI message including any emulation prevention bytes
+                    ptr++;
+                    sei_size = 0;
+                    while (ptr + 1 < next && *ptr == 0xff)
+                    {
+                        sei_size += *ptr++;
+                    }
+                    sei_size += *ptr++;
+                    for (i = 0; i < sei_size && next - ptr > 1; i++)
+                    {
+                        if (i >= 2 && *(ptr - 2) == 0 && *(ptr - 1) == 0 && *ptr == 3)
+                            sei_size++;
+                        ptr++;
+                    }
+                }
+            } else if (nalu_type >= 0 /* HEVC_NAL_TRAIL_N */ &&
+                       nalu_type <= 31 /* HEVC_NAL_RSV_VCL31 */)
+            {
+                vcl_found = 1;
+            }
+        } else
+        {
+            ni_log2(p_ctx,NI_LOG_DEBUG, "%s() wrong codec %d !\n", __func__, codec_format);
+            pkt_sei_alone = 0;
+            break;
+        }
+    }
+
+    if (nalu_count > 0)
+    {
+        *is_lone_sei_pkt = pkt_sei_alone;
+    }
+
+    *p_pkt_nal_bitmap = pkt_nal_bitmap;
 
     return 0;
 }

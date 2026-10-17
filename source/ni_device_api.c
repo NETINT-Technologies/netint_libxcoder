@@ -213,6 +213,36 @@ ni_retcode_t ni_device_session_context_init(ni_session_context_t *p_ctx)
                __func__);
         return NI_RETCODE_FAILURE;
     }
+#ifdef __linux__
+    pthread_condattr_t cond_attr;
+    if (pthread_condattr_init(&cond_attr))
+    {
+        ni_log2(p_ctx, NI_LOG_ERROR,
+               "ERROR %s(): pthread_condattr_init fail return\n",
+               __func__);
+        return NI_RETCODE_FAILURE;
+    }
+
+    if (pthread_condattr_setclock(&cond_attr, CLOCK_MONOTONIC))
+    {
+        ni_log2(p_ctx, NI_LOG_ERROR,
+               "ERROR %s(): pthread_condattr_setclock fail return\n",
+               __func__);
+        pthread_condattr_destroy(&cond_attr);
+        return NI_RETCODE_FAILURE;
+    }
+
+    if (ni_pthread_cond_init(&p_ctx->low_delay_sync_cond, &cond_attr))
+    {
+        ni_log2(p_ctx, NI_LOG_ERROR,
+              "ERROR %s(): init xcoder_low_delay_sync_cond fail return\n",
+              __func__);
+        pthread_condattr_destroy(&cond_attr);
+        return NI_RETCODE_FAILURE;
+    }
+
+    pthread_condattr_destroy(&cond_attr);
+#else
     if (ni_pthread_cond_init(&p_ctx->low_delay_sync_cond, NULL))
     {
         ni_log2(p_ctx, NI_LOG_ERROR,
@@ -220,6 +250,7 @@ ni_retcode_t ni_device_session_context_init(ni_session_context_t *p_ctx)
                __func__);
         return NI_RETCODE_FAILURE;
     }
+#endif
 
     p_ctx->mutex_initialized = true;
 
@@ -900,6 +931,8 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
   uint32_t num_sw_instances = 0;
   uint32_t pixel_load = 0xFFFFFFFFU;
   int user_handles = false;
+  bool has_opened_fd = false;
+  bool session_created = false;
   ni_lock_handle_t lock = NI_INVALID_LOCK_HANDLE;
   ni_device_handle_t handle = NI_INVALID_DEVICE_HANDLE;
   ni_device_handle_t handle1 = NI_INVALID_DEVICE_HANDLE;
@@ -979,6 +1012,7 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
   p_ctx->current_frame_delay = 0;
   p_ctx->max_frame_delay = 0;
   p_ctx->av1_pkt_num = 0;
+  p_ctx->avc_ltr_seen_idr = 0;
   p_ctx->pool_type = NI_POOL_TYPE_NONE;
   p_ctx->force_low_delay = false;
   p_ctx->force_low_delay_cnt = 0;
@@ -1057,6 +1091,7 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
       } else
       {
           user_handles = true;
+          has_opened_fd = true;
           p_ctx->device_handle = handle;
           p_ctx->blk_io_handle = handle;
           handle1 = handle;
@@ -1072,12 +1107,21 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
           handle1 = ni_device_open2(rsrc_ctx->p_device_info->dev_name, NI_DEVICE_READ_WRITE);
       if (handle == NI_INVALID_DEVICE_HANDLE || handle1 == NI_INVALID_DEVICE_HANDLE)
       {
+          if (handle != NI_INVALID_DEVICE_HANDLE)
+          {
+              ni_device_close(handle);
+          }
+          if (handle1 != NI_INVALID_DEVICE_HANDLE)
+          {
+              ni_device_close(handle1);
+          }
           ni_rsrc_free_device_context(rsrc_ctx);
           retval = NI_RETCODE_ERROR_OPEN_DEVICE;
           LRETURN;
       } else
       {
         user_handles = true;
+        has_opened_fd = true;
         p_ctx->device_handle = handle;
         p_ctx->blk_io_handle = handle1;
         // NOLINTNEXTLINE(clang-analyzer-core.NonNullParamChecker): Couldn't determine why it will be NULL.
@@ -1119,6 +1163,10 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
         {
           ni_log2(p_ctx, NI_LOG_ERROR,  "ERROR: Error calling ni_rsrc_get_device_pool()\n");
           retval =  NI_RETCODE_ERROR_GET_DEVICE_POOL;
+          if (ni_rsrc_unlock(query_type, lock) != NI_RETCODE_SUCCESS)
+          {
+              retval = NI_RETCODE_ERROR_UNLOCK_DEVICE;
+          }
           LRETURN;
         }
         if (IS_XCODER_DEVICE_TYPE(query_type))
@@ -1229,6 +1277,7 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
             LRETURN;
       } else
       {
+        has_opened_fd = true;
         p_ctx->device_handle = handle;
         p_ctx->blk_io_handle = handle;
         handle1 = handle;
@@ -1244,6 +1293,14 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
           handle1 = ni_device_open2(dev_info.dev_name, NI_DEVICE_READ_WRITE);
       if (handle == NI_INVALID_DEVICE_HANDLE || handle1 == NI_INVALID_DEVICE_HANDLE)
       {
+        if (handle != NI_INVALID_DEVICE_HANDLE)
+        {
+          ni_device_close(handle);
+        }
+        if (handle1 != NI_INVALID_DEVICE_HANDLE)
+        {
+          ni_device_close(handle1);
+        }
         retval = NI_RETCODE_ERROR_OPEN_DEVICE;
         if (ni_rsrc_unlock(query_type, lock) != NI_RETCODE_SUCCESS)
         {
@@ -1254,6 +1311,7 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
       }
       else
       {
+        has_opened_fd = true;
         p_ctx->device_handle = handle;
         p_ctx->blk_io_handle = handle1;
         p_ctx->hw_id = guid;
@@ -1340,6 +1398,7 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
     case NI_DEVICE_TYPE_DECODER:
     {
       retval = ni_decoder_session_open(p_ctx);
+      session_created = p_ctx->session_id != NI_INVALID_SESSION_ID;
       if (user_handles != true)
       {
         if( ni_rsrc_unlock(device_type, lock) != NI_RETCODE_SUCCESS)
@@ -1379,6 +1438,7 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
 #endif
 
         retval = ni_encoder_session_open(p_ctx);
+        session_created = p_ctx->session_id != NI_INVALID_SESSION_ID;
         if (user_handles != true)
         {
             if (ni_rsrc_unlock(device_type, lock) != NI_RETCODE_SUCCESS)
@@ -1397,6 +1457,7 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
     case NI_DEVICE_TYPE_UPLOAD:
     {
       retval = ni_uploader_session_open(p_ctx);
+      session_created = p_ctx->session_id != NI_INVALID_SESSION_ID;
       if (user_handles != true)
       {
           if (ni_rsrc_unlock(query_type, lock) != NI_RETCODE_SUCCESS)
@@ -1415,6 +1476,7 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
     case NI_DEVICE_TYPE_SCALER:
     {
       retval = ni_scaler_session_open(p_ctx);
+      session_created = p_ctx->session_id != NI_INVALID_SESSION_ID;
       if (user_handles != true)
       {
         if( ni_rsrc_unlock(device_type, lock) != NI_RETCODE_SUCCESS)
@@ -1433,6 +1495,7 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
     case NI_DEVICE_TYPE_AI:
     {
         retval = ni_ai_session_open(p_ctx);
+        session_created = p_ctx->session_id != NI_INVALID_SESSION_ID;
         if (user_handles != true)
         {
             if (ni_rsrc_unlock(device_type, lock) != NI_RETCODE_SUCCESS)
@@ -1521,6 +1584,27 @@ ni_retcode_t ni_device_session_open(ni_session_context_t *p_ctx,
   }
 
 END:
+    if (retval != NI_RETCODE_SUCCESS && session_created &&
+        p_ctx->session_id != NI_INVALID_SESSION_ID)
+    {
+        (void)ni_device_session_close(p_ctx, 0, device_type);
+    }
+
+    if (retval != NI_RETCODE_SUCCESS && has_opened_fd)
+    {
+        if (p_ctx->device_handle != NI_INVALID_DEVICE_HANDLE)
+        {
+            ni_device_close(p_ctx->device_handle);
+        }
+        if (p_ctx->blk_io_handle != NI_INVALID_DEVICE_HANDLE &&
+            p_ctx->blk_io_handle != p_ctx->device_handle)
+        {
+            ni_device_close(p_ctx->blk_io_handle);
+        }
+        p_ctx->device_handle = NI_INVALID_DEVICE_HANDLE;
+        p_ctx->blk_io_handle = NI_INVALID_DEVICE_HANDLE;
+    }
+
     ni_device_session_context_free(p_session_context);
 
     if (p_device_pool)
@@ -1663,6 +1747,7 @@ ni_retcode_t ni_device_session_close(ni_session_context_t *p_ctx,
     p_ctx->current_frame_delay = 0;
     p_ctx->max_frame_delay = 0;
     p_ctx->av1_pkt_num = 0;
+    p_ctx->avc_ltr_seen_idr = 0;
     p_ctx->reconfig_intra_period = -1;
     p_ctx->reconfig_slice_arg = 0;
 
@@ -4818,6 +4903,8 @@ ni_retcode_t ni_encoder_init_default_params(ni_xcoder_params_t *p_param,
   p_enc->preset_enabled = 0;
   p_enc->reset_dts_offset = 1;
   p_enc->getBitstreamFeatures = 0;
+  p_enc->clearRefListModification = 0;
+  p_enc->longTermReferenceOldest = 0;
   for (i = 0; i < NI_MAX_SPATIAL_LAYERS; i++)
   {
     p_enc->spatialLayerBitrate[i] = 0;
@@ -4958,11 +5045,12 @@ ni_retcode_t ni_decoder_init_default_params(ni_xcoder_params_t *p_param,
   p_param->source_width = width;
   p_param->source_height = height;
 
-  if(fps_num <= 0 || fps_denom <= 0)
+  if(fps_num <= 0 || fps_denom <= 0 || (int64_t)fps_num > (int64_t)120 * fps_denom)
   {
+      ni_log(NI_LOG_INFO, "%s(): FPS invalid or out of range (%d/%d), defaulting to 30\n",
+             __func__, fps_num, fps_denom);
       fps_num = 30;
       fps_denom = 1;
-      ni_log(NI_LOG_INFO, "%s(): FPS is not set, setting the default FPS to 30\n", __func__);
   }
 
   p_param->fps_number = fps_num;
@@ -5050,7 +5138,8 @@ END:
 }
 
 // read demo reconfig data file and parse out reconfig key/values in the format:
-// key:val1,val2,val3,...val9 (max 9 values); only digit/:/,/newline is allowed
+// key:val1,val2,val3,...val9 (max 9 values); digit/:/,/newline and a leading
+// '-' on a value are allowed. A leading '-' applies to that value only.
 ni_retcode_t ni_parse_reconf_file(const char *reconf_file,
                                   int hash_map[][NI_BITRATE_RECONFIG_FILE_MAX_ENTRIES_PER_LINE])
 {
@@ -5061,6 +5150,7 @@ ni_retcode_t ni_parse_reconf_file(const char *reconf_file,
   int32_t tmp_val;
   int valIdx = 1;
   int parseKey = 1;
+  int negative = 0;
   int idx = 0;
   int readc = EOF;
   FILE *reconf = NULL;
@@ -5109,6 +5199,23 @@ ni_retcode_t ni_parse_reconf_file(const char *reconf_file,
       key = (int)tmp_val;
       hash_map[idx][0] = key;
     }
+    else if (readc == '-')
+    {
+      // A leading '-' is valid only at the start of a value, so a value can
+      // be negative (for example invalidFrameNum=-1). The frame number key
+      // stays unsigned.
+      if (parseKey || valChar[0] != '\0' || negative)
+      {
+          ni_log(NI_LOG_ERROR,
+                 "ERROR: character %c in reconfig file. this may lead to "
+                 "mistaken reconfiguration values\n",
+                 readc);
+      }
+      else
+      {
+          negative = 1;
+      }
+    }
     else if (readc == ',')
     {
       if (valIdx >= NI_BITRATE_RECONFIG_FILE_MAX_ENTRIES_PER_LINE)
@@ -5129,6 +5236,11 @@ ni_retcode_t ni_parse_reconf_file(const char *reconf_file,
           break;
       }
       val = (int)tmp_val;
+      if (negative)
+      {
+          val = -val;
+      }
+      negative = 0;
       hash_map[idx][valIdx] = val;
       valIdx++;
       memset(valChar, 0, 10);
@@ -5154,6 +5266,11 @@ ni_retcode_t ni_parse_reconf_file(const char *reconf_file,
           break;
       }
       val = (int)tmp_val;
+      if (negative)
+      {
+          val = -val;
+      }
+      negative = 0;
       hash_map[idx][valIdx] = val;
       valIdx = 1;
       memset(keyChar,0,10);
@@ -7857,6 +7974,22 @@ ni_retcode_t ni_encoder_params_set_value(ni_xcoder_params_t *p_params,
         return NI_RETCODE_PARAM_ERROR_OOR;
     }
     p_enc->getBitstreamFeatures = atoi(value);
+  }
+  OPT(NI_ENC_PARAM_CLEAR_REF_LIST_MODIFICATION)
+    {
+      if ((atoi(value) != 0) && (atoi(value) != 1))
+      {
+          return NI_RETCODE_PARAM_ERROR_OOR;
+      }
+      p_enc->clearRefListModification = atoi(value);
+    }
+  OPT(NI_ENC_PARAM_LONG_TERM_REFERENCE_OLDEST)
+  {
+    if ((atoi(value) != 0) && (atoi(value) != 1))
+    {
+      return NI_RETCODE_PARAM_ERROR_OOR;
+    }
+    p_enc->longTermReferenceOldest = atoi(value);
   }
   else { return NI_RETCODE_PARAM_INVALID_NAME; }
 
@@ -13236,6 +13369,58 @@ ni_retcode_t ni_enc_prep_reconf_demo_data(ni_session_context_t *p_enc_ctx, ni_fr
             p_enc_ctx->reconfigCount++;
         }
         break;
+    // set LTR and/or invalidate reference frames on the same frame.
+    // reconf file line format:
+    // <frame-number>:useCurSrcAsLongtermPic,invalidFrameNum
+    // LTR aux data is attached when useCurSrcAsLongtermPic is non-zero.
+    // useLongtermRef is not sent; firmware ignores that flag.
+    // invalidFrameNum -1 skips reference invalidation. A value >= 0
+    // invalidates references from that frame number. Either action may be
+    // omitted.
+    case XCODER_TEST_RECONF_LTR_INVALID_REF:
+        if (p_enc_ctx->frame_num ==
+            p_param->reconf_hash[p_enc_ctx->reconfigCount][0]) {
+            uint8_t use_cur_src_as_long_term_pic =
+                (uint8_t)p_param->reconf_hash[p_enc_ctx->reconfigCount][1];
+            int32_t invalid_frame_num =
+                p_param->reconf_hash[p_enc_ctx->reconfigCount][2];
+
+            if (use_cur_src_as_long_term_pic > 0) {
+                ni_long_term_ref_t *p_ltr;
+                aux_data = ni_frame_new_aux_data(
+                    p_frame, NI_FRAME_AUX_DATA_LONG_TERM_REF,
+                    sizeof(ni_long_term_ref_t));
+                if (!aux_data) {
+                    return NI_RETCODE_ERROR_MEM_ALOC;
+                }
+                p_ltr = (ni_long_term_ref_t *)aux_data->data;
+                p_ltr->use_cur_src_as_long_term_pic =
+                    use_cur_src_as_long_term_pic;
+                p_ltr->use_long_term_ref = 0;
+                ni_log2(p_enc_ctx, NI_LOG_TRACE,
+                        "xcoder_send_frame: frame #%lu metadata "
+                        "use_cur_src_as_long_term_pic %d\n",
+                        p_enc_ctx->frame_num,
+                        p_ltr->use_cur_src_as_long_term_pic);
+            }
+
+            if (invalid_frame_num != -1) {
+                aux_data = ni_frame_new_aux_data(
+                    p_frame, NI_FRAME_AUX_DATA_INVALID_REF_FRAME,
+                    sizeof(int32_t));
+                if (!aux_data) {
+                    return NI_RETCODE_ERROR_MEM_ALOC;
+                }
+                *((int32_t *)aux_data->data) = invalid_frame_num;
+                ni_log2(p_enc_ctx, NI_LOG_TRACE,
+                        "xcoder_send_frame: frame #%lu reconf "
+                        "invalidFrameNum %d\n",
+                        p_enc_ctx->frame_num, invalid_frame_num);
+            }
+
+            p_enc_ctx->reconfigCount++;
+        }
+        break;
     // force IDR frame through API test code
     case XCODER_TEST_FORCE_IDR_FRAME:
         if (p_enc_ctx->frame_num ==
@@ -13505,6 +13690,44 @@ ni_retcode_t ni_enc_prep_reconf_demo_data(ni_session_context_t *p_enc_ctx, ni_fr
                     "xcoder_send_frame: frame #%lu API reconfig sliceArg %d\n",
                     p_enc_ctx->frame_num,
                     p_param->reconf_hash[p_enc_ctx->reconfigCount][1]);
+
+            p_enc_ctx->reconfigCount++;
+        }
+        break;
+    // set LTR and/or invalidate reference frames through API.
+    // reconf file line format matches XCODER_TEST_RECONF_LTR_INVALID_REF.
+    case XCODER_TEST_RECONF_LTR_INVALID_REF_API:
+        if (p_enc_ctx->frame_num ==
+            p_param->reconf_hash[p_enc_ctx->reconfigCount][0]) {
+            uint8_t use_cur_src_as_long_term_pic =
+                (uint8_t)p_param->reconf_hash[p_enc_ctx->reconfigCount][1];
+            int32_t invalid_frame_num =
+                p_param->reconf_hash[p_enc_ctx->reconfigCount][2];
+
+            if (use_cur_src_as_long_term_pic > 0) {
+                ni_long_term_ref_t ltr;
+                ltr.use_cur_src_as_long_term_pic = use_cur_src_as_long_term_pic;
+                ltr.use_long_term_ref = 0;
+                retval = ni_set_ltr(p_enc_ctx, &ltr);
+                if (retval) {
+                    return retval;
+                }
+                ni_log2(p_enc_ctx, NI_LOG_TRACE,
+                        "xcoder_send_frame(): frame #%lu API set LTR "
+                        "use_cur_src_as_long_term_pic %u\n",
+                        p_enc_ctx->frame_num, use_cur_src_as_long_term_pic);
+            }
+
+            if (invalid_frame_num != -1) {
+                retval = ni_set_frame_ref_invalid(p_enc_ctx, invalid_frame_num);
+                if (retval) {
+                    return retval;
+                }
+                ni_log2(p_enc_ctx, NI_LOG_TRACE,
+                        "xcoder_send_frame(): frame #%lu API set frame ref "
+                        "invalid %d\n",
+                        p_enc_ctx->frame_num, invalid_frame_num);
+            }
 
             p_enc_ctx->reconfigCount++;
         }

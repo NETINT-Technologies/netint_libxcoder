@@ -1,4 +1,37 @@
 ================================================================================
+Release version: 5.9.0_RC1
+Date: 2026-10-06            SW version: 5.9.0_RC1           FW version: 5.9.0_RC1
+Compat FW API ver: 6tF      Libxcoder API ver: 2.95
+--------------------------------------------------------------------------------
+[LIBXCODER] Added motion constrained mode support for H.264 and AV1, and AV1 support in the multiview tile encoding API example
+								   Change FW API version to 6tF
+[LIBXCODER] Fixed parameter documentation for the Doxygen API
+[LIBXCODER] Added support for switching an invalidated reference to the oldest LTR and fixed H.264 spec violation when encoding with 2 LTRs
+			Change FW API version to 6tE
+			Change libxcoder API version to 2.95
+[LIBXCODER] Rejected encoder configurations with roiEnable=0 when customizeQpLevel is non-zero
+[LIBXCODER] Added real VPU load reporting for decoder, encoder, scaler and AI
+						Change FW API version to 6tD
+[LIBXCODER] Fixed MDCV SEI/OBU passthrough between H.264/H.265 and AV1
+     Scaling factors are now applied correctly when converting between codecs
+[LIBXCODER] Applied fast sequence change buffer checks to the libxcoder example
+[LIBXCODER] Fixed heartbeat scheduling inaccuracy caused by system time rollback
+[LIBXCODER] Fixed high DP model load with variable frame rate (VFR) in FFmpeg 7.1 and later
+[LIBXCODER] Fixed session close when opening a session fails after the firmware has assigned an ID
+[LIBXCODER] Fixed device handle and session cleanup when opening a device session fails
+[LIBXCODER] Added ai_pre support to the ni_xcoder_transcode_filter demo
+[LIBXCODER] Added clearRefListModification to set ref_pic_list_modification_flag_l0 to 0 for H.264 P frames
+[LIBXCODER] Fixed backpressure handling in FFmpeg 6.1 and later
+[LIBXCODER] Reduced the retry count when reading AI hardware descriptors
+[LIBXCODER] Fixed a decoding issue with lowDelay=1
+     1. Added a pointer check to prevent overflow when parsing SEI
+     2. Packet parsing now tracks the NAL unit bitmap
+     3. Fixed a static analysis finding by adding missing header files
+     Change libxcoder API version to 2.93
+[LIBXCODER] Added logging of encoder reconfiguration information
+     All reconfiguration and metadata fields are logged when encoder session writes occur
+[LIBXCODER] Updated the ni_rsrc_mon log filename used with -C 1
+================================================================================
 Release version: 5.8.0_RC2
 Date: 2026-07-14            SW version: 5.8.0_RC2           FW version: 5.8.0_RC2
 Compat FW API ver: 6tC      Libxcoder API ver: 2.92

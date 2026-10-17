@@ -126,6 +126,8 @@ typedef struct _ni_bitstream_reader_t
     int size_in_bits;     // number of total bits in data
 } ni_bitstream_reader_t;
 
+uint8_t ni_bitstream_get_1bit(ni_bitstream_reader_t *br);
+
 // bitstream reader init
 LIB_API_BITSTREAM void ni_bitstream_reader_init(ni_bitstream_reader_t *br, const uint8_t *data,
                               int bit_size);

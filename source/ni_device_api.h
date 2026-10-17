@@ -326,7 +326,8 @@ typedef enum {
 #define NI_MIN_KEEP_ALIVE_TIMEOUT 1
 #define NI_DEFAULT_KEEP_ALIVE_TIMEOUT 3
 
-#define NI_MAX_DEFAULT_RETRY   500
+#define NI_MAX_DEFAULT_RETRY   1
+#define NI_MAX_AI_SESSION_RETRY   500
 
 #define NI_MIN_CUSTOM_SEI_PASSTHRU -1
 #define NI_MAX_CUSTOM_SEI_PASSTHRU 254
@@ -1278,7 +1279,8 @@ typedef struct _ni_instance_mgr_detail_status_append{
     uint32_t ui32Height;
     uint32_t ui32UserIDR;
     uint8_t  u8PixelFormat; // only support for enc
-    uint8_t  u8rsvd[3];
+    uint8_t  u8rsvd[1];
+    uint16_t ui16RealVpuLoad;
     uint32_t u32InstanceId;
     uint32_t reserved[6];
 }ni_instance_mgr_detail_status_append_t;
@@ -1791,6 +1793,15 @@ typedef struct _ni_session_context
     void *mctf;
     ni_kernel_coeff_fn scaler_coeff_fn;
     int max_retry_count;
+    int accumulated_query_time; // for ai read
+    uint8_t *rbsp[2];
+    size_t rbsp_cap[2];
+
+    /* 1 after bitstream metadata reports an IDR (picture type I or IDR).
+     * Cleared after mmco 4 is inserted into a later slice whose
+     * adaptive_ref_pic_marking_mode_flag is already 1. Appended so existing
+     * session-context field offsets stay the same. */
+    uint8_t avc_ltr_seen_idr;
 } ni_session_context_t;
 
 typedef struct _ni_split_context_t
@@ -1826,6 +1837,7 @@ typedef enum _ni_reconfig
     XCODER_TEST_RECONF_VBV = 16,
     XCODER_TEST_RECONF_MAX_FRAME_SIZE_RATIO = 17,
     XCODER_TEST_RECONF_SLICE_ARG = 18,
+    XCODER_TEST_RECONF_LTR_INVALID_REF = 19, // set LTR and/or invalidate ref frames
     XCODER_TEST_FORCE_IDR_FRAME = 100,   // force IDR through libxcoder API
     XCODER_TEST_RECONF_BR_API = 101,     // reconfig BR through libxcoder API
     XCODER_TEST_RECONF_INTRAPRD_API = 102,   // reconfig intraperiod through libxcoder API
@@ -1842,7 +1854,8 @@ typedef enum _ni_reconfig
     XCODER_TEST_RECONF_VBV_API = 116,   // reconfig vbv buffer size and vbv max rate through libxcoder API
     XCODER_TEST_RECONF_MAX_FRAME_SIZE_RATIO_API = 117,   // reconfig maxFrameSize ratio through libxcoder API
     XCODER_TEST_RECONF_SLICE_ARG_API = 118,   // reconfig sliceArg through libxcoder API
-    XCODER_TEST_RECONF_END = 119,
+    XCODER_TEST_RECONF_LTR_INVALID_REF_API = 119, // set LTR and/or invalidate ref frames thru API
+    XCODER_TEST_RECONF_END = 120,
 #endif
 } ni_reconfig_t;
 
@@ -2344,6 +2357,8 @@ NI_DEPRECATE_MACRO(NI_ENC_PARAM_MAX_FRAME_SIZE_LOW_DELAY)
 #define NI_ENC_PARAM_PRESET "preset"
 #define NI_ENC_PARAM_QP_SCALE_ENABLE "qpScaleEnable"
 #define NI_ENC_PARAM_GET_BITSTREAM_FEATURES "getBitstreamFeatures"
+#define NI_ENC_PARAM_CLEAR_REF_LIST_MODIFICATION "clearRefListModification"
+#define NI_ENC_PARAM_LONG_TERM_REFERENCE_OLDEST "longTermReferenceOldest"
 
     //----- Start supported by all codecs -----
     int frame_rate;
@@ -2569,6 +2584,8 @@ NI_DEPRECATE_MACRO(NI_ENC_PARAM_MAX_FRAME_SIZE_LOW_DELAY)
     int customMinCoeffDiv;
     int qpScaleEnable;
     int getBitstreamFeatures;
+    int clearRefListModification;
+    int longTermReferenceOldest;
 } ni_encoder_cfg_params_t;
 
 typedef struct _ni_decoder_input_params_t
@@ -3449,9 +3466,9 @@ LIB_API int ni_device_session_write(ni_session_context_t *p_ctx,
 
 /*!*****************************************************************************
  *  \brief  Read data from the device
- *          If device_type is NI_DEVICE_TYPE_DECODER reads data packet from
+ *          If device_type is NI_DEVICE_TYPE_DECODER reads data frame from
  *          decoder
- *          If device_type is NI_DEVICE_TYPE_ENCODER reads data frame from
+ *          If device_type is NI_DEVICE_TYPE_ENCODER reads data packet from
  *          encoder
  *          If device_type is NI_DEVICE_TYPE_AI reads data frame from AI engine
  *
@@ -3513,7 +3530,7 @@ LIB_API ni_retcode_t ni_device_session_query(ni_session_context_t *p_ctx,
  *                          ni_session_context_t struct
  *  \param[in] device_type  NI_DEVICE_TYPE_DECODER or
  *                          NI_DEVICE_TYPE_ENCODER or
- *
+ *  \param[out] detail_data Device data
  *  \return On success
  *                          NI_RETCODE_SUCCESS
  *          On failure
@@ -3533,7 +3550,7 @@ LIB_API ni_retcode_t ni_device_session_query(ni_session_context_t *p_ctx,
  *                          ni_session_context_t struct
  *  \param[in] device_type  NI_DEVICE_TYPE_DECODER or
  *                          NI_DEVICE_TYPE_ENCODER or
- *
+ * \param[out] detail_data  Device Data
  *  \return On success
  *                          NI_RETCODE_SUCCESS
  *          On failure
@@ -4319,7 +4336,7 @@ LIB_API ni_retcode_t ni_device_alloc_frame(ni_session_context_t* p_ctx,
  *  \brief  Allocate a frame on the device and return the frame index
  *
  *  \param[in]  p_ctx  pointer to session context
- *  \param[in]  p_out_surface  pointer to output frame surface
+ *  \param[out] p_out_surface  pointer to output frame surface
  *  \param[in]  device_type    currently only NI_DEVICE_TYPE_AI
  *
  *  \return         NI_RETCODE_INVALID_PARAM
@@ -4430,6 +4447,7 @@ LIB_API ni_retcode_t ni_ai_config_network_binary(ni_session_context_t *p_ctx,
  *  \brief   configure a hvsplus filter
  *
  *  \param[in]  p_ctx           Pointer to caller allocated ni_session_context_t
+ *  \param[in]  p_network       Pointer to caller allocated ni_network_data_t
  *
  *  \return     NI_RETCODE_SUCCESS
  *              NI_RETCODE_FAILURE
@@ -4505,7 +4523,7 @@ LIB_API ni_retcode_t ni_reconfig_intraprd(ni_session_context_t *p_ctx,
  *  \brief  Reconfigure VUI dynamically during encoding.
  *
  *  \param[in] p_ctx      Pointer to caller allocated ni_session_context_t
- *  \param[in] bitrate    Target bitrate to set
+ *  \param[in] vui        Pointer to caller allocated ni_vui_hrd_t
  *
  *  \return On success    NI_RETCODE_SUCCESS
  *          On failure    NI_RETCODE_INVALID_PARAM
@@ -4700,7 +4718,7 @@ LIB_API int ni_device_session_acquire_for_read(ni_session_context_t *p_upl_ctx,
  *  \brief  Lock a hardware P2P frame prior to encoding
  *
  *  \param[in] p_upl_ctx    pointer to caller allocated upload context
- *        [in] p_frame      pointer to caller allocated hardware P2P frame
+ *  \param[in] p_frame      pointer to caller allocated hardware P2P frame
  *
  *  \return On success
  *                          NI_RETCODE_SUCCESS
@@ -4714,7 +4732,7 @@ LIB_API ni_retcode_t ni_uploader_frame_buffer_lock(
  *  \brief  Unlock a hardware P2P frame after encoding
  *
  *  \param[in] p_upl_ctx    pointer to caller allocated upload context
- *        [in] p_frame      pointer to caller allocated hardware P2P frame
+ *  \param[in] p_frame      pointer to caller allocated hardware P2P frame
  *
  *  \return On success
  *                          NI_RETCODE_SUCCESS
@@ -4730,8 +4748,9 @@ LIB_API ni_retcode_t ni_uploader_frame_buffer_unlock(
  *
  *  \param[in] p_upl_ctx    pointer to caller allocated uploader session
  *                          context
- *        [in] p_swframe    pointer to a caller allocated software frame
- *        [in] p_hwframe    pointer to a caller allocated hardware frame
+ *  \param[in] p_data       pointer to a caller allocated yuv data
+ *  \param[in] p_hwframe    pointer to a caller allocated hardware frame
+ *  \param[in] len          data length
  *
  *  \return On success
  *                          NI_RETCODE_SUCCESS
@@ -4752,12 +4771,12 @@ LIB_API ni_retcode_t ni_uploader_p2p_test_load(ni_session_context_t *p_upl_ctx,
  *  \brief  Set the incoming frame format for the encoder
  *
  *  \param[in] p_enc_ctx    pointer to encoder context
- *        [in] p_enc_params pointer to encoder parameters
- *        [in] width        input width
- *        [in] height       input height
- *        [in] bit_depth    8 for 8-bit YUV, 10 for 10-bit YUV
- *        [in] src_endian   NI_FRAME_LITTLE_ENDIAN or NI_FRAME_BIG_ENDIAN
- *        [in] planar       0 for semi-planar YUV, 1 for planar YUV
+ *  \param[in] p_enc_params pointer to encoder parameters
+ *  \param[in] width        input width
+ *  \param[in] height       input height
+ *  \param[in] bit_depth    8 for 8-bit YUV, 10 for 10-bit YUV
+ *  \param[in] src_endian   NI_FRAME_LITTLE_ENDIAN or NI_FRAME_BIG_ENDIAN
+ *  \param[in] planar       0 for semi-planar YUV, 1 for planar YUV
  *
  *  \return on success
  *          NI_RETCODE_SUCCESS
@@ -4772,9 +4791,9 @@ LIB_API ni_retcode_t ni_encoder_set_input_frame_format(
 /*!*****************************************************************************
  *  \brief  Acquire the scaler P2P DMA buffer for read/write
  *
- *  \param [in] p_ctx       pointer to caller allocated upload context
- *         [in] p_surface   pointer to a caller allocated hardware frame
- *         [in] data_len    scaler frame buffer data length
+ *  \param[in] p_ctx       pointer to caller allocated upload context
+ *  \param[in] p_surface   pointer to a caller allocated hardware frame
+ *  \param[in] data_len    scaler frame buffer data length
  *
  *  \return on success
  *              NI_RETCODE_SUCCESS
@@ -4789,7 +4808,7 @@ LIB_API ni_retcode_t ni_scaler_p2p_frame_acquire(ni_session_context_t *p_ctx,
 /*!*****************************************************************************
  *  \brief  Recycle hw P2P frames
  *
- *  \param [in] p_frame     pointer to an acquired P2P hw frame
+ *  \param[in] p_frame     pointer to an acquired P2P hw frame
  *
  *  \return on success
  *              NI_RETCODE_SUCCESS
@@ -4804,10 +4823,10 @@ LIB_API ni_retcode_t ni_hwframe_p2p_buffer_recycle(ni_frame_t *p_frame);
  *  \brief  Set the frame format for the uploader
  *
  *  \param[in]  p_upl_ctx       pointer to uploader context
- *        [in]  width           width
- *        [in]  height          height
- *        [in]  pixel_format    pixel format
- *        [in]  isP2P           0 = normal, 1 = P2P
+ *  \param[in]  width           width
+ *  \param[in]  height          height
+ *  \param[in]  pixel_format    pixel format
+ *  \param[in]  isP2P           0 = normal, 1 = P2P
  *
  *  \return on success
  *          NI_RETCODE_SUCCESS
@@ -4891,7 +4910,7 @@ LIB_API ni_retcode_t ni_ai_session_read_metrics(
  *  \brief  Query firmware loader and firmware versions from the device
  *
  *  \param[in] device_handle Device handle obtained by calling ni_device_open()
- *  \param[in] device_info
+ *  \param[in] p_dev_info
  *
  *  \return On success
  *                          NI_RETCODE_SUCCESS
@@ -4962,7 +4981,7 @@ LIB_API ni_retcode_t ni_query_temperature(ni_device_handle_t device_handle,
                                           uint8_t fw_rev[]);
 
 /*!*****************************************************************************
- *  \brief  Query CompositeTemp from device
+ *  \brief  Query Extra Info from device
  *
  *  \param[in] device_handle       Device handle obtained by calling ni_device_open()
  *  \param[in] p_dev_extra_info    Pointer to device extra info
@@ -4984,7 +5003,7 @@ LIB_API ni_retcode_t ni_query_extra_info(ni_device_handle_t device_handle,
  *  \brief  Query QoS information for the device
  *
  *  \param[in] device_handle       Device handle for the target namespace
- *  \param[out] p_qos_ns_info      Pointer to namespace QoS header info structure
+ *  \param[out] p_dev_qos_header   Pointer to namespace QoS header info structure
  *  \param[in] fw_rev[]            Firmware version array
  *
  *  \return On success
@@ -5003,7 +5022,7 @@ LIB_API ni_retcode_t ni_query_qos_info(ni_device_handle_t device_handle,
  *  \brief  Query QoS information for a specific namespace
  *
  *  \param[in] device_handle       Device handle for the target namespace
- *  \param[out] p_qos_ns_info      Pointer to namespace QoS namespace info structure
+ *  \param[out] p_dev_qos_ns       Pointer to namespace QoS namespace info structure
  *  \param[in] fw_rev[]            Firmware version array
  *
  *  \return On success
@@ -5022,11 +5041,11 @@ LIB_API ni_retcode_t ni_query_qos_namespace_info(ni_device_handle_t device_handl
  *  \brief  Check if incoming frame is encoder zero copy compatible or not
  *
  *  \param[in] p_enc_ctx    pointer to encoder context
- *        [in] p_enc_params pointer to encoder parameters
- *        [in] width        input width
- *        [in] height       input height
- *        [in] linesize      input linesizes (pointer to array)
- *        [in] set_linesize   setup linesizes 0 means not setup linesizes, 1 means setup linesizes (before encoder open)
+ *  \param[in] p_enc_params pointer to encoder parameters
+ *  \param[in] width        input width
+ *  \param[in] height       input height
+ *  \param[in] linesize      input linesizes (pointer to array)
+ *  \param[in] set_linesize   setup linesizes 0 means not setup linesizes, 1 means setup linesizes (before encoder open)
  *
  *  \return on success and can do zero copy
  *          NI_RETCODE_SUCCESS
@@ -5048,15 +5067,17 @@ LIB_API ni_retcode_t ni_encoder_frame_zerocopy_check(ni_session_context_t *p_enc
   *          adjust with offset if it doesn't. EP will re-adjust the data pointer
   *          to the correct start address.
   *
+  *  \param[in] p_enc_ctx    pointer to encoder context
+  *  \param[in] p_frame       Pointer to a caller allocated ni_frame_t struct
   *  \param[in] video_height  Height of the video frame
-  *        [in] linesize      Picture line size after filtering (i.e. cropping)
-  *        [in] data          Picture data pointers after filtering (for each of YUV planes)
-  *        [in] buf_size0     Y frame size before any filtering (original size)
-  *        [in] buf_size1     U frame size before any filtering (original)
-  *        [in] buf_size2     V frame size before any filtering (original)
-  *        [in] buf_data0     Y picture data pointer before any filtering (original)
-  *        [in] buf_data1     U picture data pointer before any filtering (original)
-  *        [in] buf_data2     V picture data pointer before any filtering (original)
+  *  \param[in] linesize      Picture line size after filtering (i.e. cropping)
+  *  \param[in] data          Picture data pointers after filtering (for each of YUV planes)
+  *  \param[in] buf_size0     Y frame size before any filtering (original size)
+  *  \param[in] buf_size1     U frame size before any filtering (original)
+  *  \param[in] buf_size2     V frame size before any filtering (original)
+  *  \param[in] buf_data0     Y picture data pointer before any filtering (original)
+  *  \param[in] buf_data1     U picture data pointer before any filtering (original)
+  *  \param[in] buf_data2     V picture data pointer before any filtering (original)
   *
   *  \return On success
   *                          NI_RETCODE_SUCCESS
@@ -5098,10 +5119,10 @@ LIB_API ni_retcode_t ni_encoder_frame_zerocopy_buffer_alloc(ni_frame_t *p_frame,
  *  \brief  Check if incoming frame is hwupload zero copy compatible or not
  *
  *  \param[in] p_upl_ctx    pointer to uploader context
- *        [in] width        input width
- *        [in] height       input height
- *        [in] linesize      input linesizes (pointer to array)
- *        [in] pixel_format   input pixel format
+ *  \param[in] width        input width
+ *  \param[in] height       input height
+ *  \param[in] linesize      input linesizes (pointer to array)
+ *  \param[in] pixel_format   input pixel format
  *
  *  \return on success and can do zero copy
  *          NI_RETCODE_SUCCESS
