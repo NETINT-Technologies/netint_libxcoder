@@ -1,4 +1,4 @@
-#include "../build/xcoder_auto_headers.h"
+#include "xcoder_auto_headers.h"
 
 #ifdef NI_HAVE_MCTF
 #include <stdio.h>
