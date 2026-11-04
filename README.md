@@ -60,6 +60,32 @@ bash configure --libdir=/custom_lib_folder --bindir=/custom_bin_folder \
                --includedir=/custom_include_folder --shareddir=/additional_lib_folder
 ```
 
+### Meson Build and Install
+
+Meson 0.62 or later, Ninja, and C/C++ compilers are required.
+Use a new build directory separate from the legacy `configure`/Makefile build:
+
+```bash
+meson setup build-meson
+meson compile -C build-meson
+meson test -C build-meson --print-errorlogs
+sudo meson install -C build-meson
+sudo ldconfig # Linux: refresh the shared-library cache
+```
+
+Both static and shared libraries, public headers, pkg-config metadata, and the
+resource-management tools are installed. Examples and test programs are built by
+default; disable them with `-Dexamples=false -Dtests=false`. Other build options
+are listed by `meson configure build-meson`, including `-Dmctf=true` on Linux.
+The default prefix is `/usr/local`, with `lib`, `bin`, and `include` subdirectories.
+For a custom prefix, make its library directory available through the platform's
+runtime library search path (for example, `LD_LIBRARY_PATH` on Linux).
+
+This project can also provide the `xcoder` dependency as a Meson subproject via
+`meson.override_dependency()`. Its Meson project version is independent of
+`NI_XCODER_REVISION`, which supplies the product revision, library SONAME, and
+pkg-config version. Consumers can check product compatibility from `ni_defs.h`.
+
 ### Uninstall
 ```bash
 sudo make uninstall
