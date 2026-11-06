@@ -26,7 +26,7 @@
  *         devices on system
  ******************************************************************************/
 
-#if __linux__ || __APPLE__
+#if __linux__ || __APPLE__ || __FreeBSD__
 #include <unistd.h>
 #include <sys/types.h>
 #elif _WIN32

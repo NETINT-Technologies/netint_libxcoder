@@ -44,7 +44,7 @@
   #else
     #define LIB_API_LOG
   #endif
-#elif __linux__ || __APPLE__
+#elif __linux__ || __APPLE__ || __FreeBSD__
   #define LIB_API_LOG
 #endif
 
