@@ -32,7 +32,7 @@
 
 #ifdef _WIN32
 #include "ni_getopt.h"
-#elif __linux__ || __APPLE__
+#elif __linux__ || __APPLE__ || __FreeBSD__
 #include <getopt.h>
 #include <unistd.h>
 #endif

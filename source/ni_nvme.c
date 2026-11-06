@@ -36,7 +36,7 @@
 #include <ntddstor.h>
 #include <winioctl.h>
 #include <Ntddscsi.h>
-#elif __linux__ || __APPLE__
+#elif __linux__ || __APPLE__ || __FreeBSD__
 #if __linux__
 #include <linux/types.h>
 #endif
@@ -107,7 +107,7 @@ ni_retcode_t ni_nvme_check_error_code(int rc, int opcode, uint32_t xcoder_type,
     }
 }
 
-#ifdef __linux__
+#if defined(__linux__) || defined(__FreeBSD__)
 
 /*!******************************************************************************
  *  \brief  Submit a nvme admin passthrough command to the driver
@@ -433,7 +433,7 @@ int32_t ni_nvme_send_io_cmd(ni_nvme_opcode_t opcode, ni_device_handle_t handle,
 }
 #endif
 
-#ifdef __linux__
+#if defined(__linux__) || defined(__FreeBSD__)
 
 /*!******************************************************************************
  *  \brief  Compose a nvme io through admin command

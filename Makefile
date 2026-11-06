@@ -120,6 +120,9 @@ SYSTEMDIR_NO_PREFIX = $(shell sed -n 's/^systemdir=\(.*\)/\1/p' $(OBJS_PATH)/$(T
 ifeq ($(WINDOWS), FALSE)
 	ifeq ($(UNAME), Darwin)
 		LDFLAGS += -lpthread -lm
+	else ifeq ($(UNAME), FreeBSD)
+		# librt and libdl are part of libc on FreeBSD; backtrace() is in libexecinfo
+		LDFLAGS += -lpthread -lm -lexecinfo
 	else
 		LDFLAGS += -lpthread -lrt -lm -ldl
 		ifeq ($(HAVE_MCTF), TRUE)

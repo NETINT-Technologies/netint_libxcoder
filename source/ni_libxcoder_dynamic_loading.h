@@ -751,8 +751,10 @@ public:
         //
         // Function pointers for ni_quadraprobe.h
         //
+#if defined(__linux__)
         functionList->niRsrcLogDump = reinterpret_cast<decltype(ni_rsrc_log_dump)*>(dlsym(lib,"ni_rsrc_log_dump"));
         functionList->niRsrcNorLogCommand = reinterpret_cast<decltype(ni_rsrc_nor_log_command)*>(dlsym(lib,"ni_rsrc_nor_log_command"));
+#endif
 
     }
 };

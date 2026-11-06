@@ -52,7 +52,7 @@ extern "C" {
   #else
     #define LIB_API_BITSTREAM
   #endif
-#elif __linux__ || __APPLE__
+#elif __linux__ || __APPLE__ || __FreeBSD__
   #define LIB_API_BITSTREAM
 #endif
 
