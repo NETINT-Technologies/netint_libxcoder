@@ -971,6 +971,28 @@ int32_t ni_nvme_batch_cmd_aio(aio_context_t ctx, ni_iocb_t **iocbs,
         ni_io_event_t *events, int iocb_num);
 #endif
 
+#ifdef __FreeBSD__
+/* POSIX AIO needs no per-session context: keep the Linux call sites unchanged. */
+static inline int32_t ni_aio_setup(unsigned nr, ni_aio_context_t *ctxp)
+{
+    (void)nr;
+    *ctxp = 1; /* non-zero: "valid", checked by the cleanup code */
+    return 0;
+}
+
+static inline int32_t ni_aio_destroy(ni_aio_context_t ctx)
+{
+    (void)ctx;
+    return 0;
+}
+
+void ni_nvme_setup_aio_iocb(ni_device_handle_t handle, ni_iocb_t *iocb,
+                            void *p_data, uint32_t data_len, uint32_t lba,
+                            int write);
+int32_t ni_nvme_batch_cmd_aio(ni_aio_context_t ctx, ni_iocb_t **iocbs,
+                              ni_io_event_t *events, int iocb_num);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

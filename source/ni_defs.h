@@ -40,6 +40,7 @@
 #elif __FreeBSD__
 #include <sys/types.h>
 #include <unistd.h>
+#include <aio.h>
 #endif
 #include <sys/time.h>
 #include <pthread.h>
@@ -210,9 +211,12 @@ typedef sigset_t ni_sigset_t;
 typedef int32_t ni_device_handle_t;
 typedef int32_t ni_event_handle_t;
 typedef int32_t ni_lock_handle_t;
-typedef unsigned ni_aio_context_t;
-typedef unsigned ni_iocb_t;
-typedef unsigned ni_io_event_t;
+/* POSIX AIO (aio(4)): there is no context object and no event array, results
+ * are read back with aio_error()/aio_return(); the types are kept so the
+ * session context layout does not change. */
+typedef unsigned long ni_aio_context_t;
+typedef struct aiocb ni_iocb_t;
+typedef int ni_io_event_t;
 #define NI_INVALID_DEVICE_HANDLE (-1)
 #define NI_INVALID_EVENT_HANDLE (-1)
 #define NI_INVALID_LOCK_HANDLE (-1)

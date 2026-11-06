@@ -19596,7 +19596,7 @@ ni_retcode_t ni_ai_session_write(ni_session_context_t *p_ctx,
                 LRETURN;
             }
 
-#ifdef __linux__
+#if defined(__linux__) || defined(__FreeBSD__)
             for (i = 0; (int)i < iovec_batch; i++) {
                 ni_iovec_t *iovec = &p_frame->iovec[iovec_index + i];
                 ni_segment_t *segment = &buffer_info->segment[i];
@@ -20234,7 +20234,7 @@ ni_retcode_t ni_ai_session_open(ni_session_context_t *p_ctx)
     }
 
     //aio
-#ifdef __linux__
+#if defined(__linux__) || defined(__FreeBSD__)
     if (ni_aio_setup(NI_MAX_SEGMENT_NUM, &p_ctx->aio_context) != 0) {
         ni_log2(p_ctx, NI_LOG_ERROR, "ERROR %s(): failed to setup aio context\n", __func__);
         retval = NI_RETCODE_ERROR_MEM_ALOC;
@@ -20361,7 +20361,7 @@ ni_retcode_t ni_ai_session_close(ni_session_context_t *p_ctx, int eos_recieved)
 
 END:
 
-#ifdef __linux__
+#if defined(__linux__) || defined(__FreeBSD__)
     if (p_ctx->aio_context != 0) {
         if (ni_aio_destroy(p_ctx->aio_context) != 0) {
             ni_log2(p_ctx, NI_LOG_ERROR, "ERROR %s(): failed to destroy aio context\n", __func__);
